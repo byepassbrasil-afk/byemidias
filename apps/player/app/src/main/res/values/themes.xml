@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ByeMidias" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">#3B82F6</item>
+        <item name="android:colorPrimaryDark">#1E40AF</item>
+        <item name="android:colorAccent">#60A5FA</item>
+        <item name="android:windowBackground">#111827</item>
+    </style>
+
+    <style name="Theme.ByeMidias.Fullscreen" parent="Theme.ByeMidias">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>

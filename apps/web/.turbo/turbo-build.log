@@ -1,0 +1,60 @@
+
+> @byemidias/web@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (107kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (258kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/27) ...
+   Generating static pages (6/27) 
+   Generating static pages (13/27) 
+   Generating static pages (20/27) 
+ ✓ Generating static pages (27/27)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    175 B          96.2 kB
+├ ○ /_not-found                          873 B          88.2 kB
+├ ƒ /api/admin/partners                  0 B                0 B
+├ ƒ /api/admin/partners/[id]             0 B                0 B
+├ ƒ /api/admin/partners/devices          0 B                0 B
+├ ƒ /api/partner/auth/login              0 B                0 B
+├ ƒ /api/partner/auth/logout             0 B                0 B
+├ ƒ /api/partner/devices                 0 B                0 B
+├ ƒ /api/partner/media                   0 B                0 B
+├ ƒ /api/partner/media/[id]              0 B                0 B
+├ ƒ /api/partner/media/reorder           0 B                0 B
+├ ○ /campaigns                           1.8 kB          156 kB
+├ ○ /dashboard                           1.24 kB         155 kB
+├ ○ /devices                             1.29 kB         155 kB
+├ ○ /login                               1.39 kB         164 kB
+├ ○ /media                               1.53 kB         156 kB
+├ ○ /monitoring                          1.49 kB         155 kB
+├ ○ /organizations                       1.45 kB         155 kB
+├ ○ /partner                             1.15 kB        88.5 kB
+├ ○ /partner/login                       1.13 kB        88.4 kB
+├ ○ /partner/media                       1.82 kB        89.1 kB
+├ ○ /partners                            2.84 kB         157 kB
+├ ○ /playlists                           1.37 kB         155 kB
+├ ○ /settings                            681 B            88 kB
+├ ○ /signup                              1.44 kB         164 kB
+├ ○ /units                               1.45 kB         155 kB
+└ ○ /users                               1.21 kB         155 kB
++ First Load JS shared by all            87.3 kB
+  ├ chunks/1dd3208c-6a9c9e74f589d906.js  53.6 kB
+  ├ chunks/528-d52822d89e745515.js       31.7 kB
+  └ other shared chunks (total)          1.95 kB
+
+
+ƒ Middleware                             90.6 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

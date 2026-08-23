@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthApi } from '@/lib/auth';
 
 export async function GET() {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = await createServerSupabase();
 
     const { data: profile } = await supabase
@@ -48,7 +51,10 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = await createServerSupabase();
 
     const { data: profile } = await supabase

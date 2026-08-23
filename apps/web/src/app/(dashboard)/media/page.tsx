@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Media } from '@byemidias/shared';
+import type { Media } from '@/lib/types';
 
 export default function MediaPage() {
   const [media, setMedia] = useState<Media[]>([]);
@@ -11,6 +11,8 @@ export default function MediaPage() {
   const [uploading, setUploading] = useState(false);
   const [organizationId, setOrganizationId] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [detailMedia, setDetailMedia] = useState<Media | null>(null);
+  const [editName, setEditName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
@@ -33,7 +35,8 @@ export default function MediaPage() {
     if (!organizationId) { alert('Selecione uma organização primeiro.'); return; }
 
     setUploading(true);
-    const filePath = `uploads/${Date.now()}-${file.name}`;
+    const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const filePath = `uploads/${Date.now()}-${safeName}`;
 
     const { error: uploadError } = await supabase.storage.from('media').upload(filePath, file);
     if (uploadError) {
@@ -69,6 +72,14 @@ export default function MediaPage() {
     }
     await supabase.from('media').delete().eq('id', deleteId);
     setDeleteId(null);
+    setDetailMedia(null);
+    loadMedia();
+  }
+
+  async function handleRename() {
+    if (!detailMedia || !editName.trim()) return;
+    await supabase.from('media').update({ name: editName.trim() }).eq('id', detailMedia.id);
+    setDetailMedia({ ...detailMedia, name: editName.trim() });
     loadMedia();
   }
 
@@ -112,8 +123,9 @@ export default function MediaPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
           {media.map((item) => (
-            <div key={item.id} className="group relative rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden">
-              <button onClick={() => setDeleteId(item.id)} className="absolute top-2 right-2 z-10 rounded-full bg-red-600 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700" title="Excluir">
+            <div key={item.id} onClick={() => { setDetailMedia(item); setEditName(item.name); }}
+              className="group relative rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all">
+              <button onClick={(e) => { e.stopPropagation(); setDeleteId(item.id); }} className="absolute top-2 right-2 z-10 rounded-full bg-red-600 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700" title="Excluir">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
               <div className="aspect-square bg-gray-100 flex items-center justify-center">
@@ -131,6 +143,76 @@ export default function MediaPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Detail panel */}
+      {detailMedia && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setDetailMedia(null)}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-900">Detalhes da Midia</h2>
+                <button onClick={() => setDetailMedia(null)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              </div>
+
+              <div className="flex gap-6">
+                <div className="w-48 h-48 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                  {detailMedia.type === 'image' || detailMedia.type === 'gif' ? (
+                    <img src={detailMedia.file_url} alt={detailMedia.name} className="w-full h-full object-cover" />
+                  ) : detailMedia.type === 'video' ? (
+                    <video src={detailMedia.file_url} className="w-full h-full object-cover" controls />
+                  ) : (
+                    <div className="text-5xl">📄</div>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Nome</label>
+                    <div className="flex gap-2">
+                      <input value={editName} onChange={e => setEditName(e.target.value)}
+                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none" />
+                      <button onClick={handleRename}
+                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">Renomear</button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-500">Tipo:</span>
+                      <span className="ml-2 text-gray-900 font-medium">{detailMedia.type}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Tamanho:</span>
+                      <span className="ml-2 text-gray-900">{formatSize(detailMedia.file_size)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Status:</span>
+                      <span className="ml-2 text-gray-900">{detailMedia.status}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">ID:</span>
+                      <span className="ml-2 text-gray-900 font-mono text-xs">{detailMedia.id?.slice(0, 8)}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">URL</label>
+                    <input value={detailMedia.file_url || ''} readOnly
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 font-mono" />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <a href={detailMedia.file_url} target="_blank" rel="noopener"
+                      className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-300">Abrir URL</a>
+                    <button onClick={() => { setDeleteId(detailMedia.id); setDetailMedia(null); }}
+                      className="rounded-lg bg-red-100 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-200">Excluir</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

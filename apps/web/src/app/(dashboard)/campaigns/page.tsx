@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Campaign, CampaignStatus } from '@byemidias/shared';
+import type { Campaign, CampaignStatus } from '@/lib/types';
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -19,7 +19,7 @@ export default function CampaignsPage() {
   const [endTime, setEndTime] = useState('');
   const [priority, setPriority] = useState(3);
   const [status, setStatus] = useState<CampaignStatus>('draft');
-  const [playlistId, setPlaylistId] = useState('');
+  const [selectedPlaylists, setSelectedPlaylists] = useState<string[]>([]);
   const [organizationId, setOrganizationId] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -44,37 +44,68 @@ export default function CampaignsPage() {
   }
 
   function resetForm() {
-    setName(''); setDescription(''); setStartDate(''); setEndDate(''); setStartTime(''); setEndTime(''); setPriority(3); setStatus('draft'); setPlaylistId(''); setOrganizationId(''); setEditing(null); setShowForm(false);
+    setName(''); setDescription(''); setStartDate(''); setEndDate(''); setStartTime(''); setEndTime(''); setPriority(3); setStatus('draft'); setSelectedPlaylists([]); setOrganizationId(''); setEditing(null); setShowForm(false);
   }
 
-  function startEdit(c: Campaign) {
+  async function startEdit(c: Campaign) {
     setEditing(c);
     setName(c.name); setDescription(c.description || ''); setStartDate(c.start_date || ''); setEndDate(c.end_date || '');
     setStartTime(c.start_time || ''); setEndTime(c.end_time || ''); setPriority(c.priority); setStatus(c.status);
-    setPlaylistId(c.playlist_id || ''); setOrganizationId(c.organization_id); setShowForm(true);
+    setOrganizationId(c.organization_id);
+    // Load linked playlists
+    const { data: linked } = await supabase.from('campaign_playlists').select('playlist_id').eq('campaign_id', c.id);
+    setSelectedPlaylists((linked ?? []).map((l: any) => l.playlist_id));
+    setShowForm(true);
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const payload = {
-      name, description: description || null, start_date: startDate || null, end_date: endDate || null,
-      start_time: startTime || null, end_time: endTime || null, priority, status, playlist_id: playlistId || null,
-      organization_id: organizationId, days_of_week: [1, 2, 3, 4, 5, 6, 0], updated_at: new Date().toISOString(),
-    };
-    if (editing) {
-      await supabase.from('campaigns').update(payload).eq('id', editing.id);
-    } else {
-      await supabase.from('campaigns').insert(payload);
+    try {
+      const payload = {
+        name, description: description || null, start_date: startDate || null, end_date: endDate || null,
+        start_time: startTime || null, end_time: endTime || null, priority, status,
+        organization_id: organizationId, days_of_week: [1, 2, 3, 4, 5, 6, 0], updated_at: new Date().toISOString(),
+      };
+      let campaignId = editing?.id;
+      if (editing) {
+        const { error } = await supabase.from('campaigns').update(payload).eq('id', editing.id);
+        if (error) throw new Error(`Erro ao atualizar campanha: ${error.message}`);
+      } else {
+        const { data, error } = await supabase.from('campaigns').insert(payload).select('id').single();
+        if (error) throw new Error(`Erro ao criar campanha: ${error.message}`);
+        campaignId = data?.id;
+      }
+      if (campaignId) {
+        const { error: delErr } = await supabase.from('campaign_playlists').delete().eq('campaign_id', campaignId);
+        if (delErr) throw new Error(`Erro ao limpar playlists: ${delErr.message}`);
+        const inserts = selectedPlaylists.map((pid, i) => ({ campaign_id: campaignId, playlist_id: pid, position: i + 1 }));
+        if (inserts.length > 0) {
+          const { error: insErr } = await supabase.from('campaign_playlists').insert(inserts);
+          if (insErr) throw new Error(`Erro ao vincular playlists: ${insErr.message}`);
+        }
+      }
+      resetForm(); loadCampaigns();
+    } catch (err: any) {
+      alert(err.message || 'Erro ao salvar campanha');
+    } finally {
+      setSaving(false);
     }
-    resetForm(); setSaving(false); loadCampaigns();
   }
 
   async function handleDelete() {
     if (!deleteId) return;
-    await supabase.from('campaign_targets').delete().eq('campaign_id', deleteId);
-    await supabase.from('campaigns').delete().eq('id', deleteId);
-    setDeleteId(null); loadCampaigns();
+    try {
+      const { error: e1 } = await supabase.from('campaign_targets').delete().eq('campaign_id', deleteId);
+      if (e1) throw new Error(`Erro ao limpar alvos: ${e1.message}`);
+      const { error: e2 } = await supabase.from('campaign_playlists').delete().eq('campaign_id', deleteId);
+      if (e2) throw new Error(`Erro ao limpar playlists: ${e2.message}`);
+      const { error: e3 } = await supabase.from('campaigns').delete().eq('id', deleteId);
+      if (e3) throw new Error(`Erro ao excluir campanha: ${e3.message}`);
+      setDeleteId(null); loadCampaigns();
+    } catch (err: any) {
+      alert(err.message || 'Erro ao excluir campanha');
+    }
   }
 
   async function handleStatusChange(c: Campaign, newStatus: CampaignStatus) {
@@ -117,12 +148,31 @@ export default function CampaignsPage() {
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Playlist</label>
-              <select value={playlistId} onChange={(e) => setPlaylistId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
-                <option value="">Nenhuma</option>
-                {playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Playlists</label>
+              {playlists.length === 0 ? (
+                <p className="text-sm text-gray-400">Nenhuma playlist disponível</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                  {playlists.map((p) => (
+                    <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedPlaylists.includes(p.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedPlaylists([...selectedPlaylists, p.id]);
+                          else setSelectedPlaylists(selectedPlaylists.filter(id => id !== p.id));
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      {p.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+              {selectedPlaylists.length > 0 && (
+                <p className="text-xs text-gray-500 mt-1">{selectedPlaylists.length} playlist(s) selecionada(s)</p>
+              )}
             </div>
             {editing && (
               <div>

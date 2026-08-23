@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import type { Media } from '@byemidias/shared';
+import type { Media } from '@/lib/types';
 
 export default function PartnerMediaPage() {
   const [media, setMedia] = useState<Media[]>([]);

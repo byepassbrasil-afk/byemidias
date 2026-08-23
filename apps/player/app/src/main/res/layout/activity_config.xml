@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#111827"
+    android:padding="24dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⚙ Configurações do Player"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:id="@+id/deviceInfoText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#9CA3AF"
+            android:textSize="12sp"
+            android:fontFamily="monospace"
+            android:background="#1F2937"
+            android:padding="12dp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- URL -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="URL do Servidor"
+            android:textColor="#D1D5DB"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/urlInput"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#1F2937"
+            android:textColor="#FFFFFF"
+            android:hint="https://byemidias.vercel.app"
+            android:textColorHint="#6B7280"
+            android:padding="12dp"
+            android:inputType="textUri"
+            android:singleLine="true"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Orientation -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Orientação"
+            android:textColor="#D1D5DB"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <Spinner
+            android:id="@+id/orientationSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#1F2937"
+            android:entries="@array/orientations"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Mirror H -->
+        <Switch
+            android:id="@+id/mirrorHSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Espelhar Horizontal"
+            android:textColor="#D1D5DB"
+            android:thumbTint="#3B82F6"
+            android:trackTint="#374151"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Mirror V -->
+        <Switch
+            android:id="@+id/mirrorVSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Espelhar Vertical"
+            android:textColor="#D1D5DB"
+            android:thumbTint="#3B82F6"
+            android:trackTint="#374151"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Video Player -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Player de Video"
+            android:textColor="#D1D5DB"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <Spinner
+            android:id="@+id/videoPlayerSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#1F2937"
+            android:entries="@array/video_players"
+            android:layout_marginBottom="12dp" />
+
+        <!-- HTML Render -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Renderização HTML"
+            android:textColor="#D1D5DB"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <Spinner
+            android:id="@+id/htmlRenderSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#1F2937"
+            android:entries="@array/html_renders"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Auto update -->
+        <Switch
+            android:id="@+id/autoUpdateSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Atualizar Automaticamente"
+            android:textColor="#D1D5DB"
+            android:thumbTint="#3B82F6"
+            android:trackTint="#374151"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Low mem restart -->
+        <Switch
+            android:id="@+id/lowMemRestartSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Reiniciar ao Detectar Memória Baixa"
+            android:textColor="#D1D5DB"
+            android:thumbTint="#3B82F6"
+            android:trackTint="#374151"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Action buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+
+            <Button
+                android:id="@+id/syncBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Sincronizar"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#2563EB"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/forceSyncBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Forçar Sync"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#D97706"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/configStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#34D399"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/saveBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="SALVAR"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#16A34A"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/rebootBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Reiniciar"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#7C3AED"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/exitBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="SAIR"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#DC2626"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

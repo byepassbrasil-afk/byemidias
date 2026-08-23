@@ -13,21 +13,31 @@ android {
         applicationId = "com.byemidias.player"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 27
+        versionName = "1.0.27"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Server config - set in local.properties
+        // Server config - set in gradle.properties or pass via -P flag
         buildConfigField("String", "SUPABASE_URL", "\"${project.findProperty("SUPABASE_URL") ?: ""}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${project.findProperty("SUPABASE_ANON_KEY") ?: ""}\"")
         buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("API_BASE_URL") ?: ""}\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../release-key.jks")
+            storePassword = "byemidias123"
+            keyAlias = "byemidias"
+            keyPassword = "byemidias123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            isDebuggable = true
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

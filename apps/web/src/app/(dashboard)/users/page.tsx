@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Profile, UserRole } from '@byemidias/shared';
+import type { Profile, UserRole } from '@/lib/types';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<Profile[]>([]);

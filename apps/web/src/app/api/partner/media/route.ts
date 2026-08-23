@@ -68,7 +68,8 @@ export async function POST(request: Request) {
   }
 
   // Upload to storage (service_role bypasses RLS)
-  const filePath = `partner-uploads/${session.partnerAccessId}/${Date.now()}-${file.name}`;
+  const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const filePath = `partner-uploads/${session.partnerAccessId}/${Date.now()}-${safeName}`;
   const { error: uploadError } = await supabase.storage
     .from('media')
     .upload(filePath, file);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Unit } from '@byemidias/shared';
+import type { Unit } from '@/lib/types';
 
 export default function UnitsPage() {
   const [units, setUnits] = useState<Unit[]>([]);

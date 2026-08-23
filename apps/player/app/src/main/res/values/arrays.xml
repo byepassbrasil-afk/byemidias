@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="orientations">
+        <item>Retrato</item>
+        <item>Paisagem</item>
+        <item>Paisagem Invertida</item>
+        <item>Retrato Invertido</item>
+        <item>Automático</item>
+    </string-array>
+    <string-array name="video_players">
+        <item>Nativo</item>
+        <item>VLC</item>
+        <item>ExoPlayer</item>
+    </string-array>
+    <string-array name="html_renders">
+        <item>Nativo</item>
+        <item>WebView</item>
+    </string-array>
+</resources>

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthApi } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
 function getServiceClient() {
@@ -15,7 +15,10 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = getServiceClient();
 
     const { data: profile } = await supabase
@@ -54,7 +57,10 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = getServiceClient();
 
     const { data: profile } = await supabase
@@ -116,7 +122,10 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = getServiceClient();
 
     const { data: profile } = await supabase
@@ -159,7 +168,10 @@ export async function PUT(
 // DELETE /api/admin/playlists/[id]/slots - Delete a slot
 export async function DELETE(request: Request) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = getServiceClient();
 
     const { data: profile } = await supabase

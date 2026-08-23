@@ -13,19 +13,30 @@ interface ActivationCode {
   created_by: string;
   created_at: string;
   used_at: string | null;
+  organization_id: string | null;
   device?: { id: string; name: string; status: string } | null;
+}
+
+interface Org {
+  id: string;
+  name: string;
 }
 
 export default function ActivationCodesPage() {
   const [codes, setCodes] = useState<ActivationCode[]>([]);
+  const [orgs, setOrgs] = useState<Org[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [count, setCount] = useState(1);
+  const [selectedOrg, setSelectedOrg] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const supabase = createClient();
 
-  useEffect(() => { loadCodes(); }, []);
+  useEffect(() => {
+    loadCodes();
+    loadOrgs();
+  }, []);
 
   async function loadCodes() {
     try {
@@ -38,13 +49,22 @@ export default function ActivationCodesPage() {
     setLoading(false);
   }
 
+  async function loadOrgs() {
+    const { data } = await supabase.from('organizations').select('id, name').order('name');
+    setOrgs(data ?? []);
+  }
+
   async function handleGenerate() {
+    if (!selectedOrg) {
+      alert('Selecione uma organização');
+      return;
+    }
     setGenerating(true);
     try {
       const res = await fetch('/api/admin/activation-codes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count }),
+        body: JSON.stringify({ count, organization_id: selectedOrg }),
       });
 
       if (res.ok) {
@@ -99,6 +119,16 @@ export default function ActivationCodesPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Códigos de Ativação</h1>
         <div className="flex items-center gap-3">
+          <select
+            value={selectedOrg}
+            onChange={(e) => setSelectedOrg(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">Selecione a organização</option>
+            {orgs.map((org) => (
+              <option key={org.id} value={org.id}>{org.name}</option>
+            ))}
+          </select>
           <select
             value={count}
             onChange={(e) => setCount(Number(e.target.value))}

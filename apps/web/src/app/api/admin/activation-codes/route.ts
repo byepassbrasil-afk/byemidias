@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthApi } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
 function getServiceClient() {
@@ -21,7 +21,10 @@ function generateCode(): string {
 // GET /api/admin/activation-codes - List activation codes
 export async function GET() {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = getServiceClient();
 
     const { data: profile } = await supabase
@@ -59,7 +62,10 @@ export async function GET() {
 // POST /api/admin/activation-codes - Generate new activation code(s)
 export async function POST(request: Request) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = getServiceClient();
 
     const { data: profile } = await supabase
@@ -73,9 +79,12 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { count = 1, organization_id, expires_at } = body;
+    const { count = 1, organization_id, expires_at, max_uses = 50 } = body;
 
-    const orgId = profile.role === 'super_admin' ? (organization_id || null) : profile.organization_id;
+    const orgId = organization_id || profile.organization_id;
+    if (!orgId) {
+      return NextResponse.json({ error: 'organization_id obrigatório' }, { status: 400 });
+    }
 
     const codesToInsert = [];
     for (let i = 0; i < Math.min(count, 50); i++) {
@@ -83,7 +92,7 @@ export async function POST(request: Request) {
         code: generateCode(),
         organization_id: orgId,
         status: 'pending',
-        max_uses: 1,
+        max_uses: max_uses,
         use_count: 0,
         expires_at: expires_at || null,
         created_by: user.email || user.id,
@@ -109,7 +118,10 @@ export async function POST(request: Request) {
 // DELETE /api/admin/activation-codes - Delete activation codes
 export async function DELETE(request: Request) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuthApi();
+    if (!user) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
     const supabase = getServiceClient();
 
     const { data: profile } = await supabase

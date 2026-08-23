@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Playlist, PlaylistItem, Media } from '@byemidias/shared';
-import type { Organization } from '@byemidias/shared';
+import type { Playlist, PlaylistItem, Media } from '@/lib/types';
+import type { Organization } from '@/lib/types';
 
 interface PlaylistSlot {
   id: string;
@@ -195,6 +195,27 @@ export default function PlaylistsPage() {
     openItems(selectedPlaylist);
   }
 
+  async function handleUpdateVolume(item: PlaylistItem, newVolume: number) {
+    if (!selectedPlaylist) return;
+    await supabase.from('playlist_items').update({ volume: newVolume }).eq('id', item.id);
+    openItems(selectedPlaylist);
+  }
+
+  async function forceUpdateDevices() {
+    if (!selectedPlaylist) return;
+    const { data: campaigns } = await supabase.from('campaign_playlists').select('campaign_id').eq('playlist_id', selectedPlaylist.id);
+    if (!campaigns || campaigns.length === 0) { alert('Playlist nao vinculada a nenhuma campanha.'); return; }
+    for (const cp of campaigns) {
+      const { data: devices } = await supabase.from('devices').select('id').eq('campaign_id', cp.campaign_id);
+      if (devices) {
+        for (const d of devices) {
+          await supabase.rpc('bump_device_content_version' as never, { target_device_id: d.id } as never);
+        }
+      }
+    }
+    alert('Sync forçado nos dispositivos vinculados.');
+  }
+
   function formatDuration(seconds: number | null) {
     if (!seconds) return '—';
     if (seconds < 60) return `${seconds}s`;
@@ -384,38 +405,76 @@ export default function PlaylistsPage() {
             </button>
             <h1 className="text-2xl font-bold text-gray-900">Itens — {selectedPlaylist.name}</h1>
           </div>
-          <button onClick={openAddMedia} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-            + Adicionar Mídia
-          </button>
+          <div className="flex gap-2">
+            <button onClick={openAddMedia} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              + Adicionar Mídia
+            </button>
+            <button onClick={forceUpdateDevices} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700">
+              ⚡ Forçar Atualização
+            </button>
+          </div>
         </div>
 
-        {/* Add media modal */}
+        {/* Add media gallery */}
         {showAddMedia && (
           <div className="mb-6 rounded-xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Adicionar Mídia à Playlist</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mídia</label>
-                <select value={selectedMediaId} onChange={(e) => setSelectedMediaId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
-                  <option value="">Selecione uma mídia...</option>
-                  {media.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name} ({m.type})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Duração (segundos)</label>
-                <input type="number" value={itemDuration} onChange={(e) => setItemDuration(Number(e.target.value))} min={1} max={300} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Adicionar Mídia à Playlist</h3>
+              <div className="flex items-center gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Duração (segundos)</label>
+                  <input type="number" value={itemDuration} onChange={(e) => setItemDuration(Number(e.target.value))} min={1} max={300}
+                    className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center focus:border-blue-500 outline-none" />
+                </div>
+                <button onClick={() => setShowAddMedia(false)}
+                  className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-300 mt-5">✕ Fechar</button>
               </div>
             </div>
-            {media.length === 0 && (
-              <p className="text-sm text-amber-600">Nenhuma mídia disponível. Faça upload de mídia primeiro em /media.</p>
+
+            {media.length === 0 ? (
+              <p className="text-sm text-amber-600 py-8 text-center">Nenhuma mídia disponível. Faça upload em /media.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 max-h-[500px] overflow-y-auto">
+                {media.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setSelectedMediaId(m.id)}
+                    className={`relative group rounded-lg overflow-hidden border-2 transition-all ${
+                      selectedMediaId === m.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-400'
+                    }`}
+                  >
+                    <div className="aspect-square bg-gray-100">
+                      {m.type === 'image' || m.type === 'gif' ? (
+                        <img src={m.file_url} alt={m.name} className="w-full h-full object-cover" />
+                      ) : m.type === 'video' ? (
+                        <div className="w-full h-full flex items-center justify-center bg-purple-50">
+                          <span className="text-3xl">🎬</span>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="text-3xl">📄</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-1.5">
+                      <p className="text-xs text-gray-700 truncate">{m.name}</p>
+                      <p className="text-xs text-gray-400">{m.type} · {m.file_size ? `${(m.file_size / 1024).toFixed(0)} KB` : ''}</p>
+                    </div>
+                    {selectedMediaId === m.id && (
+                      <div className="absolute top-1 right-1 bg-blue-500 rounded-full w-5 h-5 flex items-center justify-center">
+                        <span className="text-white text-xs">✓</span>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
             )}
-            <div className="flex gap-3">
-              <button onClick={handleAddMedia} disabled={!selectedMediaId || saving} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
-                {saving ? 'Adicionando...' : 'Adicionar'}
+
+            <div className="flex gap-3 pt-2 border-t border-gray-100">
+              <button onClick={handleAddMedia} disabled={!selectedMediaId || saving}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
+                {saving ? 'Adicionando...' : `Adicionar (${selectedMediaId ? '1 selecionada' : 'nenhuma'})`}
               </button>
-              <button onClick={() => setShowAddMedia(false)} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Cancelar</button>
             </div>
           </div>
         )}
@@ -438,6 +497,7 @@ export default function PlaylistsPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nome</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duração</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Volume</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transição</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
                 </tr>
@@ -466,6 +526,23 @@ export default function PlaylistsPage() {
                         className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                       />
                       <span className="text-xs text-gray-400 ml-1">s</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.media?.type === 'video' ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">🔊</span>
+                          <input
+                            type="number"
+                            value={item.volume ?? 100}
+                            onChange={(e) => handleUpdateVolume(item, Number(e.target.value))}
+                            min={0} max={100}
+                            className="w-16 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none"
+                          />
+                          <span className="text-xs text-gray-400">%</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{item.transition ?? 'fade'}</td>
                     <td className="px-4 py-3 text-right">

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Device } from '@byemidias/shared';
-import type { Playlist } from '@byemidias/shared';
+import type { Device } from '@/lib/types';
+import type { Playlist } from '@/lib/types';
 
 interface PartnerDevice {
   id: string;
@@ -52,13 +52,14 @@ export default function PartnersPage() {
       supabase.from('playlists').select('*').order('name'),
     ]);
 
-    if (!partnersRes.ok) {
-      const err = await partnersRes.json();
-      console.error('Partners API error:', err);
+    if (partnersRes.ok) {
+      const partnersData = await partnersRes.json();
+      setPartners(partnersData.partners ?? []);
+    } else {
+      console.error('Partners API error:', partnersRes.status);
+      setPartners([]);
     }
 
-    const partnersData = await partnersRes.json();
-    setPartners(partnersData.partners ?? []);
     setAllDevices(devicesRes.data ?? []);
     setAllPlaylists(playlistsRes.data ?? []);
     setLoading(false);

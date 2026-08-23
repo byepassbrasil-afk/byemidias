@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#111827"
+    android:gravity="center"
+    android:padding="32dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ByeMidias"
+        android:textColor="#FFFFFF"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp" />
+
+    <EditText
+        android:id="@+id/codeInput"
+        android:layout_width="300dp"
+        android:layout_height="56dp"
+        android:hint="Codigo de ativacao"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#6B7280"
+        android:background="#1F2937"
+        android:padding="16dp"
+        android:textSize="18sp"
+        android:gravity="center"
+        android:inputType="textCapCharacters"
+        android:singleLine="true"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/activateBtn"
+        android:layout_width="300dp"
+        android:layout_height="56dp"
+        android:text="ATIVAR"
+        android:textSize="16sp"
+        android:background="#3B82F6"
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:id="@+id/errorText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#EF4444"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/activateStatusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#9CA3AF"
+        android:textSize="12sp"
+        android:visibility="gone"
+        android:layout_marginTop="8dp" />
+
+</LinearLayout>

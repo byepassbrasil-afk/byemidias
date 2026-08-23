@@ -47,8 +47,35 @@ async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> 
 }
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // CORS for API device routes (used by /player page from different origins)
+  if (pathname.startsWith('/api/device/') || pathname.startsWith('/api/keepalive')) {
+    if (request.method === 'OPTIONS') {
+      return new NextResponse(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
+    const response = await (async () => {
+      if (pathname === '/partner/login' || pathname.startsWith('/partner/')) {
+        return await handlePartnerRoutes(request);
+      }
+      return NextResponse.next();
+    })();
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+    return response;
+  }
+
   // Handle partner routes separately (/partner/* but NOT /partners/*)
-  const isPartnerRoute = request.nextUrl.pathname === '/partner' || request.nextUrl.pathname.startsWith('/partner/');
+  const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/');
   if (isPartnerRoute) {
     return handlePartnerRoutes(request);
   }

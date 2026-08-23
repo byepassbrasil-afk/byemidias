@@ -1,24 +1,122 @@
 {
-  "name": "ByeMidias Player",
+  "name": "ByeMidias - Digital Signage CMS",
   "short_name": "ByeMidias",
-  "description": "Digital Signage Player",
+  "description": "Plataforma de gerenciamento de Digital Signage e DOOH. Reproduza midias em TVs e monitores.",
   "start_url": "/player",
-  "display": "fullscreen",
-  "orientation": "landscape",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
   "background_color": "#000000",
   "theme_color": "#111827",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["business", "entertainment", "utilities"],
+  "iarc_rating_id": "",
+  "shortcuts": [
+    {
+      "name": "Player",
+      "short_name": "Player",
+      "description": "Abrir o player de midia",
+      "url": "/player",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any"
+        }
+      ]
+    },
+    {
+      "name": "Painel Admin",
+      "short_name": "Admin",
+      "description": "Abrir o painel administrativo",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any"
+        }
+      ]
+    }
+  ],
   "icons": [
+    {
+      "src": "/icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "screenshots": [
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "ByeMidias Digital Signage Player"
+    }
+  ],
+  "display_override": ["standalone"],
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "prefer_related_applications": false
 }

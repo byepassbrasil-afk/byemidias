@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Organization } from '@byemidias/shared';
+import type { Organization } from '@/lib/types';
 
 export default function OrganizationsPage() {
   const [orgs, setOrgs] = useState<Organization[]>([]);

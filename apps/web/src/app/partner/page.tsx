@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { PartnerDeviceWithInfo } from '@byemidias/shared';
+import type { PartnerDeviceWithInfo } from '@/lib/types';
 
 export default function PartnerDashboardPage() {
   const [devices, setDevices] = useState<PartnerDeviceWithInfo[]>([]);

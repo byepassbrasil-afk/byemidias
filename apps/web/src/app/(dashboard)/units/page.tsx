@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Unit } from '@/lib/types';
 
 export default function UnitsPage() {
@@ -17,19 +16,20 @@ export default function UnitsPage() {
   const [organizationId, setOrganizationId] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   useEffect(() => { loadUnits(); loadOrgs(); }, []);
 
   async function loadUnits() {
-    const { data } = await supabase.from('units').select('*').order('created_at', { ascending: false });
-    setUnits(data ?? []);
+    const res = await fetch('/api/admin/crud/units?order=created_at&asc=false');
+    const json = await res.json();
+    setUnits(json.data ?? []);
     setLoading(false);
   }
 
   async function loadOrgs() {
-    const { data } = await supabase.from('organizations').select('id, name');
-    setOrgs((data ?? []) as { id: string; name: string }[]);
+    const res = await fetch('/api/admin/crud/organizations?order=name&asc=true');
+    const json = await res.json();
+    setOrgs((json.data ?? []) as { id: string; name: string }[]);
   }
 
   function resetForm() {
@@ -45,9 +45,17 @@ export default function UnitsPage() {
     setSaving(true);
     const payload = { name, address: address || null, city: city || null, state: stateVal || null, organization_id: organizationId, updated_at: new Date().toISOString() };
     if (editing) {
-      await supabase.from('units').update(payload).eq('id', editing.id);
+      await fetch('/api/admin/crud/units', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editing.id, ...payload }),
+      });
     } else {
-      await supabase.from('units').insert(payload);
+      await fetch('/api/admin/crud/units', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
     }
     resetForm();
     setSaving(false);
@@ -56,7 +64,7 @@ export default function UnitsPage() {
 
   async function handleDelete() {
     if (!deleteId) return;
-    await supabase.from('units').delete().eq('id', deleteId);
+    await fetch(`/api/admin/crud/units?id=${deleteId}`, { method: 'DELETE' });
     setDeleteId(null);
     loadUnits();
   }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Organization } from '@/lib/types';
 
 export default function OrganizationsPage() {
@@ -13,13 +12,13 @@ export default function OrganizationsPage() {
   const [slug, setSlug] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   useEffect(() => { loadOrgs(); }, []);
 
   async function loadOrgs() {
-    const { data } = await supabase.from('organizations').select('*').order('created_at', { ascending: false });
-    setOrgs(data ?? []);
+    const res = await fetch('/api/admin/crud/organizations?order=created_at&asc=false');
+    const json = await res.json();
+    setOrgs(json.data ?? []);
     setLoading(false);
   }
 
@@ -35,9 +34,17 @@ export default function OrganizationsPage() {
     e.preventDefault();
     setSaving(true);
     if (editing) {
-      await supabase.from('organizations').update({ name, slug, updated_at: new Date().toISOString() }).eq('id', editing.id);
+      await fetch('/api/admin/crud/organizations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editing.id, name, slug, updated_at: new Date().toISOString() }),
+      });
     } else {
-      await supabase.from('organizations').insert({ name, slug });
+      await fetch('/api/admin/crud/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, slug }),
+      });
     }
     resetForm();
     setSaving(false);
@@ -46,7 +53,7 @@ export default function OrganizationsPage() {
 
   async function handleDelete() {
     if (!deleteId) return;
-    await supabase.from('organizations').delete().eq('id', deleteId);
+    await fetch(`/api/admin/crud/organizations?id=${deleteId}`, { method: 'DELETE' });
     setDeleteId(null);
     loadOrgs();
   }

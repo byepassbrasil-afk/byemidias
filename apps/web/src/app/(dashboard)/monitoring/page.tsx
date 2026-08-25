@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Device } from '@/lib/types';
 
 interface DeviceLog {
@@ -13,6 +12,7 @@ interface DeviceLog {
   player_version: string | null;
   created_at: string;
   devices?: { name: string } | null;
+  device_name?: string | null;
 }
 
 export default function MonitoringPage() {
@@ -21,7 +21,6 @@ export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
-  const supabase = createClient();
 
   useEffect(() => {
     loadData();
@@ -31,11 +30,16 @@ export default function MonitoringPage() {
 
   async function loadData() {
     const [devicesRes, logsRes] = await Promise.all([
-      supabase.from('devices').select('*').order('name'),
-      supabase.from('device_logs').select('*, devices(name)').order('created_at', { ascending: false }).limit(100),
+      fetch('/api/admin/crud/devices?order=name&asc=true'),
+      fetch(`/api/admin/device-logs?limit=100${selectedDevice ? `&device_id=${selectedDevice}` : ''}`),
     ]);
-    setDevices(devicesRes.data ?? []);
-    setLogs((logsRes.data ?? []) as DeviceLog[]);
+    const devicesJson = await devicesRes.json();
+    const logsJson = await logsRes.json();
+    setDevices(devicesJson.data ?? []);
+    setLogs((logsJson.data ?? []).map((l: DeviceLog) => ({
+      ...l,
+      devices: (l as any).device_name ? { name: (l as any).device_name } : null,
+    })));
     setLoading(false);
   }
 
@@ -63,12 +67,6 @@ export default function MonitoringPage() {
     return `${s}s`;
   }
 
-  function formatDuration(seconds: number): string {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}min`;
-    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}min`;
-  }
-
   const filtered = filter === 'all' ? devices : devices.filter((d) => isOnline(d) === (filter === 'online'));
   const onlineCount = devices.filter(d => isOnline(d)).length;
   const offlineCount = devices.length - onlineCount;
@@ -79,19 +77,13 @@ export default function MonitoringPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Monitoramento</h1>
         <div className="flex gap-3 items-center">
-          <select
-            value={selectedDevice || ''}
-            onChange={(e) => setSelectedDevice(e.target.value || null)}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
-          >
+          <select value={selectedDevice || ''} onChange={(e) => setSelectedDevice(e.target.value || null)}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
             <option value="">Todos dispositivos</option>
             {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
-          >
+          <select value={filter} onChange={(e) => setFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
             <option value="all">Todos</option>
             <option value="online">Online</option>
             <option value="offline">Offline</option>
@@ -99,7 +91,6 @@ export default function MonitoringPage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-200">
           <div className="text-sm text-gray-500">Total</div>
@@ -119,7 +110,6 @@ export default function MonitoringPage() {
         <div className="text-gray-500">Carregando...</div>
       ) : (
         <>
-          {/* Devices Table */}
           <div className="rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden mb-6">
             <div className="bg-gray-50 border-b border-gray-200 px-6 py-3">
               <h2 className="text-sm font-semibold text-gray-700">Dispositivos</h2>
@@ -159,7 +149,6 @@ export default function MonitoringPage() {
             </table>
           </div>
 
-          {/* Logs Table */}
           <div className="rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-gray-50 border-b border-gray-200 px-6 py-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700">Logs de Atividade</h2>

@@ -1,15 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
+import sql from '@/lib/db';
 
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
-// GET /api/admin/playlists/[id]/slots - List slots for a playlist
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -19,30 +11,20 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = getServiceClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT role FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
-    const { data: slots, error } = await supabase
-      .from('playlist_slots')
-      .select(`
-        *,
-        partner:partner_access(id, username, display_name)
-      `)
-      .eq('playlist_id', params.id)
-      .order('slot_order', { ascending: true });
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    const slots = await sql`
+      SELECT ps.*,
+        (SELECT row_to_json(pa) FROM (SELECT id, username, display_name FROM partner_access WHERE id = ps.partner_access_id) pa) as partner
+      FROM playlist_slots ps
+      WHERE ps.playlist_id = ${params.id}
+      ORDER BY ps.slot_order ASC
+    `;
 
     return NextResponse.json({ slots: slots ?? [] });
   } catch (e: unknown) {
@@ -51,7 +33,6 @@ export async function GET(
   }
 }
 
-// POST /api/admin/playlists/[id]/slots - Create a slot
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
@@ -61,13 +42,8 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = getServiceClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT role FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -79,44 +55,35 @@ export async function POST(
       return NextResponse.json({ error: 'partner_access_id e duration_seconds obrigatórios' }, { status: 400 });
     }
 
-    // Get max slot_order if not provided
     let order = slot_order;
     if (order === undefined || order === null) {
-      const { data: existing } = await supabase
-        .from('playlist_slots')
-        .select('slot_order')
-        .eq('playlist_id', params.id)
-        .order('slot_order', { ascending: false })
-        .limit(1);
-      order = (existing?.[0]?.slot_order ?? -1) + 1;
+      const [existing] = await sql`SELECT slot_order FROM playlist_slots WHERE playlist_id = ${params.id} ORDER BY slot_order DESC LIMIT 1`;
+      order = (existing?.slot_order ?? -1) + 1;
     }
 
-    const { data: slot, error } = await supabase
-      .from('playlist_slots')
-      .insert({
-        playlist_id: params.id,
-        partner_access_id,
-        slot_order: order,
-        duration_seconds,
-      })
-      .select('*, partner:partner_access(id, username, display_name)')
-      .single();
+    try {
+      const [slot] = await sql`
+        INSERT INTO playlist_slots (playlist_id, partner_access_id, slot_order, duration_seconds)
+        VALUES (${params.id}, ${partner_access_id}, ${order}, ${duration_seconds})
+        RETURNING *
+      `;
 
-    if (error) {
-      if (error.code === '23505') {
+      const [partnerInfo] = await sql`SELECT id, username, display_name FROM partner_access WHERE id = ${partner_access_id}`;
+
+      return NextResponse.json({ slot: { ...slot, partner: partnerInfo || null } });
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
+      if (err.code === '23505') {
         return NextResponse.json({ error: 'Já existe um slot nesta posição' }, { status: 409 });
       }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: err.message || 'Erro desconhecido' }, { status: 500 });
     }
-
-    return NextResponse.json({ slot });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
-// PUT /api/admin/playlists/[id]/slots - Update slot order or duration
 export async function PUT(
   request: Request,
   { params }: { params: { id: string } }
@@ -126,13 +93,8 @@ export async function PUT(
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = getServiceClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT role FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -148,15 +110,11 @@ export async function PUT(
     if (duration_seconds !== undefined) updateData.duration_seconds = duration_seconds;
     if (slot_order !== undefined) updateData.slot_order = slot_order;
 
-    const { error } = await supabase
-      .from('playlist_slots')
-      .update(updateData)
-      .eq('id', slot_id)
-      .eq('playlist_id', params.id);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ success: true });
     }
+
+    await sql`UPDATE playlist_slots SET ${sql(updateData)} WHERE id = ${slot_id} AND playlist_id = ${params.id}`;
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
@@ -165,20 +123,14 @@ export async function PUT(
   }
 }
 
-// DELETE /api/admin/playlists/[id]/slots - Delete a slot
 export async function DELETE(request: Request) {
   try {
     const user = await requireAuthApi();
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = getServiceClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT role FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -191,15 +143,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'slot_id obrigatório' }, { status: 400 });
     }
 
-    // Delete items in this slot first
-    await supabase.from('playlist_items').delete().eq('slot_id', slotId);
+    await sql`DELETE FROM playlist_items WHERE slot_id = ${slotId}`;
 
-    // Delete the slot
-    const { error } = await supabase.from('playlist_slots').delete().eq('id', slotId);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    await sql`DELETE FROM playlist_slots WHERE id = ${slotId}`;
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

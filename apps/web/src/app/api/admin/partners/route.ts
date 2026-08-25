@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabase } from '@/lib/supabase/server';
 import { requireAuthApi } from '@/lib/auth';
+import sql from '@/lib/db';
 
 export async function GET() {
   try {
@@ -8,37 +8,33 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = await createServerSupabase();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('organization_id, role')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT organization_id, role FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
-    let query = supabase
-      .from('partner_access')
-      .select(`
-        id, username, display_name, status, created_at, updated_at,
-        partner_devices (
-          id, device_id, playlist_id,
-          devices ( id, name, status ),
-          playlists ( id, name )
-        )
-      `);
-
+    let partners;
     if (profile.role !== 'super_admin' && profile.organization_id) {
-      query = query.eq('organization_id', profile.organization_id);
-    }
-
-    const { data: partners, error } = await query.order('created_at', { ascending: false });
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      partners = await sql`
+        SELECT pa.id, pa.username, pa.display_name, pa.name as display_name_fallback, pa.status, pa.created_at, pa.updated_at,
+          (SELECT json_agg(json_build_object(
+            'id', pd.id, 'device_id', pd.device_id
+          )) FROM partner_devices pd WHERE pd.partner_id = pa.id) as partner_devices
+        FROM partner_access pa
+        WHERE pa.organization_id = ${profile.organization_id}
+        ORDER BY pa.created_at DESC
+      `;
+    } else {
+      partners = await sql`
+        SELECT pa.id, pa.username, pa.display_name, pa.name as display_name_fallback, pa.status, pa.created_at, pa.updated_at,
+          (SELECT json_agg(json_build_object(
+            'id', pd.id, 'device_id', pd.device_id
+          )) FROM partner_devices pd WHERE pd.partner_id = pa.id) as partner_devices
+        FROM partner_access pa
+        ORDER BY pa.created_at DESC
+      `;
     }
 
     return NextResponse.json({ partners: partners ?? [] });
@@ -55,13 +51,8 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = await createServerSupabase();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('organization_id, role')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT organization_id, role FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -74,48 +65,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Campos obrigatórios: username, display_name, password' }, { status: 400 });
     }
 
-    // Hash password
     let passwordHash: string | null = null;
 
-    // Try pgcrypto RPC first
     try {
-      const { data: hashResult } = await supabase.rpc('hash_partner_password', {
-        p_password: password,
-      });
-      passwordHash = hashResult;
+      const [hashResult] = await sql`SELECT hash_partner_password(${password}) as hash`;
+      passwordHash = hashResult?.hash;
     } catch {
       // RPC may not work via pooler
     }
 
-    // Fallback: bcryptjs
     if (!passwordHash) {
       const bcrypt = await import('bcryptjs');
       passwordHash = await bcrypt.hash(password, 10);
     }
 
-    const orgId = profile.role === 'super_admin' ? null : profile.organization_id;
+    const orgId = profile.role === 'super_admin' ? profile.organization_id : profile.organization_id;
 
-    const { data: partner, error } = await supabase
-      .from('partner_access')
-      .insert({
-        organization_id: orgId,
-        username: username.toLowerCase().trim(),
-        display_name: display_name.trim(),
-        password_hash: passwordHash,
-        status: 'active',
-      })
-      .select('id, username, display_name, status, created_at')
-      .single();
+    try {
+      const [partner] = await sql`
+        INSERT INTO partner_access (organization_id, username, display_name, password_hash, status)
+        VALUES (${orgId}, ${username.toLowerCase().trim()}, ${display_name.trim()}, ${passwordHash}, 'active')
+        RETURNING id, username, display_name, status, created_at
+      `;
 
-    if (error) {
+      return NextResponse.json({ partner });
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
       console.error('Insert error:', error);
-      if (error.code === '23505') {
+      if (err.code === '23505') {
         return NextResponse.json({ error: 'Este nome de usuário já existe' }, { status: 409 });
       }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: err.message || 'Erro desconhecido' }, { status: 500 });
     }
-
-    return NextResponse.json({ partner });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('POST /api/admin/partners error:', msg);

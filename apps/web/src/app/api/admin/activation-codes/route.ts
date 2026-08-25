@@ -1,13 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
-
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import sql from '@/lib/db';
 
 function generateCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -18,38 +11,35 @@ function generateCode(): string {
   return code;
 }
 
-// GET /api/admin/activation-codes - List activation codes
 export async function GET() {
   try {
     const user = await requireAuthApi();
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = getServiceClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, organization_id')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT role, organization_id FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
-    let query = supabase
-      .from('activation_codes')
-      .select('*, device:devices(id, name, status)')
-      .order('created_at', { ascending: false });
-
+    let codes;
     if (profile.role !== 'super_admin' && profile.organization_id) {
-      query = query.eq('organization_id', profile.organization_id);
-    }
-
-    const { data: codes, error } = await query;
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      codes = await sql`
+        SELECT ac.*, row_to_json(d.*) as device
+        FROM activation_codes ac
+        LEFT JOIN devices d ON d.id = ac.linked_device_id
+        WHERE ac.organization_id = ${profile.organization_id}
+        ORDER BY ac.created_at DESC
+      `;
+    } else {
+      codes = await sql`
+        SELECT ac.*, row_to_json(d.*) as device
+        FROM activation_codes ac
+        LEFT JOIN devices d ON d.id = ac.linked_device_id
+        ORDER BY ac.created_at DESC
+      `;
     }
 
     return NextResponse.json({ codes: codes ?? [] });
@@ -59,20 +49,14 @@ export async function GET() {
   }
 }
 
-// POST /api/admin/activation-codes - Generate new activation code(s)
 export async function POST(request: Request) {
   try {
     const user = await requireAuthApi();
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = getServiceClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, organization_id')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT role, organization_id FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -86,26 +70,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'organization_id obrigatório' }, { status: 400 });
     }
 
-    const codesToInsert = [];
+    const insertedCodes = [];
     for (let i = 0; i < Math.min(count, 50); i++) {
-      codesToInsert.push({
-        code: generateCode(),
-        organization_id: orgId,
-        status: 'pending',
-        max_uses: max_uses,
-        use_count: 0,
-        expires_at: expires_at || null,
-        created_by: user.email || user.id,
-      });
-    }
-
-    const { data: insertedCodes, error } = await supabase
-      .from('activation_codes')
-      .insert(codesToInsert)
-      .select();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      const [row] = await sql`
+        INSERT INTO activation_codes (code, organization_id, status, max_uses, use_count, expires_at, created_by)
+        VALUES (${generateCode()}, ${orgId}, 'active', ${max_uses}, 0, ${expires_at || null}, ${user.id})
+        RETURNING *
+      `;
+      insertedCodes.push(row);
     }
 
     return NextResponse.json({ codes: insertedCodes });
@@ -115,20 +87,14 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE /api/admin/activation-codes - Delete activation codes
 export async function DELETE(request: Request) {
   try {
     const user = await requireAuthApi();
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = getServiceClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT role FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -141,15 +107,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
     }
 
-    const { error } = await supabase
-      .from('activation_codes')
-      .delete()
-      .eq('id', codeId)
-      .eq('status', 'pending'); // Only delete unused codes
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    await sql`DELETE FROM activation_codes WHERE id = ${codeId}`;
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

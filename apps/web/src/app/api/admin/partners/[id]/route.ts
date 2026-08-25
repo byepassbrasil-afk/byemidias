@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabase } from '@/lib/supabase/server';
 import { requireAuthApi } from '@/lib/auth';
+import sql from '@/lib/db';
 
-// Update partner (status, display_name)
 export async function PUT(
   request: Request,
   { params }: { params: { id: string } }
@@ -11,13 +10,8 @@ export async function PUT(
   if (!user) {
     return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
   }
-  const supabase = await createServerSupabase();
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single();
+  const [profile] = await sql`SELECT organization_id, role FROM profiles WHERE id = ${user.id}`;
 
   if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -34,25 +28,19 @@ export async function PUT(
     updateData.password_hash = await bcrypt.hash(password, 10);
   }
 
-  let query = supabase
-    .from('partner_access')
-    .update(updateData)
-    .eq('id', params.id);
-
-  if (profile.role !== 'super_admin' && profile.organization_id) {
-    query = query.eq('organization_id', profile.organization_id);
+  if (Object.keys(updateData).length === 0) {
+    return NextResponse.json({ success: true });
   }
 
-  const { error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (profile.role !== 'super_admin' && profile.organization_id) {
+    await sql`UPDATE partner_access SET ${sql(updateData)} WHERE id = ${params.id} AND organization_id = ${profile.organization_id}`;
+  } else {
+    await sql`UPDATE partner_access SET ${sql(updateData)} WHERE id = ${params.id}`;
   }
 
   return NextResponse.json({ success: true });
 }
 
-// Delete partner
 export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }
@@ -61,34 +49,19 @@ export async function DELETE(
   if (!user) {
     return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
   }
-  const supabase = await createServerSupabase();
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single();
+  const [profile] = await sql`SELECT organization_id, role FROM profiles WHERE id = ${user.id}`;
 
   if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
   }
 
-  // Delete partner devices first
-  await supabase.from('partner_devices').delete().eq('partner_access_id', params.id);
-
-  let deleteQuery = supabase
-    .from('partner_access')
-    .delete()
-    .eq('id', params.id);
+  await sql`DELETE FROM partner_devices WHERE partner_access_id = ${params.id}`;
 
   if (profile.role !== 'super_admin' && profile.organization_id) {
-    deleteQuery = deleteQuery.eq('organization_id', profile.organization_id);
-  }
-
-  const { error } = await deleteQuery;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    await sql`DELETE FROM partner_access WHERE id = ${params.id} AND organization_id = ${profile.organization_id}`;
+  } else {
+    await sql`DELETE FROM partner_access WHERE id = ${params.id}`;
   }
 
   return NextResponse.json({ success: true });

@@ -1,24 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import sql from '@/lib/db';
 
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
-// GET /api/campaigns
 export async function GET() {
   try {
-    const supabase = getServiceClient();
-    const { data, error } = await supabase
-      .from('campaigns')
-      .select('*')
-      .eq('is_active', true)
-      .order('name');
-
-    if (error) throw error;
+    const data = await sql`SELECT * FROM campaigns WHERE is_active = true ORDER BY name`;
     return NextResponse.json({ campaigns: data || [] });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';

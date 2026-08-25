@@ -1,24 +1,17 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import sql from '@/lib/db';
 
 export async function GET(request: Request) {
   try {
-    const supabase = getServiceClient();
     const { searchParams } = new URL(request.url);
     const campaignId = searchParams.get('campaign_id');
 
-    let query = supabase.from('campaign_time_slots').select('*').order('day_of_week').order('start_time');
-    if (campaignId) query = query.eq('campaign_id', campaignId);
-
-    const { data, error } = await query;
-    if (error) throw error;
+    let data;
+    if (campaignId) {
+      data = await sql`SELECT * FROM campaign_time_slots WHERE campaign_id = ${campaignId} ORDER BY day_of_week, start_time`;
+    } else {
+      data = await sql`SELECT * FROM campaign_time_slots ORDER BY day_of_week, start_time`;
+    }
 
     return NextResponse.json({ slots: data ?? [] });
   } catch (e: unknown) {
@@ -29,7 +22,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = getServiceClient();
     const body = await request.json();
     const { campaign_id, day_of_week, start_time, end_time, playlist_id, priority } = body;
 
@@ -37,20 +29,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Campos obrigatorios faltando' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from('campaign_time_slots')
-      .insert({
-        campaign_id,
-        day_of_week,
-        start_time,
-        end_time,
-        playlist_id: playlist_id || null,
-        priority: priority || 0,
-      })
-      .select()
-      .single();
+    const [data] = await sql`
+      INSERT INTO campaign_time_slots (campaign_id, day_of_week, start_time, end_time, playlist_id, priority)
+      VALUES (${campaign_id}, ${day_of_week}, ${start_time}, ${end_time}, ${playlist_id || null}, ${priority || 0})
+      RETURNING *
+    `;
 
-    if (error) throw error;
     return NextResponse.json({ slot: data });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
@@ -60,20 +44,13 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const supabase = getServiceClient();
     const body = await request.json();
     const { id, ...updates } = body;
 
     if (!id) return NextResponse.json({ error: 'id obrigatorio' }, { status: 400 });
 
-    const { data, error } = await supabase
-      .from('campaign_time_slots')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+    const [data] = await sql`UPDATE campaign_time_slots SET ${sql(updates)} WHERE id = ${id} RETURNING *`;
 
-    if (error) throw error;
     return NextResponse.json({ slot: data });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
@@ -83,14 +60,12 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const supabase = getServiceClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     if (!id) return NextResponse.json({ error: 'id obrigatorio' }, { status: 400 });
 
-    const { error } = await supabase.from('campaign_time_slots').delete().eq('id', id);
-    if (error) throw error;
+    await sql`DELETE FROM campaign_time_slots WHERE id = ${id}`;
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 
 interface ActivationCode {
   id: string;
@@ -31,8 +30,6 @@ export default function ActivationCodesPage() {
   const [selectedOrg, setSelectedOrg] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const supabase = createClient();
-
   useEffect(() => {
     loadCodes();
     loadOrgs();
@@ -50,8 +47,13 @@ export default function ActivationCodesPage() {
   }
 
   async function loadOrgs() {
-    const { data } = await supabase.from('organizations').select('id, name').order('name');
-    setOrgs(data ?? []);
+    try {
+      const res = await fetch('/api/admin/crud/organizations?order=name&asc=true');
+      const data = await res.json();
+      setOrgs(data.data ?? []);
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async function handleGenerate() {
@@ -81,15 +83,9 @@ export default function ActivationCodesPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Excluir este código?')) return;
-
     try {
-      const res = await fetch(`/api/admin/activation-codes?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        loadCodes();
-      }
+      const res = await fetch(`/api/admin/activation-codes?id=${id}`, { method: 'DELETE' });
+      if (res.ok) loadCodes();
     } catch {
       alert('Erro ao excluir');
     }
@@ -119,30 +115,21 @@ export default function ActivationCodesPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Códigos de Ativação</h1>
         <div className="flex items-center gap-3">
-          <select
-            value={selectedOrg}
-            onChange={(e) => setSelectedOrg(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
+          <select value={selectedOrg} onChange={(e) => setSelectedOrg(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
             <option value="">Selecione a organização</option>
             {orgs.map((org) => (
               <option key={org.id} value={org.id}>{org.name}</option>
             ))}
           </select>
-          <select
-            value={count}
-            onChange={(e) => setCount(Number(e.target.value))}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
+          <select value={count} onChange={(e) => setCount(Number(e.target.value))}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {[1, 5, 10, 20, 50].map((n) => (
               <option key={n} value={n}>{n} código{n > 1 ? 's' : ''}</option>
             ))}
           </select>
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
+          <button onClick={handleGenerate} disabled={generating}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
             {generating ? 'Gerando...' : ' Gerar Códigos'}
           </button>
         </div>
@@ -150,7 +137,7 @@ export default function ActivationCodesPage() {
 
       <div className="mb-4 rounded-lg bg-blue-50 border border-blue-200 p-4">
         <p className="text-sm text-blue-800">
-          <strong>Como usar:</strong> Gere um código e compartilhe com o parceiro. 
+          <strong>Como usar:</strong> Gere um código e compartilhe com o parceiro.
           No aplicativo Android, o parceiro inserirá este código para ativar o dispositivo.
         </p>
       </div>
@@ -192,17 +179,13 @@ export default function ActivationCodesPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => copyCode(code.code, code.id)}
-                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
-                      >
+                      <button onClick={() => copyCode(code.code, code.id)}
+                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200">
                         {copiedId === code.id ? '✓ Copiado' : '📋 Copiar'}
                       </button>
                       {code.status === 'pending' && (
-                        <button
-                          onClick={() => handleDelete(code.id)}
-                          className="rounded-lg bg-red-100 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-200"
-                        >
+                        <button onClick={() => handleDelete(code.id)}
+                          className="rounded-lg bg-red-100 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-200">
                           Excluir
                         </button>
                       )}

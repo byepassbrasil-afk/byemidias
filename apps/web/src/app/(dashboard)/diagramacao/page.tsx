@@ -175,10 +175,12 @@ export default function DiagramacaoPage() {
   const saveTemplate = async () => {
     if (!templateName.trim()) return;
     try {
+      const isEdit = editing && editing.id;
       await fetch('/api/admin/layouts', {
-        method: 'POST',
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(isEdit ? { id: editing.id } : {}),
           name: templateName,
           description: templateDesc,
           width: screenWidth,

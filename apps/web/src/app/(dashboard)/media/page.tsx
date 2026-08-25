@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Media } from '@/lib/types';
 
 export default function MediaPage() {
@@ -14,19 +13,20 @@ export default function MediaPage() {
   const [detailMedia, setDetailMedia] = useState<Media | null>(null);
   const [editName, setEditName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const supabase = createClient();
 
   useEffect(() => { loadMedia(); loadOrgs(); }, []);
 
   async function loadMedia() {
-    const { data } = await supabase.from('media').select('*').order('created_at', { ascending: false });
-    setMedia(data ?? []);
+    const res = await fetch('/api/admin/crud/media?order=created_at&asc=false');
+    const json = await res.json();
+    setMedia(json.data ?? []);
     setLoading(false);
   }
 
   async function loadOrgs() {
-    const { data } = await supabase.from('organizations').select('id, name');
-    setOrgs((data ?? []) as { id: string; name: string }[]);
+    const res = await fetch('/api/admin/crud/organizations?order=name&asc=true');
+    const json = await res.json();
+    setOrgs((json.data ?? []) as { id: string; name: string }[]);
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -35,42 +35,66 @@ export default function MediaPage() {
     if (!organizationId) { alert('Selecione uma organização primeiro.'); return; }
 
     setUploading(true);
-    const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const filePath = `uploads/${Date.now()}-${safeName}`;
+    try {
+      const presignRes = await fetch('/api/admin/media/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_name: file.name,
+          mime_type: file.type,
+          file_size: file.size,
+          organization_id: organizationId,
+        }),
+      });
 
-    const { error: uploadError } = await supabase.storage.from('media').upload(filePath, file);
-    if (uploadError) {
-      console.error(uploadError);
-      alert('Erro ao enviar arquivo: ' + uploadError.message);
-      setUploading(false);
-      return;
+      const presignData = await presignRes.json();
+      if (!presignRes.ok) {
+        alert('Erro ao preparar upload: ' + (presignData.error || 'Erro'));
+        setUploading(false);
+        return;
+      }
+
+      const uploadRes = await fetch(presignData.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': presignData.content_type || file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        alert('Erro ao enviar arquivo para o storage');
+        setUploading(false);
+        return;
+      }
+
+      const saveRes = await fetch('/api/admin/media/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_name: file.name,
+          mime_type: file.type,
+          file_url: presignData.public_url,
+          file_size: file.size,
+          organization_id: organizationId,
+        }),
+      });
+
+      if (saveRes.ok) {
+        loadMedia();
+      } else {
+        const err = await saveRes.json();
+        alert('Erro ao salvar: ' + (err.error || 'Erro'));
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+      alert('Erro ao enviar arquivo: ' + msg);
     }
-
-    const { data: urlData } = supabase.storage.from('media').getPublicUrl(filePath);
-    const mediaType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'image';
-
-    await supabase.from('media').insert({
-      organization_id: organizationId,
-      name: file.name,
-      type: mediaType,
-      file_url: urlData.publicUrl,
-      file_size: file.size,
-      status: 'active',
-    });
-
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
-    loadMedia();
   }
 
   async function handleDelete() {
     if (!deleteId) return;
-    const item = media.find((m) => m.id === deleteId);
-    if (item?.file_url) {
-      const path = item.file_url.split('/media/')[1];
-      if (path) await supabase.storage.from('media').remove([path]);
-    }
-    await supabase.from('media').delete().eq('id', deleteId);
+    await fetch(`/api/admin/crud/media?id=${deleteId}`, { method: 'DELETE' });
     setDeleteId(null);
     setDetailMedia(null);
     loadMedia();
@@ -78,7 +102,11 @@ export default function MediaPage() {
 
   async function handleRename() {
     if (!detailMedia || !editName.trim()) return;
-    await supabase.from('media').update({ name: editName.trim() }).eq('id', detailMedia.id);
+    await fetch('/api/admin/crud/media', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: detailMedia.id, name: editName.trim() }),
+    });
     setDetailMedia({ ...detailMedia, name: editName.trim() });
     loadMedia();
   }

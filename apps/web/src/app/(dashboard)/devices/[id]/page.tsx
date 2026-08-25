@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 import type { Device } from '@/lib/types';
 
 interface Campaign { id: string; name: string; status: string; }
@@ -13,7 +12,6 @@ export default function DeviceDetailPage() {
   const params = useParams();
   const router = useRouter();
   const deviceId = params.id as string;
-  const supabase = createClient();
 
   const [device, setDevice] = useState<Device | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -33,13 +31,16 @@ export default function DeviceDetailPage() {
 
   const loadData = useCallback(async () => {
     const [devRes, logRes, layRes] = await Promise.all([
-      supabase.from('devices').select('*').eq('id', deviceId).single(),
-      supabase.from('device_logs').select('*').eq('device_id', deviceId).order('created_at', { ascending: false }).limit(50),
+      fetch(`/api/admin/crud/devices?id=${deviceId}`),
+      fetch(`/api/admin/device-logs?device_id=${deviceId}&limit=50`),
       fetch('/api/admin/layouts').then(r => r.json()).catch(() => ({ templates: [] })),
     ]);
 
-    if (devRes.data) {
-      const d = devRes.data as Device;
+    const devJson = await devRes.json();
+    const logJson = await logRes.json();
+
+    if (devJson.data?.[0]) {
+      const d = devJson.data[0] as Device;
       setDevice(d);
       setName(d.name); setModel(d.model || '');
       setOrientation(d.orientation || 'landscape');
@@ -47,17 +48,16 @@ export default function DeviceDetailPage() {
       setLayoutId(d.layout_template_id || '');
       setUnitId(d.unit_id || '');
 
-      const { data: campData } = await supabase
-        .from('campaigns')
-        .select('id, name, status, organization_id')
-        .eq('organization_id', d.organization_id)
-        .in('status', ['active', 'draft', 'paused']);
-      setCampaigns((campData ?? []) as Campaign[]);
+      // Load campaigns for this organization
+      const campRes = await fetch(`/api/admin/crud/campaigns?organization_id=${d.organization_id}`);
+      const campJson = await campRes.json();
+      const allCampaigns = (campJson.data ?? []) as Campaign[];
+      setCampaigns(allCampaigns.filter(c => ['active', 'draft', 'paused'].includes(c.status)));
     }
     setLayouts((layRes.templates ?? []) as LayoutTemplate[]);
-    setLogs((logRes.data ?? []) as DeviceLog[]);
+    setLogs((logJson.data ?? []) as DeviceLog[]);
     setLoading(false);
-  }, [supabase, deviceId]);
+  }, [deviceId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -77,27 +77,48 @@ export default function DeviceDetailPage() {
 
   async function saveField(field: string, value: unknown) {
     setSaving(true);
-    await supabase.from('devices').update({ [field]: value, updated_at: new Date().toISOString() }).eq('id', deviceId);
-    await supabase.rpc('bump_device_content_version' as never, { target_device_id: deviceId } as never);
+    await fetch('/api/admin/crud/devices', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: deviceId, [field]: value, updated_at: new Date().toISOString() }),
+    });
+    await fetch('/api/admin/rpc/bump_device_content_version', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_device_id: deviceId }),
+    });
     setSaving(false);
     loadData();
   }
 
   async function forceSync() {
     setSaving(true);
-    await supabase.rpc('bump_device_content_version' as never, { target_device_id: deviceId } as never);
+    await fetch('/api/admin/rpc/bump_device_content_version', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_device_id: deviceId }),
+    });
     setSaving(false);
     loadData();
   }
 
   async function saveAll() {
     setSaving(true);
-    await supabase.from('devices').update({
-      name, model: model || null, orientation, campaign_id: campaignId || null,
-      layout_template_id: layoutId || null, unit_id: unitId || null,
-      updated_at: new Date().toISOString(),
-    }).eq('id', deviceId);
-    await supabase.rpc('bump_device_content_version' as never, { target_device_id: deviceId } as never);
+    await fetch('/api/admin/crud/devices', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: deviceId,
+        name, model: model || null, orientation, campaign_id: campaignId || null,
+        layout_template_id: layoutId || null, unit_id: unitId || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    await fetch('/api/admin/rpc/bump_device_content_version', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_device_id: deviceId }),
+    });
     setSaving(false);
     loadData();
   }

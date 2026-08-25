@@ -1,39 +1,34 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { requireAuthApi } from '@/lib/auth';
+import sql from '@/lib/db';
 
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
-// GET /api/admin/schedules
 export async function GET(request: Request) {
   try {
-    const supabase = getServiceClient();
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('org_id');
 
-    let query = supabase
-      .from('content_schedules')
-      .select('*, campaigns(name), playlists(name)')
-      .order('priority', { ascending: false });
+    let schedules;
+    if (orgId) {
+      schedules = await sql`SELECT cs.* FROM content_schedules cs WHERE cs.organization_id = ${orgId} ORDER BY cs.created_at DESC`;
+    } else {
+      schedules = await sql`SELECT cs.* FROM content_schedules cs ORDER BY cs.created_at DESC`;
+    }
 
-    if (orgId) query = query.eq('organization_id', orgId);
-
-    const { data: schedules, error } = await query;
-    if (error) throw error;
-
-    // Get groups
-    let groupQuery = supabase
-      .from('device_groups')
-      .select('*, device_group_members(count)')
-      .order('name');
-
-    if (orgId) groupQuery = groupQuery.eq('organization_id', orgId);
-
-    const { data: groups } = await groupQuery;
+    let groups;
+    if (orgId) {
+      groups = await sql`
+        SELECT dg.*, (SELECT count(*) FROM device_group_members WHERE group_id = dg.id) as member_count
+        FROM device_groups dg WHERE dg.organization_id = ${orgId} ORDER BY dg.name
+      `;
+    } else {
+      groups = await sql`
+        SELECT dg.*, (SELECT count(*) FROM device_group_members WHERE group_id = dg.id) as member_count
+        FROM device_groups dg ORDER BY dg.name
+      `;
+    }
 
     return NextResponse.json({ schedules: schedules || [], groups: groups || [] });
   } catch (e: unknown) {
@@ -42,42 +37,27 @@ export async function GET(request: Request) {
   }
 }
 
-// POST /api/admin/schedules
 export async function POST(request: Request) {
   try {
-    const supabase = getServiceClient();
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
     const body = await request.json();
+    const { name, description, schedule_type, interval_minutes, days_of_week, start_time, end_time, start_date, end_date, organization_id } = body;
 
-    const { name, description, campaign_id, playlist_id, sync_type, sync_interval_minutes, sync_days, sync_start_time, sync_end_time, organization_id } = body;
-
-    if (!name) {
-      return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
-    }
+    if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
 
     let orgId = organization_id;
     if (!orgId) {
-      const { data: orgs } = await supabase.from('organizations').select('id').limit(1);
-      orgId = orgs?.[0]?.id;
+      const [org] = await sql`SELECT id FROM organizations LIMIT 1`;
+      orgId = org?.id;
     }
 
-    const { data, error } = await supabase
-      .from('content_schedules')
-      .insert({
-        organization_id: orgId,
-        name,
-        description: description || null,
-        campaign_id: campaign_id || null,
-        playlist_id: playlist_id || null,
-        sync_type: sync_type || 'periodic',
-        sync_interval_minutes: sync_interval_minutes || 15,
-        sync_days: sync_days || '{1,2,3,4,5,6,7}',
-        sync_start_time: sync_start_time || '00:00',
-        sync_end_time: sync_end_time || '23:59',
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
+    const [data] = await sql`
+      INSERT INTO content_schedules (organization_id, name, description, schedule_type, interval_minutes, days_of_week, start_time, end_time, start_date, end_date)
+      VALUES (${orgId}, ${name}, ${description || null}, ${schedule_type || 'periodic'}, ${interval_minutes || 15}, ${days_of_week || '1,2,3,4,5,6,7'}, ${start_time || '00:00'}, ${end_time || '23:59'}, ${start_date || null}, ${end_date || null})
+      RETURNING *
+    `;
 
     return NextResponse.json({ schedule: data });
   } catch (e: unknown) {
@@ -86,20 +66,16 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE /api/admin/schedules?id=X
 export async function DELETE(request: Request) {
   try {
-    const supabase = getServiceClient();
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
 
-    if (!id) {
-      return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
-    }
-
-    const { error } = await supabase.from('content_schedules').delete().eq('id', id);
-    if (error) throw error;
-
+    await sql`DELETE FROM content_schedules WHERE id = ${id}`;
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Playlist, PlaylistItem, Media } from '@/lib/types';
 import type { Organization } from '@/lib/types';
 
@@ -45,24 +44,25 @@ export default function PlaylistsPage() {
   const [newSlotPartnerId, setNewSlotPartnerId] = useState('');
   const [newSlotDuration, setNewSlotDuration] = useState(30);
 
-  const supabase = createClient();
-
   useEffect(() => { loadPlaylists(); loadOrgs(); loadPartners(); }, []);
 
   async function loadPlaylists() {
-    const { data } = await supabase.from('playlists').select('*').order('created_at', { ascending: false });
-    setPlaylists(data ?? []);
+    const res = await fetch('/api/admin/crud/playlists?order=created_at&asc=false');
+    const json = await res.json();
+    setPlaylists(json.data ?? []);
     setLoading(false);
   }
 
   async function loadOrgs() {
-    const { data } = await supabase.from('organizations').select('id, name');
-    setOrgs((data ?? []) as { id: string; name: string }[]);
+    const res = await fetch('/api/admin/crud/organizations?order=name&asc=true');
+    const json = await res.json();
+    setOrgs((json.data ?? []) as { id: string; name: string }[]);
   }
 
   async function loadPartners() {
-    const { data } = await supabase.from('partner_access').select('id, username, display_name');
-    setPartners((data ?? []) as { id: string; username: string; display_name: string }[]);
+    const res = await fetch('/api/admin/crud/partner_access?order=username&asc=true');
+    const json = await res.json();
+    setPartners((json.data ?? []) as { id: string; username: string; display_name: string }[]);
   }
 
   function resetForm() {
@@ -78,17 +78,30 @@ export default function PlaylistsPage() {
     setSaving(true);
     const payload = { name, description: description || null, organization_id: organizationId, updated_at: new Date().toISOString() };
     if (editing) {
-      await supabase.from('playlists').update(payload).eq('id', editing.id);
+      await fetch('/api/admin/crud/playlists', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editing.id, ...payload }),
+      });
     } else {
-      await supabase.from('playlists').insert({ ...payload, status: 'active' });
+      await fetch('/api/admin/crud/playlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, status: 'active' }),
+      });
     }
     resetForm(); setSaving(false); loadPlaylists();
   }
 
   async function handleDelete() {
     if (!deleteId) return;
-    await supabase.from('playlist_items').delete().eq('playlist_id', deleteId);
-    await supabase.from('playlists').delete().eq('id', deleteId);
+    // Delete playlist items first
+    const itemsRes = await fetch(`/api/admin/crud/playlist_items?playlist_id=${deleteId}`);
+    const itemsJson = await itemsRes.json();
+    for (const item of (itemsJson.data ?? [])) {
+      await fetch(`/api/admin/crud/playlist_items?id=${item.id}`, { method: 'DELETE' });
+    }
+    await fetch(`/api/admin/crud/playlists?id=${deleteId}`, { method: 'DELETE' });
     setDeleteId(null); loadPlaylists();
     if (selectedPlaylist?.id === deleteId) { setSelectedPlaylist(null); setItems([]); }
   }
@@ -100,33 +113,33 @@ export default function PlaylistsPage() {
     setItemsLoading(true);
     setShowAddMedia(false);
 
-    const { data: itemsData } = await supabase
-      .from('playlist_items')
-      .select('*')
-      .eq('playlist_id', playlist.id)
-      .order('position', { ascending: true });
+    const res = await fetch(`/api/admin/crud/playlist_items?playlist_id=${playlist.id}&order=position&asc=true`);
+    const json = await res.json();
+    const itemsData = json.data ?? [];
 
-    if (itemsData && itemsData.length > 0) {
-      const mediaIds = itemsData.map(i => i.media_id);
-      const { data: mediaData } = await supabase.from('media').select('*').in('id', mediaIds);
-      const mediaMap = new Map((mediaData ?? []).map(m => [m.id, m]));
-      setItems(itemsData.map(i => ({ ...i, media: mediaMap.get(i.media_id) })));
+    if (itemsData.length > 0) {
+      const mediaIds = itemsData.map((i: PlaylistItem) => i.media_id);
+      const mediaRes = await fetch(`/api/admin/crud/media`);
+      const mediaJson = await mediaRes.json();
+      const allMedia = mediaJson.data ?? [];
+      const mediaMap = new Map(allMedia.map((m: Media) => [m.id, m]));
+      setItems(itemsData.map((i: PlaylistItem) => ({ ...i, media: mediaMap.get(i.media_id) })));
     } else {
-      setItems(itemsData ?? []);
+      setItems(itemsData);
     }
     setItemsLoading(false);
   }
 
   async function loadAvailableMedia() {
     if (!selectedPlaylist) return;
-    // Get media not already in this playlist
     const existingMediaIds = items.map(i => i.media_id);
-    let query = supabase.from('media').select('*').order('created_at', { ascending: false });
+    const res = await fetch('/api/admin/crud/media?order=created_at&asc=false');
+    const json = await res.json();
+    let allMedia = json.data ?? [];
     if (existingMediaIds.length > 0) {
-      query = query.not('id', 'in', `(${existingMediaIds.join(',')})`);
+      allMedia = allMedia.filter((m: Media) => !existingMediaIds.includes(m.id));
     }
-    const { data } = await query;
-    setMedia(data ?? []);
+    setMedia(allMedia);
   }
 
   function openAddMedia() {
@@ -142,12 +155,16 @@ export default function PlaylistsPage() {
 
     const maxPos = items.length > 0 ? Math.max(...items.map(i => i.position)) + 1 : 0;
 
-    await supabase.from('playlist_items').insert({
-      playlist_id: selectedPlaylist.id,
-      media_id: selectedMediaId,
-      position: maxPos,
-      duration: itemDuration,
-      transition: 'fade',
+    await fetch('/api/admin/crud/playlist_items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playlist_id: selectedPlaylist.id,
+        media_id: selectedMediaId,
+        position: maxPos,
+        duration: itemDuration,
+        transition: 'fade',
+      }),
     });
 
     setShowAddMedia(false);
@@ -157,11 +174,14 @@ export default function PlaylistsPage() {
 
   async function handleRemoveItem(item: PlaylistItem) {
     if (!selectedPlaylist) return;
-    await supabase.from('playlist_items').delete().eq('id', item.id);
-    // Reindex positions
+    await fetch(`/api/admin/crud/playlist_items?id=${item.id}`, { method: 'DELETE' });
     const remaining = items.filter(i => i.id !== item.id);
     for (let i = 0; i < remaining.length; i++) {
-      await supabase.from('playlist_items').update({ position: i }).eq('id', remaining[i].id);
+      await fetch('/api/admin/crud/playlist_items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: remaining[i].id, position: i }),
+      });
     }
     openItems(selectedPlaylist);
   }
@@ -172,9 +192,16 @@ export default function PlaylistsPage() {
     const prevItem = items[currentIdx - 1];
     if (!prevItem) return;
 
-    // Swap positions
-    await supabase.from('playlist_items').update({ position: item.position }).eq('id', prevItem.id);
-    await supabase.from('playlist_items').update({ position: item.position - 1 }).eq('id', item.id);
+    await fetch('/api/admin/crud/playlist_items', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: prevItem.id, position: item.position }),
+    });
+    await fetch('/api/admin/crud/playlist_items', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, position: item.position - 1 }),
+    });
     openItems(selectedPlaylist);
   }
 
@@ -184,33 +211,54 @@ export default function PlaylistsPage() {
     const nextItem = items[currentIdx + 1];
     if (!nextItem) return;
 
-    await supabase.from('playlist_items').update({ position: item.position }).eq('id', nextItem.id);
-    await supabase.from('playlist_items').update({ position: item.position + 1 }).eq('id', item.id);
+    await fetch('/api/admin/crud/playlist_items', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: nextItem.id, position: item.position }),
+    });
+    await fetch('/api/admin/crud/playlist_items', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, position: item.position + 1 }),
+    });
     openItems(selectedPlaylist);
   }
 
   async function handleUpdateDuration(item: PlaylistItem, newDuration: number) {
     if (!selectedPlaylist) return;
-    await supabase.from('playlist_items').update({ duration: newDuration }).eq('id', item.id);
+    await fetch('/api/admin/crud/playlist_items', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, duration: newDuration }),
+    });
     openItems(selectedPlaylist);
   }
 
   async function handleUpdateVolume(item: PlaylistItem, newVolume: number) {
     if (!selectedPlaylist) return;
-    await supabase.from('playlist_items').update({ volume: newVolume }).eq('id', item.id);
+    await fetch('/api/admin/crud/playlist_items', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, volume: newVolume }),
+    });
     openItems(selectedPlaylist);
   }
 
   async function forceUpdateDevices() {
     if (!selectedPlaylist) return;
-    const { data: campaigns } = await supabase.from('campaign_playlists').select('campaign_id').eq('playlist_id', selectedPlaylist.id);
-    if (!campaigns || campaigns.length === 0) { alert('Playlist nao vinculada a nenhuma campanha.'); return; }
+    const cpRes = await fetch(`/api/admin/crud/campaign_playlists?playlist_id=${selectedPlaylist.id}`);
+    const cpJson = await cpRes.json();
+    const campaigns = cpJson.data ?? [];
+    if (campaigns.length === 0) { alert('Playlist nao vinculada a nenhuma campanha.'); return; }
     for (const cp of campaigns) {
-      const { data: devices } = await supabase.from('devices').select('id').eq('campaign_id', cp.campaign_id);
-      if (devices) {
-        for (const d of devices) {
-          await supabase.rpc('bump_device_content_version' as never, { target_device_id: d.id } as never);
-        }
+      const devRes = await fetch(`/api/admin/crud/devices?campaign_id=${cp.campaign_id}`);
+      const devJson = await devRes.json();
+      for (const d of (devJson.data ?? [])) {
+        await fetch('/api/admin/rpc/bump_device_content_version', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_device_id: d.id }),
+        });
       }
     }
     alert('Sync forçado nos dispositivos vinculados.');
@@ -231,13 +279,19 @@ export default function PlaylistsPage() {
     setSlotsLoading(true);
     setShowAddSlot(false);
 
-    const { data: slotsData } = await supabase
-      .from('playlist_slots')
-      .select('*, partner:partner_access(id, username, display_name)')
-      .eq('playlist_id', playlist.id)
-      .order('slot_order', { ascending: true });
+    const res = await fetch(`/api/admin/crud/playlist_slots?playlist_id=${playlist.id}&order=slot_order&asc=true`);
+    const json = await res.json();
+    const slotsData = json.data ?? [];
 
-    setSlots(slotsData as PlaylistSlot[] ?? []);
+    // Enrich with partner info
+    const partnerRes = await fetch('/api/admin/crud/partner_access?order=username&asc=true');
+    const partnerJson = await partnerRes.json();
+    const partnerMap = new Map((partnerJson.data ?? []).map((p: { id: string; username: string; display_name: string }) => [p.id, p]));
+
+    setSlots(slotsData.map((s: PlaylistSlot) => ({
+      ...s,
+      partner: partnerMap.get(s.partner_access_id) || null,
+    })));
     setSlotsLoading(false);
   }
 
@@ -245,16 +299,18 @@ export default function PlaylistsPage() {
     if (!selectedPlaylistForSlots || !newSlotPartnerId) return;
     setSaving(true);
 
-    const { error } = await supabase.from('playlist_slots').insert({
-      playlist_id: selectedPlaylistForSlots.id,
-      partner_access_id: newSlotPartnerId,
-      duration_seconds: newSlotDuration,
-      slot_order: slots.length,
+    const res = await fetch('/api/admin/crud/playlist_slots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playlist_id: selectedPlaylistForSlots.id,
+        partner_access_id: newSlotPartnerId,
+        duration_seconds: newSlotDuration,
+        slot_order: slots.length,
+      }),
     });
-
-    if (error) {
-      alert('Erro: ' + error.message);
-    }
+    const json = await res.json();
+    if (json.error) alert('Erro: ' + json.error);
 
     setShowAddSlot(false);
     setNewSlotPartnerId('');
@@ -268,16 +324,23 @@ export default function PlaylistsPage() {
     if (!confirm('Excluir este slot e seus itens?')) return;
 
     // Delete items in this slot
-    await supabase.from('playlist_items').delete().eq('slot_id', slotId);
-    // Delete the slot
-    await supabase.from('playlist_slots').delete().eq('id', slotId);
+    const itemsRes = await fetch(`/api/admin/crud/playlist_items?slot_id=${slotId}`);
+    const itemsJson = await itemsRes.json();
+    for (const item of (itemsJson.data ?? [])) {
+      await fetch(`/api/admin/crud/playlist_items?id=${item.id}`, { method: 'DELETE' });
+    }
+    await fetch(`/api/admin/crud/playlist_slots?id=${slotId}`, { method: 'DELETE' });
 
     openSlots(selectedPlaylistForSlots);
   }
 
   async function handleUpdateSlotDuration(slotId: string, newDuration: number) {
     if (!selectedPlaylistForSlots) return;
-    await supabase.from('playlist_slots').update({ duration_seconds: newDuration }).eq('id', slotId);
+    await fetch('/api/admin/crud/playlist_slots', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: slotId, duration_seconds: newDuration }),
+    });
     openSlots(selectedPlaylistForSlots);
   }
 

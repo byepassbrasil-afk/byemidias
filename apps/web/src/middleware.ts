@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { updateSession } from '@/lib/supabase/middleware';
 import { jwtVerify } from 'jose';
 
 const PARTNER_SECRET = new TextEncoder().encode(
@@ -10,11 +9,8 @@ async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> 
   const pathname = request.nextUrl.pathname;
   const token = request.cookies.get('partner_session')?.value;
 
-  // Only handle /partner/* routes (not /partners/* which is admin)
-  // /partner/login, /partner/media, /partner etc.
   const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/');
 
-  // Partner login page
   if (pathname === '/partner/login') {
     if (token) {
       try {
@@ -27,7 +23,6 @@ async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> 
     return NextResponse.next();
   }
 
-  // Partner protected routes
   if (isPartnerRoute && pathname !== '/partner/login') {
     if (!token) {
       return NextResponse.redirect(new URL('/partner/login', request.url));
@@ -49,7 +44,7 @@ async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // CORS for API device routes (used by /player page from different origins)
+  // CORS for API device routes
   if (pathname.startsWith('/api/device/') || pathname.startsWith('/api/keepalive')) {
     if (request.method === 'OPTIONS') {
       return new NextResponse(null, {
@@ -74,14 +69,14 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Handle partner routes separately (/partner/* but NOT /partners/*)
+  // Handle partner routes separately
   const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/');
   if (isPartnerRoute) {
     return handlePartnerRoutes(request);
   }
 
-  // Handle admin routes with Supabase auth
-  return await updateSession(request);
+  // Handle admin routes with cookie-based auth (cookies already set by login API)
+  return NextResponse.next();
 }
 
 export const config = {

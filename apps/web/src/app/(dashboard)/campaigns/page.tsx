@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Campaign, CampaignStatus } from '@/lib/types';
 
 export default function CampaignsPage() {
@@ -23,24 +22,26 @@ export default function CampaignsPage() {
   const [organizationId, setOrganizationId] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   useEffect(() => { loadCampaigns(); loadOrgs(); loadPlaylists(); }, []);
 
   async function loadCampaigns() {
-    const { data } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
-    setCampaigns(data ?? []);
+    const res = await fetch('/api/admin/crud/campaigns?order=created_at&asc=false');
+    const json = await res.json();
+    setCampaigns(json.data ?? []);
     setLoading(false);
   }
 
   async function loadOrgs() {
-    const { data } = await supabase.from('organizations').select('id, name');
-    setOrgs((data ?? []) as { id: string; name: string }[]);
+    const res = await fetch('/api/admin/crud/organizations?order=name&asc=true');
+    const json = await res.json();
+    setOrgs((json.data ?? []) as { id: string; name: string }[]);
   }
 
   async function loadPlaylists() {
-    const { data } = await supabase.from('playlists').select('id, name');
-    setPlaylists((data ?? []) as { id: string; name: string }[]);
+    const res = await fetch('/api/admin/crud/playlists?order=name&asc=true');
+    const json = await res.json();
+    setPlaylists((json.data ?? []) as { id: string; name: string }[]);
   }
 
   function resetForm() {
@@ -52,9 +53,9 @@ export default function CampaignsPage() {
     setName(c.name); setDescription(c.description || ''); setStartDate(c.start_date || ''); setEndDate(c.end_date || '');
     setStartTime(c.start_time || ''); setEndTime(c.end_time || ''); setPriority(c.priority); setStatus(c.status);
     setOrganizationId(c.organization_id);
-    // Load linked playlists
-    const { data: linked } = await supabase.from('campaign_playlists').select('playlist_id').eq('campaign_id', c.id);
-    setSelectedPlaylists((linked ?? []).map((l: any) => l.playlist_id));
+    const res = await fetch(`/api/admin/crud/campaign_playlists?campaign_id=${c.id}`);
+    const json = await res.json();
+    setSelectedPlaylists((json.data ?? []).map((l: { playlist_id: string }) => l.playlist_id));
     setShowForm(true);
   }
 
@@ -69,20 +70,39 @@ export default function CampaignsPage() {
       };
       let campaignId = editing?.id;
       if (editing) {
-        const { error } = await supabase.from('campaigns').update(payload).eq('id', editing.id);
-        if (error) throw new Error(`Erro ao atualizar campanha: ${error.message}`);
+        const res = await fetch('/api/admin/crud/campaigns', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editing.id, ...payload }),
+        });
+        const json = await res.json();
+        if (json.error) throw new Error(`Erro ao atualizar campanha: ${json.error}`);
       } else {
-        const { data, error } = await supabase.from('campaigns').insert(payload).select('id').single();
-        if (error) throw new Error(`Erro ao criar campanha: ${error.message}`);
-        campaignId = data?.id;
+        const res = await fetch('/api/admin/crud/campaigns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (json.error) throw new Error(`Erro ao criar campanha: ${json.error}`);
+        campaignId = json.data?.id;
       }
       if (campaignId) {
-        const { error: delErr } = await supabase.from('campaign_playlists').delete().eq('campaign_id', campaignId);
-        if (delErr) throw new Error(`Erro ao limpar playlists: ${delErr.message}`);
+        // Delete existing campaign_playlinks
+        const existingRes = await fetch(`/api/admin/crud/campaign_playlists?campaign_id=${campaignId}`);
+        const existingJson = await existingRes.json();
+        for (const cp of (existingJson.data ?? [])) {
+          await fetch(`/api/admin/crud/campaign_playlists?id=${cp.id}`, { method: 'DELETE' });
+        }
         const inserts = selectedPlaylists.map((pid, i) => ({ campaign_id: campaignId, playlist_id: pid, position: i + 1 }));
-        if (inserts.length > 0) {
-          const { error: insErr } = await supabase.from('campaign_playlists').insert(inserts);
-          if (insErr) throw new Error(`Erro ao vincular playlists: ${insErr.message}`);
+        for (const insert of inserts) {
+          const res = await fetch('/api/admin/crud/campaign_playlists', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(insert),
+          });
+          const json = await res.json();
+          if (json.error) throw new Error(`Erro ao vincular playlists: ${json.error}`);
         }
       }
       resetForm(); loadCampaigns();
@@ -96,12 +116,19 @@ export default function CampaignsPage() {
   async function handleDelete() {
     if (!deleteId) return;
     try {
-      const { error: e1 } = await supabase.from('campaign_targets').delete().eq('campaign_id', deleteId);
-      if (e1) throw new Error(`Erro ao limpar alvos: ${e1.message}`);
-      const { error: e2 } = await supabase.from('campaign_playlists').delete().eq('campaign_id', deleteId);
-      if (e2) throw new Error(`Erro ao limpar playlists: ${e2.message}`);
-      const { error: e3 } = await supabase.from('campaigns').delete().eq('id', deleteId);
-      if (e3) throw new Error(`Erro ao excluir campanha: ${e3.message}`);
+      // Delete campaign targets
+      const targetsRes = await fetch(`/api/admin/crud/campaign_targets?campaign_id=${deleteId}`);
+      const targetsJson = await targetsRes.json();
+      for (const t of (targetsJson.data ?? [])) {
+        await fetch(`/api/admin/crud/campaign_targets?id=${t.id}`, { method: 'DELETE' });
+      }
+      // Delete campaign playlists
+      const cpRes = await fetch(`/api/admin/crud/campaign_playlists?campaign_id=${deleteId}`);
+      const cpJson = await cpRes.json();
+      for (const cp of (cpJson.data ?? [])) {
+        await fetch(`/api/admin/crud/campaign_playlists?id=${cp.id}`, { method: 'DELETE' });
+      }
+      await fetch(`/api/admin/crud/campaigns?id=${deleteId}`, { method: 'DELETE' });
       setDeleteId(null); loadCampaigns();
     } catch (err: any) {
       alert(err.message || 'Erro ao excluir campanha');
@@ -109,7 +136,11 @@ export default function CampaignsPage() {
   }
 
   async function handleStatusChange(c: Campaign, newStatus: CampaignStatus) {
-    await supabase.from('campaigns').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', c.id);
+    await fetch('/api/admin/crud/campaigns', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: c.id, status: newStatus, updated_at: new Date().toISOString() }),
+    });
     loadCampaigns();
   }
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Profile, UserRole } from '@/lib/types';
 
 export default function UsersPage() {
@@ -17,13 +16,12 @@ export default function UsersPage() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('viewer');
 
-  const supabase = createClient();
-
   useEffect(() => { loadUsers(); }, []);
 
   async function loadUsers() {
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    setUsers(data ?? []);
+    const res = await fetch('/api/admin/crud/profiles?order=created_at&asc=false');
+    const json = await res.json();
+    setUsers(json.data ?? []);
     setLoading(false);
   }
 
@@ -39,15 +37,9 @@ export default function UsersPage() {
     e.preventDefault();
     setSaving(true);
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { alert('Sessão expirada'); setSaving(false); return; }
-
     const res = await fetch('/api/admin/users', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, full_name: name, role }),
     });
 
@@ -66,14 +58,17 @@ export default function UsersPage() {
   async function handleUpdateRole() {
     if (!editing) return;
     setSaving(true);
-    await supabase.from('profiles').update({ role, updated_at: new Date().toISOString() }).eq('id', editing.id);
+    await fetch('/api/admin/crud/profiles', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editing.id, role, updated_at: new Date().toISOString() }),
+    });
     setEditing(null); setSaving(false); loadUsers();
   }
 
   async function handleDelete() {
     if (!deleteId) return;
-    // Delete profile only (auth user stays - needs admin API for full delete)
-    await supabase.from('profiles').delete().eq('id', deleteId);
+    await fetch(`/api/admin/crud/profiles?id=${deleteId}`, { method: 'DELETE' });
     setDeleteId(null); loadUsers();
   }
 
@@ -90,7 +85,6 @@ export default function UsersPage() {
         </button>
       </div>
 
-      {/* Create form */}
       {showForm && !editing && (
         <form onSubmit={handleCreate} className="mb-6 rounded-xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">
           <h3 className="text-lg font-semibold text-gray-900">Criar Novo Usuário</h3>
@@ -127,7 +121,6 @@ export default function UsersPage() {
         </form>
       )}
 
-      {/* Edit role form */}
       {editing && (
         <div className="mb-6 rounded-xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">
           <h3 className="text-lg font-semibold text-gray-900">Editar Função — {editing.full_name}</h3>
@@ -152,7 +145,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Delete confirmation */}
       {deleteId && (
         <div className="mb-6 rounded-xl bg-red-50 p-6 border border-red-200">
           <p className="text-sm text-red-800 mb-3">Tem certeza que deseja excluir este usuário?</p>
@@ -163,7 +155,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Table */}
       {loading ? (
         <div className="text-gray-500">Carregando...</div>
       ) : users.length === 0 ? (

@@ -1,13 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPartnerSession } from '@/lib/partner-auth';
-import { createClient } from '@supabase/supabase-js';
-
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import sql from '@/lib/db';
 
 export async function PUT(request: Request) {
   const session = await getPartnerSession();
@@ -21,30 +14,15 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'Items obrigatórios' }, { status: 400 });
   }
 
-  const supabase = getServiceClient();
+  const partnerDevices = await sql`SELECT playlist_id FROM partner_devices WHERE partner_access_id = ${session.partnerAccessId} AND playlist_id IS NOT NULL`;
 
-  const { data: partnerDevices } = await supabase
-    .from('partner_devices')
-    .select('playlist_id')
-    .eq('partner_access_id', session.partnerAccessId)
-    .not('playlist_id', 'is', null);
-
-  const playlistIds = [...new Set(
-    (partnerDevices ?? []).map((pd) => pd.playlist_id)
-  )];
+  const playlistIds = [...new Set(partnerDevices.map((pd) => pd.playlist_id))];
 
   for (const item of items) {
-    const { data: playlistItem } = await supabase
-      .from('playlist_items')
-      .select('id, playlist_id')
-      .eq('id', item.id)
-      .single();
+    const [playlistItem] = await sql`SELECT id, playlist_id FROM playlist_items WHERE id = ${item.id}`;
 
     if (playlistItem && playlistIds.includes(playlistItem.playlist_id)) {
-      await supabase
-        .from('playlist_items')
-        .update({ position: item.position })
-        .eq('id', item.id);
+      await sql`UPDATE playlist_items SET position = ${item.position} WHERE id = ${item.id}`;
     }
   }
 

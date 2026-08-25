@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
 
 interface TimeSlot {
   id: string;
@@ -37,17 +36,22 @@ export default function CampaignSchedulePage() {
   const [addPriority, setAddPriority] = useState(0);
   const [addStatus, setAddStatus] = useState('active');
   const [editSlot, setEditSlot] = useState<TimeSlot | null>(null);
-  const supabase = createClient();
 
   const loadData = useCallback(async () => {
-    const [campRes, plRes] = await Promise.all([
-      supabase.from('campaigns').select('id, name, organization_id').in('status', ['active', 'draft']),
-      supabase.from('playlists').select('id, name'),
+    const [activeRes, draftRes, plRes] = await Promise.all([
+      fetch('/api/admin/crud/campaigns?status=active'),
+      fetch('/api/admin/crud/campaigns?status=draft'),
+      fetch('/api/admin/crud/playlists?order=name&asc=true'),
     ]);
-    setCampaigns((campRes.data ?? []) as Campaign[]);
-    setPlaylists((plRes.data ?? []) as Playlist[]);
+    const activeJson = await activeRes.json();
+    const draftJson = await draftRes.json();
+    const plJson = await plRes.json();
+    const allCampaigns = [...(activeJson.data ?? []), ...(draftJson.data ?? [])];
+    const uniqueCampaigns = Array.from(new Map(allCampaigns.map((c: Campaign) => [c.id, c])).values());
+    setCampaigns(uniqueCampaigns);
+    setPlaylists((plJson.data ?? []) as Playlist[]);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 

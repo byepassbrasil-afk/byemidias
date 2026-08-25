@@ -1,13 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPartnerSession } from '@/lib/partner-auth';
-import { createClient } from '@supabase/supabase-js';
-
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import sql from '@/lib/db';
 
 export async function GET() {
   const session = await getPartnerSession();
@@ -15,29 +8,15 @@ export async function GET() {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
-  const supabase = getServiceClient();
+  const uploads = await sql`SELECT media_id FROM partner_media_uploads WHERE partner_access_id = ${session.partnerAccessId}`;
 
-  // Partner can ONLY see their own uploaded media
-  const { data: uploads } = await supabase
-    .from('partner_media_uploads')
-    .select('media_id')
-    .eq('partner_access_id', session.partnerAccessId);
-
-  const mediaIds = (uploads ?? []).map((u) => u.media_id);
+  const mediaIds = uploads.map((u) => u.media_id);
 
   if (mediaIds.length === 0) {
     return NextResponse.json({ media: [] });
   }
 
-  const { data: media, error } = await supabase
-    .from('media')
-    .select('*')
-    .in('id', mediaIds)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const media = await sql`SELECT * FROM media WHERE id = ANY(${mediaIds}) ORDER BY created_at DESC`;
 
   return NextResponse.json({ media: media ?? [] });
 }
@@ -48,95 +27,46 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
-  const formData = await request.formData();
-  const file = formData.get('file') as File | null;
-  const slotId = formData.get('slot_id') as string | null;
+  const formData = await request.json();
+  const { name: fileName, type: fileType, size: fileSize } = formData;
 
-  if (!file) {
+  if (!fileName) {
     return NextResponse.json({ error: 'Arquivo obrigatório' }, { status: 400 });
   }
 
-  const supabase = getServiceClient();
-
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm'];
-  if (!allowedTypes.includes(file.type)) {
+  if (!allowedTypes.includes(fileType)) {
     return NextResponse.json({ error: 'Tipo de arquivo não permitido' }, { status: 400 });
   }
 
-  if (file.size > 50 * 1024 * 1024) {
+  if (fileSize > 50 * 1024 * 1024) {
     return NextResponse.json({ error: 'Arquivo muito grande (máx 50MB)' }, { status: 400 });
   }
 
-  // Upload to storage (service_role bypasses RLS)
-  const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9.\-_]/g, '_');
-  const filePath = `partner-uploads/${session.partnerAccessId}/${Date.now()}-${safeName}`;
-  const { error: uploadError } = await supabase.storage
-    .from('media')
-    .upload(filePath, file);
+  const mediaType = fileType.startsWith('image/') ? 'image' : 'video';
+  const fileUrl = formData.file_url || `partner-uploads/${session.partnerAccessId}/${Date.now()}-${fileName}`;
 
-  if (uploadError) {
-    return NextResponse.json({ error: 'Upload failed: ' + uploadError.message }, { status: 500 });
-  }
+  const [mediaRecord] = await sql`
+    INSERT INTO media (organization_id, name, type, file_url, file_size, status)
+    VALUES (${session.organizationId}, ${fileName}, ${mediaType}, ${fileUrl}, ${fileSize}, 'active')
+    RETURNING id
+  `;
 
-  const { data: urlData } = supabase.storage.from('media').getPublicUrl(filePath);
+  await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id) VALUES (${session.partnerAccessId}, ${mediaRecord.id})`;
 
-  const mediaType = file.type.startsWith('image/') ? 'image' : 'video';
-
-  // Insert media record (service_role bypasses RLS)
-  const { data: mediaRecord, error: insertError } = await supabase
-    .from('media')
-    .insert({
-      organization_id: session.organizationId,
-      name: file.name,
-      type: mediaType,
-      file_url: urlData.publicUrl,
-      file_size: file.size,
-      status: 'active',
-    })
-    .select('id')
-    .single();
-
-  if (insertError) {
-    return NextResponse.json({ error: 'Insert failed: ' + insertError.message }, { status: 500 });
-  }
-
-  // Track partner upload
-  await supabase.from('partner_media_uploads').insert({
-    partner_access_id: session.partnerAccessId,
-    media_id: mediaRecord.id,
-  });
-
-  // Add to slot if slot_id provided
-  if (slotId) {
-    // Verify partner owns this slot
-    const { data: slot } = await supabase
-      .from('playlist_slots')
-      .select('id, playlist_id')
-      .eq('id', slotId)
-      .eq('partner_access_id', session.partnerAccessId)
-      .single();
+  if (formData.slot_id) {
+    const [slot] = await sql`SELECT id, playlist_id FROM playlist_slots WHERE id = ${formData.slot_id} AND partner_access_id = ${session.partnerAccessId}`;
 
     if (slot) {
-      // Get max position in this slot
-      const { data: existingItems } = await supabase
-        .from('playlist_items')
-        .select('position')
-        .eq('slot_id', slotId)
-        .order('position', { ascending: false })
-        .limit(1);
-
-      const maxPos = existingItems?.[0]?.position ?? -1;
-
-      // Add item to slot (creates pending version via versioning system)
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       await fetch(`${baseUrl}/api/partner/playlists/modify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: request.headers.get('cookie') || '' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           playlist_id: slot.playlist_id,
           action: 'add',
           media_id: mediaRecord.id,
-          slot_id: slotId,
+          slot_id: formData.slot_id,
         }),
       });
     }

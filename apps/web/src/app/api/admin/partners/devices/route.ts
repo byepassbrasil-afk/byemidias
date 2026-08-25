@@ -1,13 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
-
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import sql from '@/lib/db';
 
 export async function PUT(request: Request) {
   try {
@@ -15,13 +8,8 @@ export async function PUT(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
-    const supabase = getServiceClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('organization_id, role')
-      .eq('id', user.id)
-      .single();
+    const [profile] = await sql`SELECT organization_id, role FROM profiles WHERE id = ${user.id}`;
 
     if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -33,33 +21,22 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'partner_id e devices obrigatórios' }, { status: 400 });
     }
 
-    // Verify partner exists (super_admin sees all, admin only sees their org)
-    let partnerQuery = supabase.from('partner_access').select('id').eq('id', partner_id);
+    let partner;
     if (profile.role !== 'super_admin' && profile.organization_id) {
-      partnerQuery = partnerQuery.eq('organization_id', profile.organization_id);
+      [partner] = await sql`SELECT id FROM partner_access WHERE id = ${partner_id} AND organization_id = ${profile.organization_id}`;
+    } else {
+      [partner] = await sql`SELECT id FROM partner_access WHERE id = ${partner_id}`;
     }
-    const { data: partner } = await partnerQuery.single();
 
     if (!partner) {
       return NextResponse.json({ error: 'Parceiro não encontrado' }, { status: 404 });
     }
 
-    // Delete existing assignments
-    await supabase.from('partner_devices').delete().eq('partner_access_id', partner_id);
+    await sql`DELETE FROM partner_devices WHERE partner_access_id = ${partner_id}`;
 
-    // Insert new assignments
     if (devices.length > 0) {
-      const assignments = devices.map((d: { device_id: string; playlist_id?: string }) => ({
-        partner_access_id: partner_id,
-        device_id: d.device_id,
-        playlist_id: d.playlist_id || null,
-      }));
-
-      const { error } = await supabase.from('partner_devices').insert(assignments);
-
-      if (error) {
-        console.error('Insert partner_devices error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      for (const d of devices) {
+        await sql`INSERT INTO partner_devices (partner_access_id, device_id, playlist_id) VALUES (${partner_id}, ${d.device_id}, ${d.playlist_id || null})`;
       }
     }
 

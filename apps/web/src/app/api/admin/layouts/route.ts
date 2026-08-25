@@ -1,86 +1,100 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { requireAuthApi } from '@/lib/auth';
+import sql from '@/lib/db';
 
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
-// GET /api/admin/layouts
 export async function GET(request: Request) {
   try {
-    const supabase = getServiceClient();
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('org_id');
 
-    let query = supabase
-      .from('layout_templates')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let data;
+    if (orgId) {
+      data = await sql`SELECT * FROM layout_templates WHERE organization_id = ${orgId} ORDER BY created_at DESC`;
+    } else {
+      data = await sql`SELECT * FROM layout_templates ORDER BY created_at DESC`;
+    }
 
-    if (orgId) query = query.eq('organization_id', orgId);
+    // Ensure zones is always parsed as array
+    const templates = (data || []).map((t: Record<string, unknown>) => ({
+      ...t,
+      zones: typeof t.zones === 'string' ? JSON.parse(t.zones as string) : t.zones || [],
+    }));
 
-    const { data, error } = await query;
-    if (error) throw error;
-
-    return NextResponse.json({ templates: data || [] });
+    return NextResponse.json({ templates });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
-// POST /api/admin/layouts
 export async function POST(request: Request) {
   try {
-    const supabase = getServiceClient();
-    const body = await request.json();
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
 
+    const body = await request.json();
     const { name, description, width, height, zones, organization_id } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
     }
 
-    // Get first org if not specified
     let orgId = organization_id;
     if (!orgId) {
-      const { data: orgs } = await supabase.from('organizations').select('id').limit(1);
-      orgId = orgs?.[0]?.id;
+      const [org] = await sql`SELECT id FROM organizations LIMIT 1`;
+      orgId = org?.id;
     }
 
     if (!orgId) {
       return NextResponse.json({ error: 'Organização não encontrada' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from('layout_templates')
-      .insert({
-        organization_id: orgId,
-        name,
-        description: description || null,
-        width: width || 1920,
-        height: height || 1080,
-        zones: zones || [],
-      })
-      .select()
-      .single();
+    // Store zones as JSONB
+    const [data] = await sql`
+      INSERT INTO layout_templates (organization_id, name, description, width, height, zones)
+      VALUES (${orgId}, ${name}, ${description || null}, ${width || 1920}, ${height || 1080}, ${JSON.stringify(zones || [])})
+      RETURNING *
+    `;
 
-    if (error) throw error;
-
-    return NextResponse.json({ template: data });
+    return NextResponse.json({ template: { ...data, zones: typeof data.zones === 'string' ? JSON.parse(data.zones) : data.zones || [] } });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
-// DELETE /api/admin/layouts?id=X
+export async function PUT(request: Request) {
+  try {
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
+    const body = await request.json();
+    const { id, name, description, width, height, zones } = body;
+
+    if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
+
+    const [data] = await sql`
+      UPDATE layout_templates
+      SET name = ${name}, description = ${description || null}, width = ${width || 1920}, height = ${height || 1080}, zones = ${JSON.stringify(zones || [])}, updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `;
+
+    return NextResponse.json({ template: { ...data, zones: typeof data.zones === 'string' ? JSON.parse(data.zones) : data.zones || [] } });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
-    const supabase = getServiceClient();
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -88,9 +102,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
     }
 
-    const { error } = await supabase.from('layout_templates').delete().eq('id', id);
-    if (error) throw error;
-
+    await sql`DELETE FROM layout_templates WHERE id = ${id}`;
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';

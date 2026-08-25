@@ -1,36 +1,34 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import sql from '@/lib/db';
 
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
-// GET /api/admin/device-groups
 export async function GET(request: Request) {
   try {
-    const supabase = getServiceClient();
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('org_id');
 
-    let query = supabase
-      .from('device_groups')
-      .select(`
-        *,
-        device_group_members (
-          id,
-          device_id,
-          devices (name, status, campaign_id)
-        )
-      `)
-      .order('name');
-
-    if (orgId) query = query.eq('organization_id', orgId);
-
-    const { data: groups, error } = await query;
-    if (error) throw error;
+    let groups;
+    if (orgId) {
+      groups = await sql`
+        SELECT dg.*,
+          (SELECT json_agg(json_build_object(
+            'id', dgm.id, 'device_id', dgm.device_id,
+            'devices', (SELECT json_build_object('name', d.name, 'status', d.status, 'campaign_id', d.campaign_id) FROM devices d WHERE d.id = dgm.device_id)
+          )) FROM device_group_members dgm WHERE dgm.group_id = dg.id) as device_group_members
+        FROM device_groups dg
+        WHERE dg.organization_id = ${orgId}
+        ORDER BY dg.name
+      `;
+    } else {
+      groups = await sql`
+        SELECT dg.*,
+          (SELECT json_agg(json_build_object(
+            'id', dgm.id, 'device_id', dgm.device_id,
+            'devices', (SELECT json_build_object('name', d.name, 'status', d.status, 'campaign_id', d.campaign_id) FROM devices d WHERE d.id = dgm.device_id)
+          )) FROM device_group_members dgm WHERE dgm.group_id = dg.id) as device_group_members
+        FROM device_groups dg
+        ORDER BY dg.name
+      `;
+    }
 
     return NextResponse.json({ groups: groups || [] });
   } catch (e: unknown) {
@@ -39,10 +37,8 @@ export async function GET(request: Request) {
   }
 }
 
-// POST /api/admin/device-groups
 export async function POST(request: Request) {
   try {
-    const supabase = getServiceClient();
     const body = await request.json();
     const { name, description, device_ids, organization_id } = body;
 
@@ -52,30 +48,20 @@ export async function POST(request: Request) {
 
     let orgId = organization_id;
     if (!orgId) {
-      const { data: orgs } = await supabase.from('organizations').select('id').limit(1);
-      orgId = orgs?.[0]?.id;
+      const [org] = await sql`SELECT id FROM organizations LIMIT 1`;
+      orgId = org?.id;
     }
 
-    // Create group
-    const { data: group, error: groupErr } = await supabase
-      .from('device_groups')
-      .insert({ organization_id: orgId, name, description: description || null })
-      .select()
-      .single();
+    const [group] = await sql`
+      INSERT INTO device_groups (organization_id, name, description)
+      VALUES (${orgId}, ${name}, ${description || null})
+      RETURNING *
+    `;
 
-    if (groupErr) throw groupErr;
-
-    // Add devices to group
     if (device_ids?.length > 0) {
-      const members = device_ids.map((deviceId: string) => ({
-        group_id: group.id,
-        device_id: deviceId,
-      }));
-      const { error: memberErr } = await supabase
-        .from('device_group_members')
-        .insert(members);
-
-      if (memberErr) throw memberErr;
+      for (const deviceId of device_ids) {
+        await sql`INSERT INTO device_group_members (group_id, device_id) VALUES (${group.id}, ${deviceId})`;
+      }
     }
 
     return NextResponse.json({ group });
@@ -85,10 +71,8 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT /api/admin/device-groups (update members)
 export async function PUT(request: Request) {
   try {
-    const supabase = getServiceClient();
     const body = await request.json();
     const { group_id, device_ids } = body;
 
@@ -96,17 +80,12 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'group_id obrigatório' }, { status: 400 });
     }
 
-    // Remove existing members
-    await supabase.from('device_group_members').delete().eq('group_id', group_id);
+    await sql`DELETE FROM device_group_members WHERE group_id = ${group_id}`;
 
-    // Add new members
     if (device_ids?.length > 0) {
-      const members = device_ids.map((deviceId: string) => ({
-        group_id,
-        device_id: deviceId,
-      }));
-      const { error } = await supabase.from('device_group_members').insert(members);
-      if (error) throw error;
+      for (const deviceId of device_ids) {
+        await sql`INSERT INTO device_group_members (group_id, device_id) VALUES (${group_id}, ${deviceId})`;
+      }
     }
 
     return NextResponse.json({ success: true });
@@ -116,10 +95,8 @@ export async function PUT(request: Request) {
   }
 }
 
-// DELETE /api/admin/device-groups?id=X
 export async function DELETE(request: Request) {
   try {
-    const supabase = getServiceClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -127,9 +104,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
     }
 
-    // Members deleted via CASCADE
-    const { error } = await supabase.from('device_groups').delete().eq('id', id);
-    if (error) throw error;
+    await sql`DELETE FROM device_groups WHERE id = ${id}`;
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

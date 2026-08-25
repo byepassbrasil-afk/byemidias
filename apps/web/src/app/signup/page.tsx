@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState('');
@@ -12,29 +11,30 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-      },
-    });
-
-    if (error) {
-      setError(error.message);
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, full_name: fullName }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Erro ao criar conta');
+        setLoading(false);
+        return;
+      }
+      router.push('/dashboard');
+      router.refresh();
+    } catch {
+      setError('Erro de conexão');
       setLoading(false);
-      return;
     }
-
-    router.push('/dashboard');
-    router.refresh();
   }
 
   return (
@@ -44,71 +44,34 @@ export default function SignupPage() {
           <h1 className="text-2xl font-bold text-gray-900">ByeMidias</h1>
           <p className="text-sm text-gray-500">Criar sua conta</p>
         </div>
-
         <form onSubmit={handleSignup} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nome completo
-            </label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome completo</label>
+            <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="Seu nome"
-            />
+              placeholder="Seu nome" />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="seu@email.com"
-            />
+              placeholder="seu@email.com" />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Senha
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="••••••••"
-            />
+              placeholder="••••••••" />
           </div>
-
-          {error && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
+          {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+          <button type="submit" disabled={loading}
+            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
             {loading ? 'Criando...' : 'Criar conta'}
           </button>
         </form>
-
         <p className="mt-4 text-center text-sm text-gray-500">
           Já tem conta?{' '}
-          <Link href="/login" className="text-blue-600 hover:underline">
-            Entrar
-          </Link>
+          <Link href="/login" className="text-blue-600 hover:underline">Entrar</Link>
         </p>
       </div>
     </main>

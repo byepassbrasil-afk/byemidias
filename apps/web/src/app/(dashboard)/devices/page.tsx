@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { Device } from '@/lib/types';
 
@@ -34,23 +33,33 @@ export default function DevicesPage() {
   // Quick campaign assign
   const [quickAssignDevice, setQuickAssignDevice] = useState<Device | null>(null);
 
-  const supabase = createClient();
-
   const loadAll = useCallback(async () => {
     const [devRes, orgRes, unitRes, campRes, layRes] = await Promise.all([
-      supabase.from('devices').select('*').order('created_at', { ascending: false }),
-      supabase.from('organizations').select('id, name'),
-      supabase.from('units').select('id, name'),
-      supabase.from('campaigns').select('id, name, status, organization_id').in('status', ['active', 'draft', 'paused']),
+      fetch('/api/admin/crud/devices?order=created_at&asc=false'),
+      fetch('/api/admin/crud/organizations?order=name&asc=true'),
+      fetch('/api/admin/crud/units?order=name&asc=true'),
+      fetch('/api/admin/crud/campaigns?status=active').then(r => r.json()).catch(() => ({ data: [] })),
       fetch('/api/admin/layouts').then(r => r.json()).catch(() => ({ templates: [] })),
     ]);
-    setDevices(devRes.data ?? []);
-    setOrgs((orgRes.data ?? []) as { id: string; name: string }[]);
-    setUnits((unitRes.data ?? []) as { id: string; name: string }[]);
-    setCampaigns((campRes.data ?? []) as Campaign[]);
+    const devJson = await devRes.json();
+    const orgJson = await orgRes.json();
+    const unitJson = await unitRes.json();
+    setDevices(devJson.data ?? []);
+    setOrgs((orgJson.data ?? []) as { id: string; name: string }[]);
+    setUnits((unitJson.data ?? []) as { id: string; name: string }[]);
+    // Fetch draft and paused campaigns too
+    const [draftRes, pausedRes] = await Promise.all([
+      fetch('/api/admin/crud/campaigns?status=draft'),
+      fetch('/api/admin/crud/campaigns?status=paused'),
+    ]);
+    const draftJson = await draftRes.json();
+    const pausedJson = await pausedRes.json();
+    const allCampaigns = [...(campRes.data ?? []), ...(draftJson.data ?? []), ...(pausedJson.data ?? [])];
+    const uniqueCampaigns = Array.from(new Map(allCampaigns.map((c: Campaign) => [c.id, c])).values());
+    setCampaigns(uniqueCampaigns);
     setLayouts((layRes.templates ?? []) as LayoutTemplate[]);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -90,36 +99,64 @@ export default function DevicesPage() {
       support_id: editing?.support_id || null,
     };
     if (editing) {
-      await supabase.from('devices').update(payload).eq('id', editing.id);
-      // Bump content_version so device re-syncs
-      const { error: rpcErr } = await supabase.rpc('bump_device_content_version' as never, { target_device_id: editing.id } as never);
-      if (rpcErr) {
-        await supabase.from('devices').update({ content_version: Date.now() % 100000 }).eq('id', editing.id);
+      await fetch('/api/admin/crud/devices', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editing.id, ...payload }),
+      });
+      const rpcRes = await fetch('/api/admin/rpc/bump_device_content_version', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_device_id: editing.id }),
+      });
+      const rpcJson = await rpcRes.json();
+      if (rpcJson.error) {
+        await fetch('/api/admin/crud/devices', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editing.id, content_version: Date.now() % 100000 }),
+        });
       }
     } else {
-      await supabase.from('devices').insert({ ...payload, status: 'inactive', is_activated: false });
+      await fetch('/api/admin/crud/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, status: 'inactive', is_activated: false }),
+      });
     }
     resetForm(); setSaving(false); loadAll();
   }
 
   async function handleDelete() {
     if (!deleteId) return;
-    await supabase.from('devices').delete().eq('id', deleteId);
+    await fetch(`/api/admin/crud/devices?id=${deleteId}`, { method: 'DELETE' });
     setDeleteId(null); loadAll();
   }
 
   async function quickAssignCampaign(deviceId: string, campId: string | null) {
-    await supabase.from('devices').update({ campaign_id: campId, content_version: Date.now() % 100000, updated_at: new Date().toISOString() }).eq('id', deviceId);
+    await fetch('/api/admin/crud/devices', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: deviceId, campaign_id: campId, content_version: Date.now() % 100000, updated_at: new Date().toISOString() }),
+    });
     loadAll();
   }
 
   async function forceSyncDevice(deviceId: string) {
-    await supabase.rpc('bump_device_content_version' as never, { target_device_id: deviceId } as never);
+    await fetch('/api/admin/rpc/bump_device_content_version', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_device_id: deviceId }),
+    });
     loadAll();
   }
 
   async function restartDevice(deviceId: string) {
-    await supabase.from('devices').update({ restart_requested: true } as never).eq('id', deviceId);
+    await fetch('/api/admin/crud/devices', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: deviceId, restart_requested: true }),
+    });
     alert('Reinicio solicitado. O dispositivo reiniciara no proximo heartbeat.');
   }
 

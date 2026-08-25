@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Device } from '@/lib/types';
 import type { Playlist } from '@/lib/types';
 
@@ -39,8 +38,6 @@ export default function PartnersPage() {
   // Assign state
   const [selectedDevices, setSelectedDevices] = useState<Record<string, string>>({});
 
-  const supabase = createClient();
-
   useEffect(() => {
     loadData();
   }, []);
@@ -48,8 +45,8 @@ export default function PartnersPage() {
   async function loadData() {
     const [partnersRes, devicesRes, playlistsRes] = await Promise.all([
       fetch('/api/admin/partners'),
-      supabase.from('devices').select('*').order('name'),
-      supabase.from('playlists').select('*').order('name'),
+      fetch('/api/admin/crud/devices?order=name&asc=true'),
+      fetch('/api/admin/crud/playlists?order=name&asc=true'),
     ]);
 
     if (partnersRes.ok) {
@@ -60,8 +57,10 @@ export default function PartnersPage() {
       setPartners([]);
     }
 
-    setAllDevices(devicesRes.data ?? []);
-    setAllPlaylists(playlistsRes.data ?? []);
+    const devicesJson = await devicesRes.json();
+    const playlistsJson = await playlistsRes.json();
+    setAllDevices(devicesJson.data ?? []);
+    setAllPlaylists(playlistsJson.data ?? []);
     setLoading(false);
   }
 

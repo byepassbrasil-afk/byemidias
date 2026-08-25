@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
+import sql from '@/lib/db';
 
 const SECRET = new TextEncoder().encode(
   process.env.PARTNER_JWT_SECRET || 'byemidias-partner-secret-change-in-production'
@@ -59,23 +59,19 @@ export async function validatePartnerCredentials(
   username: string,
   password: string
 ): Promise<{ valid: boolean; partner?: PartnerSession }> {
-  // Use service_role client to bypass RLS
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const partners = await sql`
+    SELECT id, organization_id, username, name as display_name, password_hash, status
+    FROM partner_access
+    WHERE username = ${username.toLowerCase().trim()}
+    LIMIT 1
+  `;
 
-  const { data: partner, error } = await supabase
-    .from('partner_access')
-    .select('id, organization_id, username, display_name, password_hash, status')
-    .eq('username', username.toLowerCase().trim())
-    .single();
+  const partner = partners[0];
 
-  if (error || !partner || partner.status !== 'active') {
+  if (!partner || partner.status !== 'active') {
     return { valid: false };
   }
 
-  // Always use bcryptjs for verification (consistent with creation)
   let valid = false;
   try {
     const bcrypt = await import('bcryptjs');

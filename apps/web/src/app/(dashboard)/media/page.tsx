@@ -56,7 +56,6 @@ export default function MediaPage() {
 
       const uploadRes = await fetch(presignData.upload_url, {
         method: 'PUT',
-        headers: { 'Content-Type': presignData.content_type || file.type },
         body: file,
       });
 

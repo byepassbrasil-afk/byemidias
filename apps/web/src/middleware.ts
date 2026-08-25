@@ -5,6 +5,30 @@ const PARTNER_SECRET = new TextEncoder().encode(
   process.env.PARTNER_JWT_SECRET || 'byemidias-partner-secret-change-in-production'
 );
 
+const PUBLIC_ROUTES = ['/login', '/signup', '/api/auth/login', '/api/auth/signup', '/api/auth/logout', '/manifest.json', '/sw.js', '/offline.html'];
+
+const PUBLIC_API_PREFIXES = ['/api/device/', '/api/keepalive', '/api/auth/'];
+
+function isAdminRoute(pathname: string) {
+  if (pathname.startsWith('/api/')) {
+    return !PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p));
+  }
+  if (pathname.startsWith('/partner/') || pathname === '/partner') return false;
+  if (pathname.startsWith('/login') || pathname.startsWith('/signup')) return false;
+  return pathname.startsWith('/') && !pathname.startsWith('/_next') && !pathname.startsWith('/icons');
+}
+
+function hasValidSession(request: NextRequest): boolean {
+  const session = request.cookies.get('session')?.value;
+  if (!session) return false;
+  try {
+    const parsed = JSON.parse(session);
+    return !!parsed.email;
+  } catch {
+    return false;
+  }
+}
+
 async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
   const token = request.cookies.get('partner_session')?.value;
@@ -57,25 +81,34 @@ export async function middleware(request: NextRequest) {
         },
       });
     }
-    const response = await (async () => {
-      if (pathname === '/partner/login' || pathname.startsWith('/partner/')) {
-        return await handlePartnerRoutes(request);
-      }
-      return NextResponse.next();
-    })();
+    const response = NextResponse.next();
     response.headers.set('Access-Control-Allow-Origin', '*');
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
     return response;
   }
 
-  // Handle partner routes separately
+  // Handle partner routes
   const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/');
   if (isPartnerRoute) {
     return handlePartnerRoutes(request);
   }
 
-  // Handle admin routes with cookie-based auth (cookies already set by login API)
+  // Public routes — skip auth
+  if (PUBLIC_ROUTES.includes(pathname)) {
+    return NextResponse.next();
+  }
+
+  // Admin routes — require session cookie
+  if (isAdminRoute(pathname)) {
+    if (!hasValidSession(request)) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+      }
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+  }
+
   return NextResponse.next();
 }
 

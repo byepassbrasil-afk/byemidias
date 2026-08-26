@@ -99,6 +99,23 @@ class PlayerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let {
+                it.hide(android.view.WindowInsets.Type.systemBars())
+                it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
+        }
+
         prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
 
         val deviceId = prefs.getString("device_id", null)
@@ -485,7 +502,7 @@ class PlayerActivity : ComponentActivity() {
 
             val iv = ImageView(this)
             iv.visibility = View.GONE
-            iv.scaleType = ImageView.ScaleType.FIT_XY
+            iv.scaleType = ImageView.ScaleType.CENTER_CROP
             iv.adjustViewBounds = false
             val lpI = FrameLayout.LayoutParams(zoneW, zoneH)
             lpI.leftMargin = zoneX
@@ -736,7 +753,7 @@ class PlayerActivity : ComponentActivity() {
         withContext(Dispatchers.Main) {
             videoView?.visibility = View.GONE
             iv.visibility = View.VISIBLE
-            iv.scaleType = ImageView.ScaleType.FIT_XY
+            iv.scaleType = ImageView.ScaleType.CENTER_CROP
         }
 
         try {

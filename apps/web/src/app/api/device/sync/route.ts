@@ -47,9 +47,10 @@ export async function GET(request: Request) {
 
     try { await sql`SELECT deactivate_expired_campaigns()`; } catch (_) {}
 
-    const jsDow = now.getDay();
+    const brNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const jsDow = brNow.getDay();
     const pgDow = jsDow === 0 ? 6 : jsDow - 1;
-    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const nowTime = `${String(brNow.getHours()).padStart(2, '0')}:${String(brNow.getMinutes()).padStart(2, '0')}:${String(brNow.getSeconds()).padStart(2, '0')}`;
 
     const allTimeSlots = await sql`SELECT playlist_id, day_of_week, start_time, end_time, priority FROM campaign_time_slots WHERE campaign_id = ${campaign.id} AND status = 'active' ORDER BY priority DESC`;
     const hasWeeklySchedule = allTimeSlots.length > 0;
@@ -72,7 +73,7 @@ export async function GET(request: Request) {
 
         const endParts = (matchingSlot.end_time as string).split(':');
         const endMinutes = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
-        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const nowMinutes = brNow.getHours() * 60 + brNow.getMinutes();
         nextSlotChangeSeconds = Math.max((endMinutes - nowMinutes) * 60, 10);
       } else {
         const upcomingSlots = allTimeSlots
@@ -88,7 +89,7 @@ export async function GET(request: Request) {
           const nextDay = next.day_of_week as number;
           const nextStart = (next.start_time as string).split(':');
           const nextMinutes = nextDay * 24 * 60 + parseInt(nextStart[0]) * 60 + parseInt(nextStart[1]);
-          const nowMinutes = pgDow * 24 * 60 + now.getHours() * 60 + now.getMinutes();
+          const nowMinutes = pgDow * 24 * 60 + brNow.getHours() * 60 + brNow.getMinutes();
           nextSlotChangeSeconds = Math.max((nextMinutes - nowMinutes) * 60, 10);
         } else if (allTimeSlots.length > 0) {
           nextSlotChangeSeconds = 60;

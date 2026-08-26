@@ -147,7 +147,7 @@ export async function GET(request: Request) {
       await sql`UPDATE devices SET content_version = ${serverVersion}, updated_at = NOW() WHERE id = ${deviceId}`;
     }
 
-    const [deviceFull] = await sql`SELECT layout_template_id FROM devices WHERE id = ${deviceId}`;
+    const [deviceFull] = await sql`SELECT layout_template_id, screenshot_requested FROM devices WHERE id = ${deviceId}`;
     let layoutZones: unknown[] = [];
     if (deviceFull?.layout_template_id) {
       const [layout] = await sql`SELECT zones FROM layout_templates WHERE id = ${deviceFull.layout_template_id}`;
@@ -156,12 +156,18 @@ export async function GET(request: Request) {
       }
     }
 
+    const screenshotRequested = deviceFull?.screenshot_requested || false;
+    if (screenshotRequested) {
+      await sql`UPDATE devices SET screenshot_requested = FALSE WHERE id = ${deviceId}`;
+    }
+
     return NextResponse.json({
       content_version: serverVersion,
       needs_update: needsUpdate,
       campaign_id: campaign.id,
       matched_slot: matchedSlot,
       sync_interval_seconds: matchedSlot ? Math.min(nextSlotChangeSeconds, 60) : 30,
+      screenshot_requested: screenshotRequested,
       layout_template_id: deviceFull?.layout_template_id || null,
       layout_zones: layoutZones,
       playlists: allPlaylists,

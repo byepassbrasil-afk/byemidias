@@ -318,7 +318,6 @@ class PlayerActivity : ComponentActivity() {
             while (isActive) {
                 delay(15000)
                 sendHeartbeatOn()
-                sendScreenshot()
             }
         }
 
@@ -620,6 +619,11 @@ class PlayerActivity : ComponentActivity() {
 
         syncIntervalSeconds = json.optInt("sync_interval_seconds", 30)
         Log.i(tag, "Sync interval set to ${syncIntervalSeconds}s")
+
+        if (json.optBoolean("screenshot_requested", false)) {
+            Log.i(tag, "Screenshot requested by server — capturing")
+            sendScreenshot()
+        }
 
         val mediaMap = mutableMapOf<String, JSONObject>()
         for (i in 0 until mediaArray.length()) {
@@ -947,7 +951,7 @@ class PlayerActivity : ComponentActivity() {
     private fun sendScreenshot() {
         try {
             val now = System.currentTimeMillis()
-            if (now - lastScreenshotTime < 30000) return
+            if (now - lastScreenshotTime < 2000) return
             lastScreenshotTime = now
 
             val deviceId = prefs.getString("device_id", "") ?: ""

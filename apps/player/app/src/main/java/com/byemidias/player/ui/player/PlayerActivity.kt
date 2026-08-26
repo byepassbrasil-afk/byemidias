@@ -58,7 +58,7 @@ class PlayerActivity : ComponentActivity() {
     private var currentIndex = 0
     private var currentCampaignId: String? = null
     private var currentPlaylistId: String? = null
-    private var currentContentVersion: Int = 0
+    private var currentContentVersion: Long = 0
     private var layoutZones: List<ZoneData> = emptyList()
     @Volatile private var needsResync = false
     private var syncIntervalSeconds = 30
@@ -671,7 +671,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
-        val respVersion = json.optInt("content_version", 0)
+        val respVersion = json.optLong("content_version", 0)
         if (respVersion > 0) currentContentVersion = respVersion
 
         val zonesArray = json.optJSONArray("layout_zones")
@@ -759,9 +759,9 @@ class PlayerActivity : ComponentActivity() {
                 val result = httpPost("$apiUrl/api/device/heartbeat", body.toString())
                 if (result.isNotEmpty()) {
                     val json = JSONObject(result)
-                    val serverVersion = json.optInt("content_version", 0)
-                    if (serverVersion > currentContentVersion && currentContentVersion > 0) {
-                        currentContentVersion = serverVersion; needsResync = true
+                val serverVersion = json.optLong("content_version", 0)
+                if (serverVersion > currentContentVersion && currentContentVersion > 0) {
+                    currentContentVersion = serverVersion; needsResync = true
                     }
                     applyDeviceSettings(json)
                 }
@@ -815,10 +815,10 @@ class PlayerActivity : ComponentActivity() {
 
     private fun applyDeviceSettings(json: JSONObject) {
         try {
-            val serverVersion = json.optInt("content_version", 0)
+            val serverVersion = json.optLong("content_version", 0)
             if (serverVersion > currentContentVersion && currentContentVersion > 0) {
                 currentContentVersion = serverVersion; needsResync = true
-            } else if (currentContentVersion == 0) {
+            } else if (currentContentVersion == 0L) {
                 currentContentVersion = serverVersion
             }
 

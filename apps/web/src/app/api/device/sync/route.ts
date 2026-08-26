@@ -102,19 +102,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
     }
 
-    if (targetPlaylistIds.length === 0) {
-      targetPlaylistIds = campaignPlaylists.map((cp: Record<string, unknown>) => cp.playlist_id as string);
-    }
-
     const allPlaylists: Array<Record<string, unknown>> = [];
     const allMediaIds = new Set<string>();
 
-    for (const cp of campaignPlaylists) {
-      if (!targetPlaylistIds.includes(cp.playlist_id)) continue;
+    const resolvedPlaylistIds = targetPlaylistIds.length > 0
+      ? targetPlaylistIds
+      : campaignPlaylists.map((cp: Record<string, unknown>) => cp.playlist_id as string);
 
-      const [pl] = await sql`SELECT id, name, description FROM playlists WHERE id = ${cp.playlist_id}`;
+    for (const playlistId of resolvedPlaylistIds) {
+      const [pl] = await sql`SELECT id, name, description FROM playlists WHERE id = ${playlistId}`;
       if (!pl) continue;
 
+      const cpEntry = campaignPlaylists.find((cp: Record<string, unknown>) => cp.playlist_id === playlistId);
       const items = await sql`SELECT * FROM playlist_items WHERE playlist_id = ${pl.id} ORDER BY position ASC`;
 
       allPlaylists.push({
@@ -123,8 +122,8 @@ export async function GET(request: Request) {
         description: pl.description,
         campaign_id: campaign.id,
         campaign_name: campaign.name,
-        position: cp.position,
-        duration: cp.duration,
+        position: cpEntry?.position ?? 0,
+        duration: cpEntry?.duration ?? null,
         items,
       });
 
@@ -138,10 +137,8 @@ export async function GET(request: Request) {
       mediaList = await sql`SELECT * FROM media WHERE id = ANY(${Array.from(allMediaIds)})`;
     }
 
-    const serverVersion = matchedSlot
-      ? Date.now()
-      : (device.content_version || 0) + 1;
-    const needsUpdate = matchedSlot ? true : serverVersion > contentVersion;
+    const serverVersion = (device.content_version || 0) + 1;
+    const needsUpdate = serverVersion > contentVersion;
 
     if (allPlaylists.length > 0) {
       await sql`UPDATE devices SET content_version = ${serverVersion}, updated_at = NOW() WHERE id = ${deviceId}`;

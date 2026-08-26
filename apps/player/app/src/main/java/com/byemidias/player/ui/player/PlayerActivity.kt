@@ -1,11 +1,13 @@
 package com.byemidias.player.ui.player
 
+import android.Manifest
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
@@ -26,6 +28,8 @@ import android.widget.TextView
 import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.byemidias.player.ByeMidiasApp
 import com.byemidias.player.BuildConfig
@@ -126,6 +130,8 @@ class PlayerActivity : ComponentActivity() {
         prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
         applyRotationFromPrefs()
 
+        requestNotificationPermission()
+
         val deviceId = prefs.getString("device_id", null)
         if (deviceId.isNullOrEmpty()) {
             showActivation()
@@ -206,7 +212,7 @@ class PlayerActivity : ComponentActivity() {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
-            alarmManager.setExact(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 1000, pendingIntent)
+            alarmManager.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 1000, pendingIntent)
             Log.i(tag, "Restart scheduled via AlarmManager")
         } catch (e: Exception) {
             Log.e(tag, "Failed to schedule restart: ${e.message}")
@@ -958,6 +964,15 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+            }
+        }
+    }
+
     private var lastScreenshotTime = 0L
     private fun sendScreenshot() {
         try {
@@ -968,7 +983,8 @@ class PlayerActivity : ComponentActivity() {
             val deviceId = prefs.getString("device_id", "") ?: ""
             if (deviceId.isEmpty()) return
 
-            val view = rootLayout ?: return
+            if (!::rootLayout.isInitialized) return
+            val view = rootLayout
             val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(bitmap)
             view.draw(canvas)

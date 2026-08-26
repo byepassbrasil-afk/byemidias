@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'byemidias-static-v4';
+const STATIC_CACHE = 'byemidias-static-v5';
 const CONTENT_CACHE = 'byemidias-content-v1';
 const API_CACHE = 'byemidias-api-v1';
 

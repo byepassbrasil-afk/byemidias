@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -23,10 +24,26 @@ class PlayerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = buildNotification()
-        startForeground(notificationId, notification)
-        Log.i("PlayerService", "Foreground service started")
-        return START_STICKY
+        return try {
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(notificationId, notification)
+            }
+            Log.i("PlayerService", "Foreground service started (API ${Build.VERSION.SDK_INT})")
+            START_STICKY
+        } catch (e: Exception) {
+            Log.e("PlayerService", "Failed to start foreground: ${e.message}", e)
+            try {
+                val notification = buildNotification()
+                startForeground(notificationId, notification)
+                START_STICKY
+            } catch (e2: Exception) {
+                Log.e("PlayerService", "Fallback foreground also failed: ${e2.message}", e2)
+                START_NOT_STICKY
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -55,11 +72,17 @@ class PlayerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val icon = try {
+            R.drawable.ic_notification
+        } catch (_: Exception) {
+            android.R.drawable.ic_media_play
+        }
+
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, channelId)
                 .setContentTitle("ByeMidias Player")
                 .setContentText("Reproduzindo mídia...")
-                .setSmallIcon(R.drawable.ic_notification)
+                .setSmallIcon(icon)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .build()
@@ -68,7 +91,7 @@ class PlayerService : Service() {
             Notification.Builder(this)
                 .setContentTitle("ByeMidias Player")
                 .setContentText("Reproduzindo mídia...")
-                .setSmallIcon(R.drawable.ic_notification)
+                .setSmallIcon(icon)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .build()

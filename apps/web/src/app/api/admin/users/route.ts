@@ -3,10 +3,10 @@ import sql from '@/lib/db';
 import { requireAuthApi } from '@/lib/auth';
 import { randomUUID } from 'crypto';
 
-const ALLOWED_ROLES_FOR_CREATION: Record<string, string[]> = {
+const CAN_CREATE: Record<string, string[]> = {
   super_admin: ['super_admin', 'admin', 'manager', 'operator', 'viewer'],
-  admin: ['manager', 'operator', 'viewer'],
-  manager: ['operator', 'viewer'],
+  admin: ['admin', 'manager', 'operator', 'viewer'],
+  manager: ['manager', 'operator', 'viewer'],
 };
 
 export async function POST(request: NextRequest) {
@@ -14,30 +14,34 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
 
   const body = await request.json();
-  const { email, password, full_name, role } = body;
+  const { email, full_name, role } = body;
 
-  if (!email || !password || !full_name) {
-    return NextResponse.json({ error: 'Email, senha e nome são obrigatórios' }, { status: 400 });
-  }
+  if (!email || !full_name) return NextResponse.json({ error: 'Email e nome são obrigatórios' }, { status: 400 });
 
-  const allowedRoles = ALLOWED_ROLES_FOR_CREATION[user.role] || [];
   const requestedRole = role || 'viewer';
+  const allowed = CAN_CREATE[user.role] || [];
 
-  if (!allowedRoles.includes(requestedRole)) {
-    return NextResponse.json({ error: 'Você não pode criar usuários com esta função' }, { status: 403 });
+  if (!allowed.includes(requestedRole)) {
+    return NextResponse.json({ error: `Você não pode criar usuários com função "${requestedRole}"` }, { status: 403 });
   }
 
   const userId = randomUUID();
-  const bcrypt = await import('bcryptjs');
-  const passwordHash = await bcrypt.hash(password, 10);
+  const inviteToken = randomUUID();
+  const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const orgId = user.role === 'super_admin' ? (body.organization_id || user.organization_id) : user.organization_id;
 
   const [profile] = await sql`
-    INSERT INTO profiles (id, email, full_name, role, organization_id, status, password_hash)
-    VALUES (${userId}, ${email}, ${full_name}, ${requestedRole}, ${orgId}, 'active', ${passwordHash})
-    RETURNING id, email, full_name, role
+    INSERT INTO profiles (id, email, full_name, role, organization_id, status, invite_token, invite_expires_at, invited_at)
+    VALUES (${userId}, ${email}, ${full_name}, ${requestedRole}, ${orgId}, 'pending_invite', ${inviteToken}, ${inviteExpires}, NOW())
+    RETURNING id, email, full_name, role, organization_id
   `;
 
-  return NextResponse.json({ user: profile });
+  const inviteUrl = `https://byemidias.vercel.app/invite?token=${inviteToken}`;
+
+  return NextResponse.json({
+    user: profile,
+    invite_url: inviteUrl,
+    message: 'Usuário criado. Envie o link de convite para definir a senha.',
+  });
 }

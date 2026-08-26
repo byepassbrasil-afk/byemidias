@@ -34,6 +34,16 @@ interface Org {
   created_at: string;
 }
 
+interface OnboardingForm {
+  org_name: string;
+  org_slug: string;
+  plan: string;
+  renewal_date: string;
+  monthly_price: string;
+  owner_name: string;
+  owner_email: string;
+}
+
 export default function SaasDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<SaasStats | null>(null);
@@ -43,9 +53,15 @@ export default function SaasDashboard() {
   const [editingOrg, setEditingOrg] = useState<Org | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboarding, setOnboarding] = useState<OnboardingForm>({
+    org_name: '', org_slug: '', plan: 'pro', renewal_date: '', monthly_price: '', owner_name: '', owner_email: '',
+  });
+  const [onboardingResult, setOnboardingResult] = useState<{ invite_url: string; org_name: string; user_name: string; user_email: string } | null>(null);
+  const [onboardingError, setOnboardingError] = useState('');
+  const [onboardingLoading, setOnboardingLoading] = useState(false);
+
+  useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     try {
@@ -57,6 +73,64 @@ export default function SaasDashboard() {
       setExpiring(data.expiring_soon || []);
     } catch {}
     setLoading(false);
+  }
+
+  async function handleOnboard(e: React.FormEvent) {
+    e.preventDefault();
+    setOnboardingLoading(true);
+    setOnboardingError('');
+    try {
+      const orgRes = await fetch('/api/admin/crud/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: onboarding.org_name,
+          slug: onboarding.org_slug,
+          plan: onboarding.plan,
+          renewal_date: onboarding.renewal_date || null,
+          monthly_price: parseFloat(onboarding.monthly_price) || 0,
+          status: 'active',
+          max_devices: 10,
+        }),
+      });
+      const orgData = await orgRes.json();
+      if (orgData.error) { setOnboardingError(orgData.error); return; }
+      const orgId = orgData.data?.id;
+
+      const userRes = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: onboarding.owner_email,
+          full_name: onboarding.owner_name,
+          role: 'admin',
+          organization_id: orgId,
+        }),
+      });
+      const userData = await userRes.json();
+      if (userData.error) { setOnboardingError(userData.error); return; }
+
+      await fetch('/api/admin/crud/organizations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: orgId, owner_id: userData.user.id }),
+      });
+
+      setOnboardingResult({
+        invite_url: userData.invite_url,
+        org_name: onboarding.org_name,
+        user_name: onboarding.owner_name,
+        user_email: onboarding.owner_email,
+      });
+      loadData();
+    } catch { setOnboardingError('Erro ao criar organização'); }
+    setOnboardingLoading(false);
+  }
+
+  function resetOnboarding() {
+    setShowOnboarding(false);
+    setOnboardingResult(null);
+    setOnboarding({ org_name: '', org_slug: '', plan: 'pro', renewal_date: '', monthly_price: '', owner_name: '', owner_email: '' });
   }
 
   async function handleSaveOrg() {
@@ -73,7 +147,6 @@ export default function SaasDashboard() {
         total_revenue: editingOrg.total_revenue,
         total_expenses: editingOrg.total_expenses,
         status: editingOrg.status,
-        updated_at: new Date().toISOString(),
       }),
     });
     setEditingOrg(null);
@@ -102,10 +175,14 @@ export default function SaasDashboard() {
           <h1 className="text-2xl font-bold text-gray-900">Painel SAAS</h1>
           <p className="text-sm text-gray-500">Gestão de organizações e assinaturas</p>
         </div>
-        <button onClick={loadData} className="text-sm text-blue-600 hover:text-blue-800">↻ Atualizar</button>
+        <div className="flex gap-2">
+          <button onClick={loadData} className="text-sm text-gray-500 hover:text-gray-700 border border-gray-300 px-3 py-2 rounded-lg">↻ Atualizar</button>
+          <button onClick={() => setShowOnboarding(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+            + Nova Empresa
+          </button>
+        </div>
       </div>
 
-      {/* Financial Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-200">
           <div className="text-xs text-gray-500">Receita Mensal</div>
@@ -125,7 +202,6 @@ export default function SaasDashboard() {
         </div>
       </div>
 
-      {/* Overview Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-200">
           <div className="text-xs text-gray-500">Organizações</div>
@@ -151,10 +227,9 @@ export default function SaasDashboard() {
         </div>
       </div>
 
-      {/* Expiring Soon */}
       {expiring.length > 0 && (
         <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-4">
-          <h3 className="text-sm font-semibold text-yellow-800 mb-2">⚠️ Assinaturas expirando em breve</h3>
+          <h3 className="text-sm font-semibold text-yellow-800 mb-2">⚠ Assinaturas expirando em breve</h3>
           <div className="space-y-1">
             {expiring.map(org => (
               <div key={org.id} className="flex items-center justify-between text-sm">
@@ -168,7 +243,6 @@ export default function SaasDashboard() {
         </div>
       )}
 
-      {/* Organizations Table */}
       <div className="rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden">
         <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-700">Organizações ({orgs.length})</h2>
@@ -223,9 +297,7 @@ export default function SaasDashboard() {
                     <td className="px-4 py-3 text-right text-sm">{org.device_count}</td>
                     <td className="px-4 py-3 text-right text-sm">{org.campaign_count}</td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => setEditingOrg(org)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
-                        Editar
-                      </button>
+                      <button onClick={() => setEditingOrg(org)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Editar</button>
                     </td>
                   </tr>
                 );
@@ -234,6 +306,108 @@ export default function SaasDashboard() {
           </table>
         </div>
       </div>
+
+      {/* Onboarding Modal */}
+      {showOnboarding && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => !onboardingResult && resetOnboarding()}>
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            {onboardingResult ? (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <span className="text-3xl">✓</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">Empresa criada com sucesso!</h3>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                  <div><span className="text-gray-500">Empresa:</span> <span className="font-medium">{onboardingResult.org_name}</span></div>
+                  <div><span className="text-gray-500">Usuário:</span> <span className="font-medium">{onboardingResult.user_name}</span></div>
+                  <div><span className="text-gray-500">Email:</span> <span className="font-medium">{onboardingResult.user_email}</span></div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Link de convite (envie ao usuário)</label>
+                  <div className="flex gap-2">
+                    <input readOnly value={onboardingResult.invite_url}
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 font-mono" />
+                    <button onClick={() => navigator.clipboard.writeText(onboardingResult.invite_url)}
+                      className="bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap">
+                      Copiar
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">O link expira em 7 dias. O usuário definirá a senha ao acessar.</p>
+                </div>
+                <button onClick={resetOnboarding} className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700">
+                  Fechar
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleOnboard}>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Nova Empresa</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Empresa *</label>
+                    <input value={onboarding.org_name} onChange={e => setOnboarding({ ...onboarding, org_name: e.target.value, org_slug: e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Ex: DOOH-X" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Slug (URL)</label>
+                    <input value={onboarding.org_slug} onChange={e => setOnboarding({ ...onboarding, org_slug: e.target.value })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="doohx" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Plano</label>
+                      <select value={onboarding.plan} onChange={e => setOnboarding({ ...onboarding, plan: e.target.value })}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        <option value="free">Gratuito</option>
+                        <option value="basic">Básico</option>
+                        <option value="pro">Profissional</option>
+                        <option value="enterprise">Empresarial</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Preço Mensal (R$)</label>
+                      <input type="number" step="0.01" value={onboarding.monthly_price} onChange={e => setOnboarding({ ...onboarding, monthly_price: e.target.value })}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="0.00" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Data de Renovação</label>
+                    <input type="date" value={onboarding.renewal_date} onChange={e => setOnboarding({ ...onboarding, renewal_date: e.target.value })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div className="border-t border-gray-200 pt-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Usuário Master da Empresa</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome completo *</label>
+                        <input value={onboarding.owner_name} onChange={e => setOnboarding({ ...onboarding, owner_name: e.target.value })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="João Silva" required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                        <input type="email" value={onboarding.owner_email} onChange={e => setOnboarding({ ...onboarding, owner_email: e.target.value })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="usuariox@email.com" required />
+                        <p className="text-xs text-gray-500 mt-1">Um link de convite será enviado para este email definir a senha.</p>
+                      </div>
+                    </div>
+                  </div>
+                  {onboardingError && <p className="text-red-500 text-sm">{onboardingError}</p>}
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button type="submit" disabled={onboardingLoading}
+                    className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                    {onboardingLoading ? 'Criando...' : 'Criar Empresa + Usuário'}
+                  </button>
+                  <button type="button" onClick={resetOnboarding} className="bg-gray-200 text-gray-700 px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-300">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Edit Org Modal */}
       {editingOrg && (

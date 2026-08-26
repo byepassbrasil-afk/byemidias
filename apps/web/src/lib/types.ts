@@ -12,7 +12,7 @@ export interface Organization {
 }
 
 export type UserRole = 'super_admin' | 'admin' | 'manager' | 'operator' | 'viewer';
-export type UserStatus = 'active' | 'inactive' | 'invited';
+export type UserStatus = 'active' | 'inactive' | 'invited' | 'pending_invite';
 
 export interface Profile {
   id: string;

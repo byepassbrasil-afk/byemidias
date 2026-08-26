@@ -56,7 +56,6 @@ export default function PartnerMediaPage() {
 
         const putRes = await fetch(upload_url, {
           method: 'PUT',
-          headers: { 'Content-Type': content_type },
           body: file,
         });
 

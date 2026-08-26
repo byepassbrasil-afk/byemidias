@@ -52,12 +52,30 @@ export async function GET(request: Request) {
     // Auto-deactivate expired campaigns
     try { await sql`SELECT deactivate_expired_campaigns()`; } catch (_) {}
 
-    // Check time slots
+    // Check weekly schedule
     const jsDow = now.getDay();
     const pgDow = jsDow === 0 ? 6 : jsDow - 1;
     const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-    const [matchingSlot] = await sql`SELECT playlist_id FROM campaign_time_slots WHERE campaign_id = ${campaign.id} AND day_of_week = ${pgDow} AND start_time <= ${nowTime} AND end_time > ${nowTime} AND status = 'active' ORDER BY priority DESC LIMIT 1`;
+    const allTimeSlots = await sql`SELECT playlist_id, start_time, end_time, priority FROM campaign_time_slots WHERE campaign_id = ${campaign.id} AND status = 'active' ORDER BY priority DESC`;
+    const hasWeeklySchedule = allTimeSlots.length > 0;
+
+    let targetPlaylistIds: string[] = [];
+
+    if (hasWeeklySchedule) {
+      const matchingSlot = allTimeSlots.find((slot: Record<string, unknown>) => {
+        const slotDay = slot.day_of_week as number;
+        const slotStart = slot.start_time as string;
+        const slotEnd = slot.end_time as string;
+        return slotDay === pgDow && slotStart <= nowTime && slotEnd > nowTime;
+      });
+
+      if (matchingSlot) {
+        targetPlaylistIds = [matchingSlot.playlist_id as string];
+      } else {
+        return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [] });
+      }
+    }
 
     // Get campaign playlists
     const campaignPlaylists = await sql`SELECT playlist_id, position, duration FROM campaign_playlists WHERE campaign_id = ${campaign.id} ORDER BY position ASC`;
@@ -65,10 +83,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [] });
     }
 
-    // Determine which playlists to return
-    const targetPlaylistIds: string[] = matchingSlot?.playlist_id
-      ? [matchingSlot.playlist_id]
-      : campaignPlaylists.map((cp: Record<string, unknown>) => cp.playlist_id as string);
+    // If no weekly schedule, use all playlists (default)
+    if (!hasWeeklySchedule) {
+      targetPlaylistIds = campaignPlaylists.map((cp: Record<string, unknown>) => cp.playlist_id as string);
+    }
 
     const allPlaylists: Array<Record<string, unknown>> = [];
     const allMediaIds = new Set<string>();

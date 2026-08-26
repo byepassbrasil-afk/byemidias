@@ -151,7 +151,9 @@ export async function GET(request: Request) {
     let layoutZones: unknown[] = [];
     if (deviceFull?.layout_template_id) {
       const [layout] = await sql`SELECT zones FROM layout_templates WHERE id = ${deviceFull.layout_template_id}`;
-      if (layout?.zones) layoutZones = layout.zones as unknown[];
+      if (layout?.zones) {
+        layoutZones = typeof layout.zones === 'string' ? JSON.parse(layout.zones) : layout.zones as unknown[];
+      }
     }
 
     return NextResponse.json({

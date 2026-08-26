@@ -1,15 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Device } from '@/lib/types';
-import type { Playlist } from '@/lib/types';
 
 interface PartnerDevice {
   id: string;
   device_id: string;
   playlist_id: string | null;
-  devices: { id: string; name: string; status: string };
-  playlists: { id: string; name: string } | null;
 }
 
 interface Partner {
@@ -21,21 +17,34 @@ interface Partner {
   partner_devices: PartnerDevice[];
 }
 
+interface SimpleItem {
+  id: string;
+  name: string;
+}
+
+function safeParseDevices(raw: unknown): PartnerDevice[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as PartnerDevice[];
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw) as PartnerDevice[]; } catch { return []; }
+  }
+  return [];
+}
+
 export default function PartnersPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
-  const [allDevices, setAllDevices] = useState<Device[]>([]);
-  const [allPlaylists, setAllPlaylists] = useState<Playlist[]>([]);
+  const [allDevices, setAllDevices] = useState<SimpleItem[]>([]);
+  const [allPlaylists, setAllPlaylists] = useState<SimpleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showAssign, setShowAssign] = useState<string | null>(null);
-  const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
-  // Form state
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
 
-  // Assign state
   const [selectedDevices, setSelectedDevices] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -43,29 +52,44 @@ export default function PartnersPage() {
   }, []);
 
   async function loadData() {
-    const [partnersRes, devicesRes, playlistsRes] = await Promise.all([
-      fetch('/api/admin/partners'),
-      fetch('/api/admin/crud/devices?order=name&asc=true'),
-      fetch('/api/admin/crud/playlists?order=name&asc=true'),
-    ]);
+    try {
+      setError(null);
+      const [partnersRes, devicesRes, playlistsRes] = await Promise.all([
+        fetch('/api/admin/partners').catch(() => null),
+        fetch('/api/admin/crud/devices?order=name&asc=true').catch(() => null),
+        fetch('/api/admin/crud/playlists?order=name&asc=true').catch(() => null),
+      ]);
 
-    if (partnersRes.ok) {
-      const partnersData = await partnersRes.json();
-      const list = (partnersData.partners ?? []).map((p: Partner & { partner_devices: unknown }) => ({
-        ...p,
-        partner_devices: typeof p.partner_devices === 'string' ? JSON.parse(p.partner_devices) : (Array.isArray(p.partner_devices) ? p.partner_devices : []),
-      }));
-      setPartners(list);
-    } else {
-      console.error('Partners API error:', partnersRes.status);
-      setPartners([]);
+      if (partnersRes && partnersRes.ok) {
+        const data = await partnersRes.json();
+        const list = (data.partners ?? []).map((p: Record<string, unknown>) => ({
+          id: p.id,
+          username: p.username,
+          display_name: p.display_name || p.name || '',
+          status: p.status,
+          created_at: p.created_at,
+          partner_devices: safeParseDevices(p.partner_devices),
+        }));
+        setPartners(list);
+      } else {
+        setPartners([]);
+      }
+
+      if (devicesRes && devicesRes.ok) {
+        const d = await devicesRes.json();
+        setAllDevices(d.data ?? []);
+      }
+
+      if (playlistsRes && playlistsRes.ok) {
+        const p = await playlistsRes.json();
+        setAllPlaylists(p.data ?? []);
+      }
+    } catch (e) {
+      console.error('loadData error:', e);
+      setError('Erro ao carregar dados');
+    } finally {
+      setLoading(false);
     }
-
-    const devicesJson = await devicesRes.json();
-    const playlistsJson = await playlistsRes.json();
-    setAllDevices(devicesJson.data ?? []);
-    setAllPlaylists(playlistsJson.data ?? []);
-    setLoading(false);
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -108,7 +132,7 @@ export default function PartnersPage() {
   function openAssign(partner: Partner) {
     setShowAssign(partner.id);
     const initial: Record<string, string> = {};
-    partner.partner_devices?.forEach((pd) => {
+    (partner.partner_devices || []).forEach((pd) => {
       initial[pd.device_id] = pd.playlist_id ?? '';
     });
     setSelectedDevices(initial);
@@ -134,8 +158,8 @@ export default function PartnersPage() {
   function copyPartnerLink() {
     const url = `${window.location.origin}/partner/login`;
     navigator.clipboard.writeText(url);
-    setCopiedLink(url);
-    setTimeout(() => setCopiedLink(null), 2000);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   }
 
   return (
@@ -158,53 +182,36 @@ export default function PartnersPage() {
         </div>
       </div>
 
-      {/* Info box */}
       <div className="mb-6 rounded-xl bg-blue-50 border border-blue-200 p-4">
         <p className="text-sm text-blue-800">
           <strong>Link de acesso para parceiros:</strong>{' '}
-          <code className="rounded bg-blue-100 px-2 py-0.5 text-xs">
-            {typeof window !== 'undefined' ? `${window.location.origin}/partner/login` : '/partner/login'}
-          </code>
+          <code className="rounded bg-blue-100 px-2 py-0.5 text-xs">byemidias.vercel.app/partner/login</code>
         </p>
         <p className="text-xs text-blue-600 mt-1">
-          Compartilhe este link com o parceiro. Ele fará login com o usuário e senha criados abaixo.
+          Compartilhe este link. O parceiro fará login com o usuário e senha criados abaixo.
         </p>
       </div>
 
-      {/* Create form */}
       {showForm && (
         <form onSubmit={handleCreate} className="mb-6 rounded-xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome de exibição</label>
-              <input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                required
+              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required
                 placeholder="Mercado do João"
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm"
-              />
+                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Usuário (login)</label>
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
+              <input value={username} onChange={(e) => setUsername(e.target.value)} required
                 placeholder="mercadodojoao"
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm"
-              />
+                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
                 minLength={4}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm"
-              />
+                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm" />
             </div>
           </div>
           <button type="submit" className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700">
@@ -213,7 +220,6 @@ export default function PartnersPage() {
         </form>
       )}
 
-      {/* Assign devices modal */}
       {showAssign && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="rounded-xl bg-white p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -240,7 +246,6 @@ export default function PartnersPage() {
                   />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-gray-900">{device.name}</p>
-                    <p className="text-xs text-gray-500">{device.model || device.device_uuid.slice(0, 8)}</p>
                   </div>
                   {device.id in selectedDevices && (
                     <select
@@ -269,7 +274,12 @@ export default function PartnersPage() {
         </div>
       )}
 
-      {/* Partners table */}
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+          {error} <button onClick={loadData} className="underline ml-2">Tentar novamente</button>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-gray-500">Carregando...</div>
       ) : partners.length === 0 ? (
@@ -295,7 +305,7 @@ export default function PartnersPage() {
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{partner.display_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500 font-mono">{partner.username}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">
-                    {partner.partner_devices?.length ?? 0} dispositivo(s)
+                    {partner.partner_devices?.length || 0} dispositivo(s)
                   </td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -309,22 +319,16 @@ export default function PartnersPage() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => openAssign(partner)}
-                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                      >
+                      <button onClick={() => openAssign(partner)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
                         Dispositivos
                       </button>
-                      <button
-                        onClick={() => handleToggleStatus(partner)}
-                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                      >
+                      <button onClick={() => handleToggleStatus(partner)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
                         {partner.status === 'active' ? 'Desativar' : 'Ativar'}
                       </button>
-                      <button
-                        onClick={() => handleDelete(partner.id)}
-                        className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-                      >
+                      <button onClick={() => handleDelete(partner.id)}
+                        className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
                         Excluir
                       </button>
                     </div>

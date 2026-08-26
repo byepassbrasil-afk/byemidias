@@ -35,7 +35,7 @@ async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> 
 
   const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/');
 
-  if (pathname === '/partner/login') {
+  if (pathname === '/partner/login' || pathname === '/partner/signup') {
     if (token) {
       try {
         await jwtVerify(token, PARTNER_SECRET);

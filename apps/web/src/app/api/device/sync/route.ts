@@ -11,26 +11,34 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'device_id obrigatório' }, { status: 400 });
     }
 
-    const [device] = await sql`SELECT id, organization_id, content_version, campaign_id FROM devices WHERE id = ${deviceId}`;
+    const [device] = await sql`SELECT id, organization_id, content_version, campaign_id, restart_requested FROM devices WHERE id = ${deviceId}`;
     if (!device) {
       return NextResponse.json({ error: 'Dispositivo não encontrado' }, { status: 404 });
     }
 
     if (!device.campaign_id) {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: null, playlists: [], media: [], sync_interval_seconds: 30 });
+      const shouldRestart = device.restart_requested || false;
+      if (shouldRestart) await sql`UPDATE devices SET restart_requested = FALSE WHERE id = ${deviceId}`;
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: null, playlists: [], media: [], sync_interval_seconds: 30, restart: shouldRestart });
     }
 
     const [campaign] = await sql`SELECT id, name, priority, status, start_date, end_date, start_time, end_time, days_of_week FROM campaigns WHERE id = ${device.campaign_id}`;
     if (!campaign || campaign.status !== 'active') {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
+      const shouldRestart = device.restart_requested || false;
+      if (shouldRestart) await sql`UPDATE devices SET restart_requested = FALSE WHERE id = ${deviceId}`;
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30, restart: shouldRestart });
     }
 
     const now = new Date();
     if (campaign.start_date && now < new Date(campaign.start_date)) {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
+      const shouldRestart = device.restart_requested || false;
+      if (shouldRestart) await sql`UPDATE devices SET restart_requested = FALSE WHERE id = ${deviceId}`;
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30, restart: shouldRestart });
     }
     if (campaign.end_date && now > new Date(campaign.end_date)) {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
+      const shouldRestart = device.restart_requested || false;
+      if (shouldRestart) await sql`UPDATE devices SET restart_requested = FALSE WHERE id = ${deviceId}`;
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30, restart: shouldRestart });
     }
 
     const targets = await sql`SELECT target_type, target_id FROM campaign_targets WHERE campaign_id = ${campaign.id}`;
@@ -41,7 +49,9 @@ export async function GET(request: Request) {
         (t.target_type === 'unit' && deviceUnit?.unit_id && t.target_id === deviceUnit.unit_id)
       );
       if (!isTargeted) {
-        return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
+        const shouldRestart = device.restart_requested || false;
+        if (shouldRestart) await sql`UPDATE devices SET restart_requested = FALSE WHERE id = ${deviceId}`;
+        return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30, restart: shouldRestart });
       }
     }
 
@@ -99,7 +109,9 @@ export async function GET(request: Request) {
 
     const campaignPlaylists = await sql`SELECT playlist_id, position, duration FROM campaign_playlists WHERE campaign_id = ${campaign.id} ORDER BY position ASC`;
     if (campaignPlaylists.length === 0) {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
+      const shouldRestart = device.restart_requested || false;
+      if (shouldRestart) await sql`UPDATE devices SET restart_requested = FALSE WHERE id = ${deviceId}`;
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30, restart: shouldRestart });
     }
 
     const allPlaylists: Array<Record<string, unknown>> = [];
@@ -158,6 +170,11 @@ export async function GET(request: Request) {
       await sql`UPDATE devices SET screenshot_requested = FALSE WHERE id = ${deviceId}`;
     }
 
+    const shouldRestart = device.restart_requested || false;
+    if (shouldRestart) {
+      await sql`UPDATE devices SET restart_requested = FALSE WHERE id = ${deviceId}`;
+    }
+
     return NextResponse.json({
       content_version: serverVersion,
       needs_update: needsUpdate,
@@ -165,6 +182,7 @@ export async function GET(request: Request) {
       matched_slot: matchedSlot,
       sync_interval_seconds: matchedSlot ? Math.min(nextSlotChangeSeconds, 60) : 30,
       screenshot_requested: screenshotRequested,
+      restart: shouldRestart,
       layout_template_id: deviceFull?.layout_template_id || null,
       layout_zones: layoutZones,
       playlists: allPlaylists,

@@ -887,8 +887,9 @@ class PlayerActivity : ComponentActivity() {
                 runOnUiThread {
                     try {
                         val intent = packageManager.getLaunchIntentForPackage(packageName)
-                        intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(intent); finish()
+                        intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                        finishAffinity()
                     } catch (_: Exception) {}
                 }
             }

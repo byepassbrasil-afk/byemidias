@@ -586,6 +586,7 @@ class PlayerActivity : ComponentActivity() {
 
     private suspend fun syncAndPlay() {
         var isFirstSync = true
+        var usingCache = false
         while (true) {
             try {
                 if (isFirstSync || mediaList.isEmpty()) {
@@ -595,10 +596,37 @@ class PlayerActivity : ComponentActivity() {
                 val items = result.first
                 val zones = result.second
                 if (items.isEmpty()) {
+                    if (!usingCache && mediaList.isEmpty()) {
+                        val cachedItems = loadCache()
+                        if (cachedItems.isNotEmpty()) {
+                            usingCache = true
+                            mediaList.clear()
+                            mediaList.addAll(cachedItems)
+                            currentIndex = 0
+                            layoutZones = loadZonesCache()
+                            if (layoutZones.isNotEmpty()) {
+                                buildZoneLayout()
+                                val campaignZone = layoutZones.firstOrNull { it.type == "campaign" }
+                                if (campaignZone != null) createMediaViewsForZone(campaignZone)
+                            } else {
+                                videoView = findViewById(R.id.videoView)
+                                imageView = findViewById(R.id.imageView)
+                            }
+                            hideStatus()
+                            showStatus("Modo offline — reproduzindo cache")
+                            delay(3000)
+                            hideStatus()
+                            startPeriodicSync()
+                            playLoop()
+                            continue
+                        }
+                    }
                     showStatus("Sem midia vinculada. Aguardando campanha...")
                     delay(5000)
                     continue
                 }
+                usingCache = false
+                saveCache(items, zones)
                 mediaList.clear()
                 mediaList.addAll(items)
                 currentIndex = 0
@@ -619,8 +647,35 @@ class PlayerActivity : ComponentActivity() {
                 playLoop()
             } catch (e: Exception) {
                 Log.e(tag, "Sync failed", e)
-                showStatus("Erro sync: ${e.message?.take(60)}")
-                delay(5000)
+                if (mediaList.isEmpty()) {
+                    val cachedItems = loadCache()
+                    if (cachedItems.isNotEmpty()) {
+                        usingCache = true
+                        mediaList.clear()
+                        mediaList.addAll(cachedItems)
+                        currentIndex = 0
+                        layoutZones = loadZonesCache()
+                        if (layoutZones.isNotEmpty()) {
+                            buildZoneLayout()
+                            val campaignZone = layoutZones.firstOrNull { it.type == "campaign" }
+                            if (campaignZone != null) createMediaViewsForZone(campaignZone)
+                        } else {
+                            videoView = findViewById(R.id.videoView)
+                            imageView = findViewById(R.id.imageView)
+                        }
+                        hideStatus()
+                        showStatus("Modo offline — reproduzindo cache")
+                        delay(3000)
+                        hideStatus()
+                        startPeriodicSync()
+                        playLoop()
+                    } else {
+                        showStatus("Erro sync e sem cache: ${e.message?.take(60)}")
+                        delay(5000)
+                    }
+                } else {
+                    delay(5000)
+                }
             }
         }
     }
@@ -894,6 +949,102 @@ class PlayerActivity : ComponentActivity() {
     }
 
     // ===================== HELPERS =====================
+
+    private fun saveCache(items: List<MediaItem>, zones: List<ZoneData>) {
+        try {
+            val p = prefs ?: return
+            val arr = org.json.JSONArray()
+            for (item in items) {
+                val obj = org.json.JSONObject()
+                obj.put("id", item.id)
+                obj.put("name", item.name)
+                obj.put("type", item.type)
+                obj.put("fileUrl", item.fileUrl)
+                obj.put("duration", item.duration)
+                obj.put("campaignId", item.campaignId ?: "")
+                obj.put("playlistId", item.playlistId ?: "")
+                arr.put(obj)
+            }
+            val zonesArr = org.json.JSONArray()
+            for (z in zones) {
+                val obj = org.json.JSONObject()
+                obj.put("name", z.name)
+                obj.put("x", z.x.toDouble())
+                obj.put("y", z.y.toDouble())
+                obj.put("width", z.width.toDouble())
+                obj.put("height", z.height.toDouble())
+                obj.put("type", z.type)
+                obj.put("widgetType", z.widgetType)
+                val cfg = org.json.JSONObject()
+                for ((k, v) in z.widgetConfig) cfg.put(k, v)
+                obj.put("widgetConfig", cfg)
+                zonesArr.put(obj)
+            }
+            p.edit()
+                .putString("cache_media", arr.toString())
+                .putString("cache_zones", zonesArr.toString())
+                .putLong("cache_time", System.currentTimeMillis())
+                .apply()
+            Log.i(tag, "Cache saved: ${items.size} items, ${zones.size} zones")
+        } catch (e: Exception) {
+            Log.e(tag, "saveCache failed: ${e.message}")
+        }
+    }
+
+    private fun loadCache(): List<MediaItem> {
+        val items = mutableListOf<MediaItem>()
+        try {
+            val p = prefs ?: return items
+            val str = p.getString("cache_media", null) ?: return items
+            val arr = org.json.JSONArray(str)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                items.add(MediaItem(
+                    obj.optString("id", ""),
+                    obj.optString("name", ""),
+                    obj.optString("type", "image"),
+                    obj.optString("fileUrl", ""),
+                    obj.optInt("duration", 10),
+                    obj.optString("campaignId", "").ifEmpty { null },
+                    obj.optString("playlistId", "").ifEmpty { null }
+                ))
+            }
+            val cacheTime = p.getLong("cache_time", 0)
+            val age = (System.currentTimeMillis() - cacheTime) / (1000 * 60 * 60)
+            Log.i(tag, "Cache loaded: ${items.size} items, age ${age}h")
+        } catch (e: Exception) {
+            Log.e(tag, "loadCache failed: ${e.message}")
+        }
+        return items
+    }
+
+    private fun loadZonesCache(): List<ZoneData> {
+        val zones = mutableListOf<ZoneData>()
+        try {
+            val p = prefs ?: return zones
+            val str = p.getString("cache_zones", null) ?: return zones
+            val arr = org.json.JSONArray(str)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val cfg = mutableMapOf<String, String>()
+                val cfgObj = obj.optJSONObject("widgetConfig")
+                if (cfgObj != null) { for (k in cfgObj.keys()) cfg[k] = cfgObj.optString(k, "") }
+                zones.add(ZoneData(
+                    obj.optString("name", ""),
+                    obj.optDouble("x", 0.0).toFloat(),
+                    obj.optDouble("y", 0.0).toFloat(),
+                    obj.optDouble("width", 100.0).toFloat(),
+                    obj.optDouble("height", 100.0).toFloat(),
+                    obj.optString("type", "campaign"),
+                    obj.optString("widgetType", ""),
+                    cfg
+                ))
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "loadZonesCache failed: ${e.message}")
+        }
+        return zones
+    }
 
     private fun getApiUrl(): String = prefs?.getString("api_base_url", null) ?: BuildConfig.API_BASE_URL
 

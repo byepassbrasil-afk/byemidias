@@ -24,10 +24,11 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.VideoView
+import android.widget.LinearLayout
 import androidx.activity.ComponentActivity
-import androidx.activity.OnBackPressedCallback
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -37,7 +38,6 @@ import com.byemidias.player.R
 import com.byemidias.player.service.PlayerService
 import com.byemidias.player.ui.config.ConfigActivity
 import kotlinx.coroutines.*
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -49,10 +49,10 @@ import java.util.*
 class PlayerActivity : ComponentActivity() {
 
     private val tag = "Player"
-    private lateinit var prefs: SharedPreferences
+    private var prefs: SharedPreferences? = null
 
-    private lateinit var rootLayout: FrameLayout
-    private lateinit var statusText: TextView
+    private var rootLayout: FrameLayout? = null
+    private var statusText: TextView? = null
 
     private var mediaList = mutableListOf<MediaItem>()
     private var currentIndex = 0
@@ -101,94 +101,153 @@ class PlayerActivity : ComponentActivity() {
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        try {
+            super.onCreate(savedInstanceState)
+            Log.i(tag, "onCreate START")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let {
-                it.hide(android.view.WindowInsets.Type.systemBars())
-                it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    window.insetsController?.let {
+                        it.hide(android.view.WindowInsets.Type.systemBars())
+                        it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.decorView.systemUiVisibility = (
+                        View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(tag, "Immersive mode failed: ${e.message}")
             }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            )
-        }
 
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                Log.i(tag, "Back button pressed — ignored (DOOH player)")
+            try {
+                @Suppress("DEPRECATION")
+                onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() {
+                        Log.i(tag, "Back pressed — ignored")
+                    }
+                })
+            } catch (e: Exception) {
+                Log.e(tag, "Back press callback failed: ${e.message}")
             }
-        })
 
-        prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
-        applyRotationFromPrefs()
+            prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
 
-        requestNotificationPermission()
+            try {
+                applyRotationFromPrefs()
+            } catch (e: Exception) {
+                Log.e(tag, "applyRotation failed: ${e.message}")
+            }
 
-        val deviceId = prefs.getString("device_id", null)
-        if (deviceId.isNullOrEmpty()) {
-            showActivation()
-        } else {
-            startPlayer()
+            try {
+                requestNotificationPermission()
+            } catch (e: Exception) {
+                Log.e(tag, "requestNotificationPermission failed: ${e.message}")
+            }
+
+            val deviceId = prefs?.getString("device_id", null)
+            Log.i(tag, "deviceId=${deviceId?.take(12) ?: "null"}")
+
+            if (deviceId.isNullOrEmpty()) {
+                showActivation()
+            } else {
+                startPlayer()
+            }
+
+            Log.i(tag, "onCreate END")
+        } catch (e: Exception) {
+            Log.e(tag, "FATAL CRASH in onCreate: ${e.message}", e)
+            try {
+                showCrashError(e)
+            } catch (_: Exception) {}
         }
+    }
+
+    private fun showCrashError(e: Exception) {
+        val tv = TextView(this)
+        tv.setTextColor(Color.RED)
+        tv.setBackgroundColor(Color.BLACK)
+        tv.gravity = Gravity.CENTER
+        tv.textSize = 14f
+        tv.setPadding(32, 32, 32, 32)
+        tv.text = "CRASH: ${e.javaClass.simpleName}\n${e.message}\n\nVeja crash.log no storage do app"
+        setContentView(tv)
     }
 
     override fun onResume() {
         super.onResume()
-        applyRotationFromPrefs()
-        lifecycleScope.launch(Dispatchers.IO) {
-            sendHeartbeatOn()
-        }
+        try {
+            applyRotationFromPrefs()
+        } catch (_: Exception) {}
+        try {
+            lifecycleScope.launch(Dispatchers.IO) {
+                sendHeartbeatOn()
+            }
+        } catch (_: Exception) {}
     }
 
     override fun onStop() {
         super.onStop()
-        Log.i(tag, "onStop — sending offline")
-        lifecycleScope.launch(Dispatchers.IO) {
-            sendHeartbeatOff()
-        }
-        ensureServiceRunning()
+        try {
+            lifecycleScope.launch(Dispatchers.IO) {
+                sendHeartbeatOff()
+            }
+        } catch (_: Exception) {}
+        try {
+            ensureServiceRunning()
+        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        clockHandler?.removeCallbacksAndMessages(null)
-        syncHandler?.removeCallbacksAndMessages(null)
-        lifecycleScope.launch(Dispatchers.IO) {
-            sendHeartbeatOff()
-        }
+        try { clockHandler?.removeCallbacksAndMessages(null) } catch (_: Exception) {}
+        try { syncHandler?.removeCallbacksAndMessages(null) } catch (_: Exception) {}
+        try {
+            lifecycleScope.launch(Dispatchers.IO) {
+                sendHeartbeatOff()
+            }
+        } catch (_: Exception) {}
     }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        Log.i(tag, "onTrimMemory level=$level")
         if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
-            ensureServiceRunning()
+            try { ensureServiceRunning() } catch (_: Exception) {}
         }
     }
 
     private fun applyRotationFromPrefs() {
-        val rotation = prefs.getInt("screen_rotation", 0)
-        val mirrorH = prefs.getBoolean("mirror_horizontal", false)
-        val mirrorV = prefs.getBoolean("mirror_vertical", false)
-        if (::rootLayout.isInitialized) {
-            runOnUiThread {
-                when (rotation) {
-                    90 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                    270 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                    180 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                    0 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                    -1 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-                }
-                rootLayout.scaleX = if (mirrorH) -1f else 1f
-                rootLayout.scaleY = if (mirrorV) -1f else 1f
+        val p = prefs ?: return
+        val rotation = p.getInt("screen_rotation", 0)
+        val mirrorH = p.getBoolean("mirror_horizontal", false)
+        val mirrorV = p.getBoolean("mirror_vertical", false)
+        val rl = rootLayout ?: return
+        runOnUiThread {
+            when (rotation) {
+                90 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                270 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                180 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                0 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                -1 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            }
+            rl.scaleX = if (mirrorH) -1f else 1f
+            rl.scaleY = if (mirrorV) -1f else 1f
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
             }
         }
     }
@@ -206,263 +265,235 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun scheduleRestart() {
-        try {
-            val intent = Intent(this, PlayerActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
-            alarmManager.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 1000, pendingIntent)
-            Log.i(tag, "Restart scheduled via AlarmManager")
-        } catch (e: Exception) {
-            Log.e(tag, "Failed to schedule restart: ${e.message}")
-        }
-    }
-
     // ===================== ACTIVATION =====================
 
     private fun showActivation() {
-        setContentView(R.layout.activity_activation)
+        try {
+            setContentView(R.layout.activity_activation)
 
-        val codeInput = findViewById<EditText>(R.id.codeInput)
-        val activateBtn = findViewById<Button>(R.id.activateBtn)
-        val errorText = findViewById<TextView>(R.id.errorText)
-        val activateStatus = findViewById<TextView>(R.id.activateStatusText)
+            val codeInput = findViewById<EditText>(R.id.codeInput) ?: return
+            val activateBtn = findViewById<Button>(R.id.activateBtn) ?: return
+            val errorText = findViewById<TextView>(R.id.errorText) ?: return
+            val activateStatus = findViewById<TextView>(R.id.activateStatusText) ?: return
 
-        activateBtn.setOnClickListener {
-            val code = codeInput.text.toString().trim()
-            if (code.isEmpty()) {
-                errorText.text = "Digite o codigo"
-                errorText.visibility = View.VISIBLE
-                return@setOnClickListener
-            }
+            activateBtn.setOnClickListener {
+                val code = codeInput.text.toString().trim()
+                if (code.isEmpty()) {
+                    errorText.text = "Digite o codigo"
+                    errorText.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
 
-            activateBtn.isEnabled = false
-            activateStatus.text = "Ativando..."
-            activateStatus.visibility = View.VISIBLE
-            errorText.visibility = View.GONE
+                activateBtn.isEnabled = false
+                activateStatus.text = "Ativando..."
+                activateStatus.visibility = View.VISIBLE
+                errorText.visibility = View.GONE
 
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val apiUrl = getApiUrl()
-                    Log.i(tag, "Activating with URL: $apiUrl")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val apiUrl = getApiUrl()
+                        val body = JSONObject().apply {
+                            put("device_uuid", getDeviceUuid())
+                            put("activation_code", code)
+                            put("model", android.os.Build.MODEL)
+                            put("manufacturer", android.os.Build.MANUFACTURER)
+                        }
 
-                    val body = JSONObject().apply {
-                        put("device_uuid", getDeviceUuid())
-                        put("activation_code", code)
-                        put("model", android.os.Build.MODEL)
-                        put("manufacturer", android.os.Build.MANUFACTURER)
-                    }
+                        val result = httpPost("$apiUrl/api/device/activate", body.toString())
+                        val json = JSONObject(result)
 
-                    val result = httpPost("$apiUrl/api/device/activate", body.toString())
-                    Log.i(tag, "Activation response: ${result.take(200)}")
+                        if (json.has("error")) {
+                            withContext(Dispatchers.Main) {
+                                errorText.text = json.getString("error")
+                                errorText.visibility = View.VISIBLE
+                                activateBtn.isEnabled = true
+                                activateStatus.visibility = View.GONE
+                            }
+                            return@launch
+                        }
 
-                    val json = JSONObject(result)
+                        val deviceId = json.optString("device_id", "")
+                        if (deviceId.isEmpty()) {
+                            withContext(Dispatchers.Main) {
+                                errorText.text = "Resposta sem device_id"
+                                errorText.visibility = View.VISIBLE
+                                activateBtn.isEnabled = true
+                                activateStatus.visibility = View.GONE
+                            }
+                            return@launch
+                        }
 
-                    if (json.has("error")) {
+                        prefs?.edit()?.putString("device_id", deviceId)?.commit()
+
                         withContext(Dispatchers.Main) {
-                            errorText.text = json.getString("error")
+                            startPlayer()
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            errorText.text = "Erro: ${e.message}"
                             errorText.visibility = View.VISIBLE
                             activateBtn.isEnabled = true
                             activateStatus.visibility = View.GONE
                         }
-                        return@launch
-                    }
-
-                    val deviceId = json.optString("device_id", "")
-                    if (deviceId.isEmpty()) {
-                        withContext(Dispatchers.Main) {
-                            errorText.text = "Resposta sem device_id"
-                            errorText.visibility = View.VISIBLE
-                            activateBtn.isEnabled = true
-                            activateStatus.visibility = View.GONE
-                        }
-                        return@launch
-                    }
-
-                    Log.i(tag, "Activation success, device_id: $deviceId")
-                    val saved = prefs.edit().putString("device_id", deviceId).commit()
-                    Log.i(tag, "Prefs saved: $saved")
-
-                    if (!saved) {
-                        withContext(Dispatchers.Main) {
-                            errorText.text = "Erro ao salvar dados"
-                            errorText.visibility = View.VISIBLE
-                            activateBtn.isEnabled = true
-                            activateStatus.visibility = View.GONE
-                        }
-                        return@launch
-                    }
-
-                    withContext(Dispatchers.Main) {
-                        startPlayer()
-                    }
-                } catch (e: Exception) {
-                    Log.e(tag, "Activation failed", e)
-                    withContext(Dispatchers.Main) {
-                        errorText.text = "Erro: ${e.message}"
-                        errorText.visibility = View.VISIBLE
-                        activateBtn.isEnabled = true
-                        activateStatus.visibility = View.GONE
                     }
                 }
             }
+        } catch (e: Exception) {
+            Log.e(tag, "showActivation crash: ${e.message}", e)
         }
     }
 
     // ===================== PLAYER =====================
 
     private fun startPlayer() {
-        setContentView(R.layout.activity_player)
-        rootLayout = findViewById(R.id.root)
-        statusText = findViewById(R.id.statusText)
+        try {
+            setContentView(R.layout.activity_player)
+            rootLayout = findViewById(R.id.root)
+            statusText = findViewById(R.id.statusText)
 
-        rootLayout.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val now = System.currentTimeMillis()
-                if (now - lastTapTime > TAP_TIMEOUT) {
-                    tapCount = 0
+            rootLayout?.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastTapTime > TAP_TIMEOUT) tapCount = 0
+                    tapCount++
+                    lastTapTime = now
+                    if (tapCount >= TAP_THRESHOLD) {
+                        tapCount = 0
+                        try {
+                            val intent = Intent(this, ConfigActivity::class.java)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e(tag, "ConfigActivity failed: ${e.message}")
+                        }
+                    }
                 }
-                tapCount++
-                lastTapTime = now
-                if (tapCount >= TAP_THRESHOLD) {
-                    tapCount = 0
-                    Log.i(tag, "6x tap detected — opening ConfigActivity")
-                    val intent = Intent(this, ConfigActivity::class.java)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                }
+                true
             }
-            true
+
+            startForegroundService()
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                sendHeartbeatOn()
+                syncAndPlay()
+            }
+
+            startClockUpdates()
+        } catch (e: Exception) {
+            Log.e(tag, "startPlayer crash: ${e.message}", e)
         }
-
-        startForegroundService()
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            sendHeartbeatOn()
-            syncAndPlay()
-        }
-
-        startClockUpdates()
     }
 
     private fun startClockUpdates() {
-        clockHandler = Handler(Looper.getMainLooper())
-        val runnable = object : Runnable {
-            override fun run() {
-                val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-                val dateStr = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
-                val timeStr = sdf.format(Date())
-                for (tv in clockTextViews) {
-                    val format = tv.tag as? String ?: "HH:mm:ss"
-                    val display = if (format == "date") dateStr else timeStr
-                    tv.text = display
+        try {
+            clockHandler = Handler(Looper.getMainLooper())
+            val runnable = object : Runnable {
+                override fun run() {
+                    try {
+                        val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                        val dateStr = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
+                        val timeStr = sdf.format(Date())
+                        for (tv in clockTextViews) {
+                            val format = tv.tag as? String ?: "HH:mm:ss"
+                            tv.text = if (format == "date") dateStr else timeStr
+                        }
+                    } catch (_: Exception) {}
+                    clockHandler?.postDelayed(this, 1000)
                 }
-                clockHandler?.postDelayed(this, 1000)
             }
+            clockHandler?.post(runnable)
+        } catch (e: Exception) {
+            Log.e(tag, "startClockUpdates failed: ${e.message}")
         }
-        clockHandler?.post(runnable)
     }
 
     private fun buildZoneLayout() {
         runOnUiThread {
-            clearZoneViews()
+            try {
+                clearZoneViews()
+                val rl = rootLayout ?: return@runOnUiThread
+                if (layoutZones.isEmpty()) return@runOnUiThread
 
-            if (layoutZones.isEmpty()) return@runOnUiThread
+                val dm = resources.displayMetrics
+                val screenW = dm.widthPixels
+                val screenH = dm.heightPixels
 
-            val dm = resources.displayMetrics
-            val screenW = dm.widthPixels
-            val screenH = dm.heightPixels
+                for (zone in layoutZones) {
+                    val zoneLeft = (zone.x / 100f * screenW).toInt()
+                    val zoneTop = (zone.y / 100f * screenH).toInt()
+                    val zoneW = (zone.width / 100f * screenW).toInt()
+                    val zoneH = (zone.height / 100f * screenH).toInt()
 
-            for (zone in layoutZones) {
-                val zoneLeft = (zone.x / 100f * screenW).toInt()
-                val zoneTop = (zone.y / 100f * screenH).toInt()
-                val zoneW = (zone.width / 100f * screenW).toInt()
-                val zoneH = (zone.height / 100f * screenH).toInt()
+                    if (zone.type == "campaign") continue
 
-                if (zone.type == "campaign") continue
-
-                when (zone.widgetType) {
-                    "clock" -> {
-                        val tv = TextView(this)
-                        tv.setTextColor(Color.WHITE)
-                        tv.gravity = Gravity.CENTER
-                        tv.textSize = 24f
-                        tv.setShadowLayer(4f, 2f, 2f, Color.BLACK)
-                        tv.tag = zone.widgetConfig["format"] ?: "HH:mm:ss"
-                        val lp = FrameLayout.LayoutParams(zoneW, zoneH)
-                        lp.leftMargin = zoneLeft
-                        lp.topMargin = zoneTop
-                        rootLayout.addView(tv, lp)
-                        clockTextViews.add(tv)
-                    }
-                    "weather" -> {
-                        val tv = TextView(this)
-                        tv.setTextColor(Color.WHITE)
-                        tv.gravity = Gravity.CENTER
-                        tv.textSize = 20f
-                        tv.setShadowLayer(4f, 2f, 2f, Color.BLACK)
-                        tv.text = "-- C"
-                        val lp = FrameLayout.LayoutParams(zoneW, zoneH)
-                        lp.leftMargin = zoneLeft
-                        lp.topMargin = zoneTop
-                        rootLayout.addView(tv, lp)
-                        weatherTextViews.add(tv)
-                        fetchWeather(tv, zone.widgetConfig["city"] ?: "Sao Paulo")
-                    }
-                    "text" -> {
-                        val tv = TextView(this)
-                        tv.setTextColor(Color.parseColor(zone.widgetConfig["color"] ?: "#FFFFFF"))
-                        tv.gravity = Gravity.CENTER
-                        tv.textSize = 18f
-                        tv.setShadowLayer(4f, 2f, 2f, Color.BLACK)
-                        tv.text = zone.widgetConfig["content"] ?: ""
-                        tv.tag = "text_content"
-                        val lp = FrameLayout.LayoutParams(zoneW, zoneH)
-                        lp.leftMargin = zoneLeft
-                        lp.topMargin = zoneTop
-                        rootLayout.addView(tv, lp)
-                        widgetTextViews.add(tv)
-                    }
-                    "logo" -> {
-                        val iv = ImageView(this)
-                        iv.scaleType = ImageView.ScaleType.FIT_CENTER
-                        val bgColor = zone.widgetConfig["bg_color"] ?: "#000000"
-                        iv.setBackgroundColor(Color.parseColor(bgColor))
-                        val lp = FrameLayout.LayoutParams(zoneW, zoneH)
-                        lp.leftMargin = zoneLeft
-                        lp.topMargin = zoneTop
-                        rootLayout.addView(iv, lp)
-                        val logoUrl = zone.widgetConfig["url"]
-                        if (!logoUrl.isNullOrEmpty()) {
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                try {
-                                    val bitmap = URL(logoUrl).openStream().use { BitmapFactory.decodeStream(it) }
-                                    if (bitmap != null) runOnUiThread { iv.setImageBitmap(bitmap) }
-                                } catch (_: Exception) {}
+                    when (zone.widgetType) {
+                        "clock" -> {
+                            val tv = TextView(this)
+                            tv.setTextColor(Color.WHITE)
+                            tv.gravity = Gravity.CENTER
+                            tv.textSize = 24f
+                            tv.setShadowLayer(4f, 2f, 2f, Color.BLACK)
+                            tv.tag = zone.widgetConfig["format"] ?: "HH:mm:ss"
+                            val lp = FrameLayout.LayoutParams(zoneW, zoneH)
+                            lp.leftMargin = zoneLeft; lp.topMargin = zoneTop
+                            rl.addView(tv, lp)
+                            clockTextViews.add(tv)
+                        }
+                        "weather" -> {
+                            val tv = TextView(this)
+                            tv.setTextColor(Color.WHITE)
+                            tv.gravity = Gravity.CENTER
+                            tv.textSize = 20f
+                            tv.setShadowLayer(4f, 2f, 2f, Color.BLACK)
+                            tv.text = "-- C"
+                            val lp = FrameLayout.LayoutParams(zoneW, zoneH)
+                            lp.leftMargin = zoneLeft; lp.topMargin = zoneTop
+                            rl.addView(tv, lp)
+                            weatherTextViews.add(tv)
+                            fetchWeather(tv, zone.widgetConfig["city"] ?: "Sao Paulo")
+                        }
+                        "text" -> {
+                            val tv = TextView(this)
+                            tv.setTextColor(Color.parseColor(zone.widgetConfig["color"] ?: "#FFFFFF"))
+                            tv.gravity = Gravity.CENTER
+                            tv.textSize = 18f
+                            tv.setShadowLayer(4f, 2f, 2f, Color.BLACK)
+                            tv.text = zone.widgetConfig["content"] ?: ""
+                            tv.tag = "text_content"
+                            val lp = FrameLayout.LayoutParams(zoneW, zoneH)
+                            lp.leftMargin = zoneLeft; lp.topMargin = zoneTop
+                            rl.addView(tv, lp)
+                            widgetTextViews.add(tv)
+                        }
+                        "logo" -> {
+                            val iv = ImageView(this)
+                            iv.scaleType = ImageView.ScaleType.FIT_CENTER
+                            iv.setBackgroundColor(Color.parseColor(zone.widgetConfig["bg_color"] ?: "#000000"))
+                            val lp = FrameLayout.LayoutParams(zoneW, zoneH)
+                            lp.leftMargin = zoneLeft; lp.topMargin = zoneTop
+                            rl.addView(iv, lp)
+                            val logoUrl = zone.widgetConfig["url"]
+                            if (!logoUrl.isNullOrEmpty()) {
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    try {
+                                        val bitmap = URL(logoUrl).openStream().use { BitmapFactory.decodeStream(it) }
+                                        if (bitmap != null) runOnUiThread { iv.setImageBitmap(bitmap) }
+                                    } catch (_: Exception) {}
+                                }
                             }
                         }
-                    }
-                    "mask" -> {
-                        val v = View(this)
-                        val bgColor = zone.widgetConfig["color"] ?: "#6B21A8"
-                        val opacity = (zone.widgetConfig["opacity"]?.toFloatOrNull() ?: 0.5f) / 100f
-                        v.setBackgroundColor(Color.parseColor(bgColor))
-                        v.alpha = opacity
-                        val lp = FrameLayout.LayoutParams(zoneW, zoneH)
-                        lp.leftMargin = zoneLeft
-                        lp.topMargin = zoneTop
-                        rootLayout.addView(v, lp)
-                    }
-                    else -> {
-                        val v = View(this)
-                        v.setBackgroundColor(Color.parseColor("#1F2937"))
-                        val lp = FrameLayout.LayoutParams(zoneW, zoneH)
-                        lp.leftMargin = zoneLeft
-                        lp.topMargin = zoneTop
-                        rootLayout.addView(v, lp)
+                        "mask" -> {
+                            val v = View(this)
+                            v.setBackgroundColor(Color.parseColor(zone.widgetConfig["color"] ?: "#6B21A8"))
+                            v.alpha = (zone.widgetConfig["opacity"]?.toFloatOrNull() ?: 50f) / 100f
+                            val lp = FrameLayout.LayoutParams(zoneW, zoneH)
+                            lp.leftMargin = zoneLeft; lp.topMargin = zoneTop
+                            rl.addView(v, lp)
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(tag, "buildZoneLayout error: ${e.message}")
             }
         }
     }
@@ -472,65 +503,59 @@ class PlayerActivity : ComponentActivity() {
             try {
                 val url = "https://wttr.in/${city}?format=%t+%C&lang=pt"
                 val conn = URL(url).openConnection() as HttpURLConnection
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                val code = conn.responseCode
-                if (code in 200..299) {
+                conn.connectTimeout = 10000; conn.readTimeout = 10000
+                if (conn.responseCode in 200..299) {
                     val temp = BufferedReader(InputStreamReader(conn.inputStream)).readText().trim()
                     withContext(Dispatchers.Main) { tv.text = temp }
                 }
                 conn.disconnect()
-            } catch (e: Exception) {
-                Log.e(tag, "Weather fetch failed: ${e.message}")
-            }
+            } catch (_: Exception) {}
         }
     }
 
     private fun clearZoneViews() {
-        videoView?.let { rootLayout.removeView(it) }
-        imageView?.let { rootLayout.removeView(it) }
-        for (v in activeZoneViews) rootLayout.removeView(v)
-        for (v in clockTextViews) rootLayout.removeView(v)
-        for (v in weatherTextViews) rootLayout.removeView(v)
-        for (v in widgetTextViews) rootLayout.removeView(v)
-        videoView = null
-        imageView = null
-        activeZoneViews.clear()
-        clockTextViews.clear()
-        weatherTextViews.clear()
-        widgetTextViews.clear()
+        try { videoView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
+        try { imageView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
+        for (v in activeZoneViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
+        for (v in clockTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
+        for (v in weatherTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
+        for (v in widgetTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
+        videoView = null; imageView = null
+        activeZoneViews.clear(); clockTextViews.clear(); weatherTextViews.clear(); widgetTextViews.clear()
     }
 
     private fun createMediaViewsForZone(zone: ZoneData) {
         runOnUiThread {
-            videoView?.let { rootLayout.removeView(it) }
-            imageView?.let { rootLayout.removeView(it) }
+            try {
+                val rl = rootLayout ?: return@runOnUiThread
+                videoView?.let { rl.removeView(it) }
+                imageView?.let { rl.removeView(it) }
 
-            val dm = resources.displayMetrics
-            val screenW = dm.widthPixels
-            val screenH = dm.heightPixels
-            val zoneW = (zone.width / 100f * screenW).toInt()
-            val zoneH = (zone.height / 100f * screenH).toInt()
-            val zoneX = (zone.x / 100f * screenW).toInt()
-            val zoneY = (zone.y / 100f * screenH).toInt()
+                val dm = resources.displayMetrics
+                val screenW = dm.widthPixels; val screenH = dm.heightPixels
+                val zoneW = (zone.width / 100f * screenW).toInt()
+                val zoneH = (zone.height / 100f * screenH).toInt()
+                val zoneX = (zone.x / 100f * screenW).toInt()
+                val zoneY = (zone.y / 100f * screenH).toInt()
 
-            val vv = VideoView(this)
-            vv.visibility = View.GONE
-            val lpV = FrameLayout.LayoutParams(zoneW, zoneH)
-            lpV.leftMargin = zoneX
-            lpV.topMargin = zoneY
-            rootLayout.addView(vv, lpV)
-            videoView = vv
+                val vv = VideoView(this)
+                vv.visibility = View.GONE
+                val lpV = FrameLayout.LayoutParams(zoneW, zoneH)
+                lpV.leftMargin = zoneX; lpV.topMargin = zoneY
+                rl.addView(vv, lpV)
+                videoView = vv
 
-            val iv = ImageView(this)
-            iv.visibility = View.GONE
-            iv.scaleType = ImageView.ScaleType.CENTER_CROP
-            iv.adjustViewBounds = false
-            val lpI = FrameLayout.LayoutParams(zoneW, zoneH)
-            lpI.leftMargin = zoneX
-            lpI.topMargin = zoneY
-            rootLayout.addView(iv, lpI)
-            imageView = iv
+                val iv = ImageView(this)
+                iv.visibility = View.GONE
+                iv.scaleType = ImageView.ScaleType.CENTER_CROP
+                iv.adjustViewBounds = false
+                val lpI = FrameLayout.LayoutParams(zoneW, zoneH)
+                lpI.leftMargin = zoneX; lpI.topMargin = zoneY
+                rl.addView(iv, lpI)
+                imageView = iv
+            } catch (e: Exception) {
+                Log.e(tag, "createMediaViewsForZone error: ${e.message}")
+            }
         }
     }
 
@@ -542,9 +567,8 @@ class PlayerActivity : ComponentActivity() {
             } else {
                 startService(serviceIntent)
             }
-            Log.i(tag, "Foreground service started")
         } catch (e: Exception) {
-            Log.e(tag, "Failed to start foreground service", e)
+            Log.e(tag, "startForegroundService failed: ${e.message}")
         }
     }
 
@@ -553,7 +577,6 @@ class PlayerActivity : ComponentActivity() {
         syncHandler = Handler(Looper.getMainLooper())
         val runnable = object : Runnable {
             override fun run() {
-                Log.i(tag, "Periodic sync check (interval=${syncIntervalSeconds}s)")
                 needsResync = true
                 syncHandler?.postDelayed(this, syncIntervalSeconds * 1000L)
             }
@@ -581,9 +604,7 @@ class PlayerActivity : ComponentActivity() {
                 if (layoutZones.isNotEmpty()) {
                     buildZoneLayout()
                     val campaignZone = layoutZones.firstOrNull { it.type == "campaign" }
-                    if (campaignZone != null) {
-                        createMediaViewsForZone(campaignZone)
-                    }
+                    if (campaignZone != null) createMediaViewsForZone(campaignZone)
                 } else {
                     videoView = findViewById(R.id.videoView)
                     imageView = findViewById(R.id.imageView)
@@ -601,23 +622,18 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private suspend fun fetchMedia(): Pair<List<MediaItem>, List<ZoneData>> = withContext(Dispatchers.IO) {
-        val deviceId = prefs.getString("device_id", "") ?: ""
+        val deviceId = prefs?.getString("device_id", "") ?: ""
         val apiUrl = getApiUrl()
 
         val url = "$apiUrl/api/device/sync?device_id=$deviceId&content_version=$currentContentVersion"
         val response = httpGet(url)
-        Log.i(tag, "Sync response: ${response.take(500)}")
-
         val json = JSONObject(response)
 
         if (json.has("error")) {
             val errorMsg = json.getString("error")
-            Log.e(tag, "Sync error: $errorMsg")
             if (errorMsg.contains("não encontrado") || errorMsg.contains("404")) {
-                prefs.edit().remove("device_id").commit()
-                withContext(Dispatchers.Main) {
-                    showActivation()
-                }
+                prefs?.edit()?.remove("device_id")?.commit()
+                withContext(Dispatchers.Main) { showActivation() }
                 return@withContext Pair(emptyList(), emptyList())
             }
             return@withContext Pair(emptyList(), emptyList())
@@ -628,19 +644,11 @@ class PlayerActivity : ComponentActivity() {
         val mediaArray = json.optJSONArray("media") ?: return@withContext Pair(emptyList(), emptyList())
 
         val respCampaignId = json.optString("campaign_id", "")
-        if (!respCampaignId.isNullOrEmpty()) {
-            currentCampaignId = respCampaignId
-        } else {
-            currentCampaignId = null
-        }
+        currentCampaignId = if (!respCampaignId.isNullOrEmpty()) respCampaignId else null
 
         syncIntervalSeconds = json.optInt("sync_interval_seconds", 30)
-        Log.i(tag, "Sync interval set to ${syncIntervalSeconds}s")
 
-        if (json.optBoolean("screenshot_requested", false)) {
-            Log.i(tag, "Screenshot requested by server — capturing")
-            sendScreenshot()
-        }
+        if (json.optBoolean("screenshot_requested", false)) sendScreenshot()
 
         val mediaMap = mutableMapOf<String, JSONObject>()
         for (i in 0 until mediaArray.length()) {
@@ -656,25 +664,12 @@ class PlayerActivity : ComponentActivity() {
                 val item = playlistItems.getJSONObject(j)
                 val mediaId = item.optString("media_id", "")
                 if (mediaId.isEmpty()) continue
-
                 val media = mediaMap[mediaId] ?: continue
-                val duration = item.optInt("duration", 0)
-                    .coerceAtLeast(media.optInt("duration", 0))
-                    .coerceAtLeast(5)
-
-                items.add(MediaItem(
-                    id = mediaId,
-                    name = media.optString("name", ""),
-                    type = media.optString("type", "image"),
-                    fileUrl = media.optString("file_url", ""),
-                    duration = duration,
-                    campaignId = respCampaignId,
-                    playlistId = playlistId
-                ))
+                val duration = item.optInt("duration", 0).coerceAtLeast(media.optInt("duration", 0)).coerceAtLeast(5)
+                items.add(MediaItem(mediaId, media.optString("name", ""), media.optString("type", "image"),
+                    media.optString("file_url", ""), duration, respCampaignId, playlistId))
             }
         }
-
-        Log.i(tag, "Fetched ${items.size} media items")
 
         val respVersion = json.optInt("content_version", 0)
         if (respVersion > 0) currentContentVersion = respVersion
@@ -686,21 +681,11 @@ class PlayerActivity : ComponentActivity() {
                 val z = zonesArray.getJSONObject(i)
                 val widgetConfig = mutableMapOf<String, String>()
                 val wci = z.optJSONObject("widget_config")
-                if (wci != null) {
-                    for (key in wci.keys()) {
-                        widgetConfig[key] = wci.optString(key, "")
-                    }
-                }
-                zones.add(ZoneData(
-                    name = z.optString("name", ""),
-                    x = z.optDouble("x", 0.0).toFloat(),
-                    y = z.optDouble("y", 0.0).toFloat(),
-                    width = z.optDouble("width", 100.0).toFloat(),
-                    height = z.optDouble("height", 100.0).toFloat(),
-                    type = z.optString("type", "campaign"),
-                    widgetType = z.optString("widget_type", ""),
-                    widgetConfig = widgetConfig
-                ))
+                if (wci != null) { for (key in wci.keys()) widgetConfig[key] = wci.optString(key, "") }
+                zones.add(ZoneData(z.optString("name", ""), z.optDouble("x", 0.0).toFloat(),
+                    z.optDouble("y", 0.0).toFloat(), z.optDouble("width", 100.0).toFloat(),
+                    z.optDouble("height", 100.0).toFloat(), z.optString("type", "campaign"),
+                    z.optString("widget_type", ""), widgetConfig))
             }
         }
 
@@ -709,15 +694,9 @@ class PlayerActivity : ComponentActivity() {
 
     private suspend fun playLoop() {
         while (mediaList.isNotEmpty()) {
-            if (needsResync) {
-                Log.i(tag, "Resync flag detected, breaking play loop")
-                needsResync = false
-                break
-            }
+            if (needsResync) { needsResync = false; break }
             if (currentIndex >= mediaList.size) currentIndex = 0
             val item = mediaList[currentIndex]
-            Log.i(tag, "Playing ${currentIndex + 1}/${mediaList.size}: ${item.name} (${item.type}, ${item.duration}s)")
-
             try {
                 when {
                     item.type == "video" -> playVideo(item)
@@ -729,68 +708,35 @@ class PlayerActivity : ComponentActivity() {
                 Log.e(tag, "Play error: ${item.name}", e)
                 delay(2000)
             }
-
             currentIndex++
         }
     }
 
     private suspend fun playVideo(item: MediaItem) {
-        val vv = videoView ?: run {
-            Log.w(tag, "No videoView available, skipping video")
-            delay(item.duration * 1000L)
-            return
-        }
-
+        val vv = videoView ?: run { delay(item.duration * 1000L); return }
         val latch = java.util.concurrent.CountDownLatch(1)
-
         withContext(Dispatchers.Main) {
             imageView?.visibility = View.GONE
             vv.visibility = View.VISIBLE
-
-            vv.setOnPreparedListener { mp ->
-                mp.isLooping = false
-                mp.start()
-            }
+            vv.setOnPreparedListener { mp -> mp.isLooping = false; mp.start() }
             vv.setOnCompletionListener { latch.countDown() }
-            vv.setOnErrorListener { _, what, extra ->
-                Log.e(tag, "Video error: what=$what extra=$extra")
-                latch.countDown()
-                true
-            }
-
+            vv.setOnErrorListener { _, _, _ -> latch.countDown(); true }
             vv.setVideoURI(Uri.parse(item.fileUrl))
         }
-
-        withContext(Dispatchers.IO) {
-            latch.await(item.duration.toLong() + 30, java.util.concurrent.TimeUnit.SECONDS)
-        }
+        withContext(Dispatchers.IO) { latch.await(item.duration.toLong() + 30, java.util.concurrent.TimeUnit.SECONDS) }
     }
 
     private suspend fun playImage(item: MediaItem) {
-        val iv = imageView ?: run {
-            Log.w(tag, "No imageView available, skipping image")
-            delay(item.duration * 1000L)
-            return
-        }
+        val iv = imageView ?: run { delay(item.duration * 1000L); return }
         withContext(Dispatchers.Main) {
             videoView?.visibility = View.GONE
             iv.visibility = View.VISIBLE
             iv.scaleType = ImageView.ScaleType.CENTER_CROP
         }
-
         try {
-            val bitmap = withContext(Dispatchers.IO) {
-                URL(item.fileUrl).openStream().use { BitmapFactory.decodeStream(it) }
-            }
-            if (bitmap != null) {
-                withContext(Dispatchers.Main) {
-                    iv.setImageBitmap(bitmap)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "Image load failed: ${item.name}", e)
-        }
-
+            val bitmap = withContext(Dispatchers.IO) { URL(item.fileUrl).openStream().use { BitmapFactory.decodeStream(it) } }
+            if (bitmap != null) withContext(Dispatchers.Main) { iv.setImageBitmap(bitmap) }
+        } catch (e: Exception) { Log.e(tag, "Image load failed: ${item.name}") }
         delay(item.duration * 1000L)
     }
 
@@ -799,33 +745,27 @@ class PlayerActivity : ComponentActivity() {
     private fun logPlayback(item: MediaItem) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val deviceId = prefs.getString("device_id", "") ?: ""
+                val deviceId = prefs?.getString("device_id", "") ?: ""
                 if (deviceId.isEmpty()) return@launch
                 val apiUrl = getApiUrl()
-                val uptime = ((System.currentTimeMillis() - ByeMidiasApp.instance.sessionStartTime) / 1000).toInt()
+                val uptime = try { ((System.currentTimeMillis() - ByeMidiasApp.instance.sessionStartTime) / 1000).toInt() } catch (_: Exception) { 0 }
                 val body = JSONObject().apply {
-                    put("device_id", deviceId)
-                    put("status", "playing")
-                    put("player_version", getVersionName())
-                    put("uptime_seconds", uptime)
+                    put("device_id", deviceId); put("status", "playing")
+                    put("player_version", getVersionName()); put("uptime_seconds", uptime)
                     put("media_id", item.id)
-                    if (item.campaignId != null) put("campaign_id", item.campaignId)
-                    if (item.playlistId != null) put("playlist_id", item.playlistId)
+                    item.campaignId?.let { put("campaign_id", it) }
+                    item.playlistId?.let { put("playlist_id", it) }
                 }
                 val result = httpPost("$apiUrl/api/device/heartbeat", body.toString())
                 if (result.isNotEmpty()) {
                     val json = JSONObject(result)
                     val serverVersion = json.optInt("content_version", 0)
                     if (serverVersion > currentContentVersion && currentContentVersion > 0) {
-                        Log.i(tag, "Content changed via playback log: $currentContentVersion -> $serverVersion")
-                        currentContentVersion = serverVersion
-                        needsResync = true
+                        currentContentVersion = serverVersion; needsResync = true
                     }
                     applyDeviceSettings(json)
                 }
-            } catch (e: Exception) {
-                Log.e(tag, "Playback log failed", e)
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -833,93 +773,62 @@ class PlayerActivity : ComponentActivity() {
 
     private fun httpGet(urlStr: String): String {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
-        conn.requestMethod = "GET"
-        conn.connectTimeout = 15000
-        conn.readTimeout = 15000
-        conn.setRequestProperty("Accept", "application/json")
-        conn.connect()
+        conn.requestMethod = "GET"; conn.connectTimeout = 15000; conn.readTimeout = 15000
+        conn.setRequestProperty("Accept", "application/json"); conn.connect()
         val code = conn.responseCode
-        val body = if (code in 200..299) {
-            BufferedReader(InputStreamReader(conn.inputStream)).readText()
-        } else {
-            val err = conn.errorStream
-            if (err != null) BufferedReader(InputStreamReader(err)).readText() else "{}"
-        }
-        conn.disconnect()
-        return body
+        val body = if (code in 200..299) BufferedReader(InputStreamReader(conn.inputStream)).readText()
+        else { val err = conn.errorStream; if (err != null) BufferedReader(InputStreamReader(err)).readText() else "{}" }
+        conn.disconnect(); return body
     }
 
     private fun httpPost(urlStr: String, jsonBody: String): String {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Accept", "application/json")
-        conn.doOutput = true
-        conn.connectTimeout = 15000
-        conn.readTimeout = 15000
-        conn.connect()
-        conn.outputStream.use { os ->
-            os.write(jsonBody.toByteArray(Charsets.UTF_8))
-            os.flush()
-        }
+        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Accept", "application/json"); conn.doOutput = true
+        conn.connectTimeout = 15000; conn.readTimeout = 15000; conn.connect()
+        conn.outputStream.use { os -> os.write(jsonBody.toByteArray(Charsets.UTF_8)); os.flush() }
         val code = conn.responseCode
-        val body = if (code in 200..299) {
-            BufferedReader(InputStreamReader(conn.inputStream)).readText()
-        } else {
-            val err = conn.errorStream
-            if (err != null) BufferedReader(InputStreamReader(err)).readText() else "{}"
-        }
-        conn.disconnect()
-        return body
+        val body = if (code in 200..299) BufferedReader(InputStreamReader(conn.inputStream)).readText()
+        else { val err = conn.errorStream; if (err != null) BufferedReader(InputStreamReader(err)).readText() else "{}" }
+        conn.disconnect(); return body
     }
 
     // ===================== HEARTBEAT =====================
 
     private fun sendHeartbeatOn() {
         try {
-            val deviceId = prefs.getString("device_id", "") ?: ""
-            if (deviceId.isEmpty()) {
-                Log.w(tag, "Heartbeat skipped: empty device_id")
-                return
-            }
+            val deviceId = prefs?.getString("device_id", "") ?: ""
+            if (deviceId.isEmpty()) return
             val apiUrl = getApiUrl()
-            val uptime = ((System.currentTimeMillis() - ByeMidiasApp.instance.sessionStartTime) / 1000).toInt()
+            val uptime = try { ((System.currentTimeMillis() - ByeMidiasApp.instance.sessionStartTime) / 1000).toInt() } catch (_: Exception) { 0 }
             val body = JSONObject().apply {
-                put("device_id", deviceId)
-                put("status", "online")
-                put("player_version", getVersionName())
-                put("uptime_seconds", uptime)
+                put("device_id", deviceId); put("status", "online")
+                put("player_version", getVersionName()); put("uptime_seconds", uptime)
             }
-            Log.i(tag, "Sending heartbeat ON to $apiUrl with device_id=$deviceId")
             val result = httpPost("$apiUrl/api/device/heartbeat", body.toString())
-            Log.i(tag, "Heartbeat ON response: ${result.take(200)}")
             if (result.isNotEmpty()) {
                 val json = JSONObject(result)
                 applyDeviceSettings(json)
             }
-        } catch (e: Exception) {
-            Log.e(tag, "Heartbeat ON failed: ${e.message}", e)
-        }
+        } catch (_: Exception) {}
     }
 
     private fun applyDeviceSettings(json: JSONObject) {
         try {
             val serverVersion = json.optInt("content_version", 0)
             if (serverVersion > currentContentVersion && currentContentVersion > 0) {
-                Log.i(tag, "Content changed: $currentContentVersion -> $serverVersion, flagging resync")
-                currentContentVersion = serverVersion
-                needsResync = true
+                currentContentVersion = serverVersion; needsResync = true
             } else if (currentContentVersion == 0) {
                 currentContentVersion = serverVersion
             }
 
             if (json.optBoolean("restart", false)) {
-                Log.i(tag, "Restart requested by server")
                 runOnUiThread {
-                    val intent = packageManager.getLaunchIntentForPackage(packageName)
-                    intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                    finish()
+                    try {
+                        val intent = packageManager.getLaunchIntentForPackage(packageName)
+                        intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent); finish()
+                    } catch (_: Exception) {}
                 }
             }
 
@@ -928,49 +837,31 @@ class PlayerActivity : ComponentActivity() {
             val mirrorV = json.optBoolean("mirror_vertical", false)
 
             if (rotation != lastAppliedRotation || mirrorH != lastAppliedMirrorH || mirrorV != lastAppliedMirrorV) {
-                lastAppliedRotation = rotation
-                lastAppliedMirrorH = mirrorH
-                lastAppliedMirrorV = mirrorV
+                lastAppliedRotation = rotation; lastAppliedMirrorH = mirrorH; lastAppliedMirrorV = mirrorV
                 runOnUiThread {
                     when (rotation) {
                         90 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                         270 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
                         180 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                        0 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        else -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                     }
-                    rootLayout.scaleX = if (mirrorH) -1f else 1f
-                    rootLayout.scaleY = if (mirrorV) -1f else 1f
+                    rootLayout?.scaleX = if (mirrorH) -1f else 1f
+                    rootLayout?.scaleY = if (mirrorV) -1f else 1f
                 }
             }
-        } catch (e: Exception) {
-            Log.e(tag, "applyDeviceSettings error: ${e.message}")
-        }
+        } catch (_: Exception) {}
     }
 
     private fun sendHeartbeatOff() {
         try {
-            val deviceId = prefs.getString("device_id", "") ?: ""
+            val deviceId = prefs?.getString("device_id", "") ?: ""
             if (deviceId.isEmpty()) return
-            val apiUrl = getApiUrl()
             val body = JSONObject().apply {
-                put("device_id", deviceId)
-                put("status", "offline")
+                put("device_id", deviceId); put("status", "offline")
                 put("player_version", getVersionName())
             }
-            httpPost("$apiUrl/api/device/heartbeat", body.toString())
-            Log.i(tag, "Heartbeat OFF sent")
-        } catch (e: Exception) {
-            Log.e(tag, "Heartbeat OFF failed: ${e.message}")
-        }
-    }
-
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
-            }
-        }
+            httpPost("${getApiUrl()}/api/device/heartbeat", body.toString())
+        } catch (_: Exception) {}
     }
 
     private var lastScreenshotTime = 0L
@@ -979,67 +870,51 @@ class PlayerActivity : ComponentActivity() {
             val now = System.currentTimeMillis()
             if (now - lastScreenshotTime < 2000) return
             lastScreenshotTime = now
-
-            val deviceId = prefs.getString("device_id", "") ?: ""
+            val deviceId = prefs?.getString("device_id", "") ?: ""
             if (deviceId.isEmpty()) return
-
-            if (!::rootLayout.isInitialized) return
-            val view = rootLayout
-            val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+            val rl = rootLayout ?: return
+            val bitmap = android.graphics.Bitmap.createBitmap(rl.width, rl.height, android.graphics.Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(bitmap)
-            view.draw(canvas)
-
+            rl.draw(canvas)
             val baos = java.io.ByteArrayOutputStream()
             bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, baos)
             val base64 = android.util.Base64.encodeToString(baos.toByteArray(), android.util.Base64.NO_WRAP)
             bitmap.recycle()
-
-            val apiUrl = getApiUrl()
             val body = JSONObject().apply {
-                put("device_id", deviceId)
-                put("screenshot", "data:image/jpeg;base64,$base64")
+                put("device_id", deviceId); put("screenshot", "data:image/jpeg;base64,$base64")
             }
-            lifecycleScope.launch(Dispatchers.IO) {
-                httpPost("$apiUrl/api/device/screenshot", body.toString())
-                Log.i(tag, "Screenshot sent (${base64.length / 1024}KB)")
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "Screenshot failed: ${e.message}")
-        }
+            lifecycleScope.launch(Dispatchers.IO) { httpPost("${getApiUrl()}/api/device/screenshot", body.toString()) }
+        } catch (_: Exception) {}
     }
 
     // ===================== HELPERS =====================
 
-    private fun getApiUrl(): String {
-        return prefs.getString("api_base_url", null) ?: BuildConfig.API_BASE_URL
-    }
+    private fun getApiUrl(): String = prefs?.getString("api_base_url", null) ?: BuildConfig.API_BASE_URL
 
     private fun getDeviceUuid(): String {
-        var uuid = prefs.getString("device_uuid", null)
+        var uuid = prefs?.getString("device_uuid", null)
         if (uuid == null) {
-            uuid = java.util.UUID.randomUUID().toString()
-            prefs.edit().putString("device_uuid", uuid).commit()
+            uuid = UUID.randomUUID().toString()
+            prefs?.edit()?.putString("device_uuid", uuid)?.commit()
         }
-        return uuid
+        return uuid ?: ""
     }
 
-    private fun getVersionName(): String {
-        return try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
-        } catch (e: Exception) { "1.0.0" }
-    }
+    private fun getVersionName(): String = try {
+        packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
+    } catch (_: Exception) { "1.0.0" }
 
     private fun showStatus(msg: String) {
         Log.i(tag, msg)
         lifecycleScope.launch(Dispatchers.Main) {
-            statusText.text = msg
-            statusText.visibility = View.VISIBLE
+            statusText?.text = msg
+            statusText?.visibility = View.VISIBLE
         }
     }
 
     private fun hideStatus() {
         lifecycleScope.launch(Dispatchers.Main) {
-            statusText.visibility = View.GONE
+            statusText?.visibility = View.GONE
         }
     }
 }

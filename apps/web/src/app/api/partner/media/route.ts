@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       RETURNING id
     `;
 
-    await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id) VALUES (${session.partnerAccessId}, ${mediaRecord.id})`;
+    await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'approved')`;
 
     return NextResponse.json({ success: true, mediaId: mediaRecord.id });
   } catch (e: unknown) {

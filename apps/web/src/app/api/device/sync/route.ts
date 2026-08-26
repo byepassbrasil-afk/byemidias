@@ -16,27 +16,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Dispositivo não encontrado' }, { status: 404 });
     }
 
-    // Device MUST have campaign_id
     if (!device.campaign_id) {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: null, playlists: [], media: [] });
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: null, playlists: [], media: [], sync_interval_seconds: 30 });
     }
 
-    // Fetch campaign
     const [campaign] = await sql`SELECT id, name, priority, status, start_date, end_date, start_time, end_time, days_of_week FROM campaigns WHERE id = ${device.campaign_id}`;
     if (!campaign || campaign.status !== 'active') {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [] });
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
     }
 
-    // Check date constraints
     const now = new Date();
     if (campaign.start_date && now < new Date(campaign.start_date)) {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [] });
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
     }
     if (campaign.end_date && now > new Date(campaign.end_date)) {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [] });
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
     }
 
-    // Check campaign_targets (skip if device has direct campaign_id)
     const targets = await sql`SELECT target_type, target_id FROM campaign_targets WHERE campaign_id = ${campaign.id}`;
     if (targets.length > 0 && !device.campaign_id) {
       const [deviceUnit] = await sql`SELECT unit_id FROM devices WHERE id = ${deviceId}`;
@@ -45,22 +41,22 @@ export async function GET(request: Request) {
         (t.target_type === 'unit' && deviceUnit?.unit_id && t.target_id === deviceUnit.unit_id)
       );
       if (!isTargeted) {
-        return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [] });
+        return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
       }
     }
 
-    // Auto-deactivate expired campaigns
     try { await sql`SELECT deactivate_expired_campaigns()`; } catch (_) {}
 
-    // Check weekly schedule
     const jsDow = now.getDay();
     const pgDow = jsDow === 0 ? 6 : jsDow - 1;
     const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-    const allTimeSlots = await sql`SELECT playlist_id, start_time, end_time, priority FROM campaign_time_slots WHERE campaign_id = ${campaign.id} AND status = 'active' ORDER BY priority DESC`;
+    const allTimeSlots = await sql`SELECT playlist_id, day_of_week, start_time, end_time, priority FROM campaign_time_slots WHERE campaign_id = ${campaign.id} AND status = 'active' ORDER BY priority DESC`;
     const hasWeeklySchedule = allTimeSlots.length > 0;
 
     let targetPlaylistIds: string[] = [];
+    let matchedSlot = false;
+    let nextSlotChangeSeconds = 60;
 
     if (hasWeeklySchedule) {
       const matchingSlot = allTimeSlots.find((slot: Record<string, unknown>) => {
@@ -72,19 +68,40 @@ export async function GET(request: Request) {
 
       if (matchingSlot) {
         targetPlaylistIds = [matchingSlot.playlist_id as string];
+        matchedSlot = true;
+
+        const endParts = (matchingSlot.end_time as string).split(':');
+        const endMinutes = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        nextSlotChangeSeconds = Math.max((endMinutes - nowMinutes) * 60, 10);
       } else {
-        return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [] });
+        const upcomingSlots = allTimeSlots
+          .filter((slot: Record<string, unknown>) => (slot.day_of_week as number) >= pgDow)
+          .sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+            const dayDiff = (a.day_of_week as number) - (b.day_of_week as number);
+            if (dayDiff !== 0) return dayDiff;
+            return (a.start_time as string).localeCompare(b.start_time as string);
+          });
+
+        if (upcomingSlots.length > 0) {
+          const next = upcomingSlots[0];
+          const nextDay = next.day_of_week as number;
+          const nextStart = (next.start_time as string).split(':');
+          const nextMinutes = nextDay * 24 * 60 + parseInt(nextStart[0]) * 60 + parseInt(nextStart[1]);
+          const nowMinutes = pgDow * 24 * 60 + now.getHours() * 60 + now.getMinutes();
+          nextSlotChangeSeconds = Math.max((nextMinutes - nowMinutes) * 60, 10);
+        } else if (allTimeSlots.length > 0) {
+          nextSlotChangeSeconds = 60;
+        }
       }
     }
 
-    // Get campaign playlists
     const campaignPlaylists = await sql`SELECT playlist_id, position, duration FROM campaign_playlists WHERE campaign_id = ${campaign.id} ORDER BY position ASC`;
     if (campaignPlaylists.length === 0) {
-      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [] });
+      return NextResponse.json({ content_version: device.content_version || 0, needs_update: false, campaign_id: device.campaign_id, playlists: [], media: [], sync_interval_seconds: 30 });
     }
 
-    // If no weekly schedule, use all playlists (default)
-    if (!hasWeeklySchedule) {
+    if (targetPlaylistIds.length === 0) {
       targetPlaylistIds = campaignPlaylists.map((cp: Record<string, unknown>) => cp.playlist_id as string);
     }
 
@@ -115,22 +132,20 @@ export async function GET(request: Request) {
       });
     }
 
-    // Fetch all media
     let mediaList: Record<string, unknown>[] = [];
     if (allMediaIds.size > 0) {
       mediaList = await sql`SELECT * FROM media WHERE id = ANY(${Array.from(allMediaIds)})`;
     }
 
-    let serverVersion = device.content_version || 0;
-    if (serverVersion === 0 && allPlaylists.length > 0) serverVersion = 1;
-    const needsUpdate = serverVersion > contentVersion;
+    const serverVersion = matchedSlot
+      ? Date.now()
+      : (device.content_version || 0) + 1;
+    const needsUpdate = matchedSlot ? true : serverVersion > contentVersion;
 
-    // Update device content_version if needed
-    if (allPlaylists.length > 0 && serverVersion > (device.content_version || 0)) {
+    if (allPlaylists.length > 0) {
       await sql`UPDATE devices SET content_version = ${serverVersion}, updated_at = NOW() WHERE id = ${deviceId}`;
     }
 
-    // Get layout zones
     const [deviceFull] = await sql`SELECT layout_template_id FROM devices WHERE id = ${deviceId}`;
     let layoutZones: unknown[] = [];
     if (deviceFull?.layout_template_id) {
@@ -142,6 +157,8 @@ export async function GET(request: Request) {
       content_version: serverVersion,
       needs_update: needsUpdate,
       campaign_id: campaign.id,
+      matched_slot: matchedSlot,
+      sync_interval_seconds: matchedSlot ? Math.min(nextSlotChangeSeconds, 60) : 30,
       layout_template_id: deviceFull?.layout_template_id || null,
       layout_zones: layoutZones,
       playlists: allPlaylists,

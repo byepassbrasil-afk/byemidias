@@ -56,6 +56,8 @@ class PlayerActivity : ComponentActivity() {
     private var currentContentVersion: Int = 0
     private var layoutZones: List<ZoneData> = emptyList()
     @Volatile private var needsResync = false
+    private var syncIntervalSeconds = 30
+    private var syncHandler: Handler? = null
 
     private var videoView: VideoView? = null
     private var imageView: ImageView? = null
@@ -110,6 +112,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         clockHandler?.removeCallbacksAndMessages(null)
+        syncHandler?.removeCallbacksAndMessages(null)
         if (::prefs.isInitialized) {
             val deviceId = prefs.getString("device_id", "")
             if (!deviceId.isNullOrEmpty()) {
@@ -506,6 +509,24 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    private fun startPeriodicSync() {
+        syncHandler?.removeCallbacksAndMessages(null)
+        syncHandler = Handler(Looper.getMainLooper())
+        val runnable = object : Runnable {
+            override fun run() {
+                Log.i(tag, "Periodic sync check (interval=${syncIntervalSeconds}s)")
+                needsResync = true
+                syncHandler?.postDelayed(this, syncIntervalSeconds * 1000L)
+            }
+        }
+        syncHandler?.postDelayed(runnable, syncIntervalSeconds * 1000L)
+    }
+
+    private fun stopPeriodicSync() {
+        syncHandler?.removeCallbacksAndMessages(null)
+        syncHandler = null
+    }
+
     private suspend fun syncAndPlay() {
         while (true) {
             try {
@@ -535,6 +556,7 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 hideStatus()
+                startPeriodicSync()
                 playLoop()
             } catch (e: Exception) {
                 Log.e(tag, "Sync failed", e)
@@ -571,12 +593,15 @@ class PlayerActivity : ComponentActivity() {
         val playlists = json.optJSONArray("playlists") ?: return@withContext Pair(emptyList(), emptyList())
         val mediaArray = json.optJSONArray("media") ?: return@withContext Pair(emptyList(), emptyList())
 
-        val respCampaignId = json.optString("campaign_id", null)
+        val respCampaignId = json.optString("campaign_id", "")
         if (!respCampaignId.isNullOrEmpty()) {
             currentCampaignId = respCampaignId
         } else {
             currentCampaignId = null
         }
+
+        syncIntervalSeconds = json.optInt("sync_interval_seconds", 30)
+        Log.i(tag, "Sync interval set to ${syncIntervalSeconds}s")
 
         val mediaMap = mutableMapOf<String, JSONObject>()
         for (i in 0 until mediaArray.length()) {

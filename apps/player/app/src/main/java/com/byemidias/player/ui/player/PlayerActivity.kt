@@ -25,6 +25,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.VideoView
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.lifecycleScope
 import com.byemidias.player.ByeMidiasApp
 import com.byemidias.player.BuildConfig
@@ -116,7 +117,14 @@ class PlayerActivity : ComponentActivity() {
             )
         }
 
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                Log.i(tag, "Back button pressed — ignored (DOOH player)")
+            }
+        })
+
         prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
+        applyRotationFromPrefs()
 
         val deviceId = prefs.getString("device_id", null)
         if (deviceId.isNullOrEmpty()) {
@@ -126,33 +134,57 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        clockHandler?.removeCallbacksAndMessages(null)
-        syncHandler?.removeCallbacksAndMessages(null)
-        if (::prefs.isInitialized) {
-            val deviceId = prefs.getString("device_id", "")
-            if (!deviceId.isNullOrEmpty()) {
-                sendHeartbeatOff()
-            }
+    override fun onResume() {
+        super.onResume()
+        applyRotationFromPrefs()
+        lifecycleScope.launch(Dispatchers.IO) {
+            sendHeartbeatOn()
         }
-    }
-
-    @Deprecated("Use OnBackPressedDispatcher instead")
-    override fun onBackPressed() {
-        Log.i(tag, "Back button pressed — ignored (DOOH player)")
-    }
-
-    override fun onPause() {
-        super.onPause()
-        Log.i(tag, "onPause")
-        ensureServiceRunning()
     }
 
     override fun onStop() {
         super.onStop()
-        Log.i(tag, "onStopped")
+        Log.i(tag, "onStop — sending offline")
+        lifecycleScope.launch(Dispatchers.IO) {
+            sendHeartbeatOff()
+        }
         ensureServiceRunning()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        clockHandler?.removeCallbacksAndMessages(null)
+        syncHandler?.removeCallbacksAndMessages(null)
+        lifecycleScope.launch(Dispatchers.IO) {
+            sendHeartbeatOff()
+        }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        Log.i(tag, "onTrimMemory level=$level")
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            ensureServiceRunning()
+        }
+    }
+
+    private fun applyRotationFromPrefs() {
+        val rotation = prefs.getInt("screen_rotation", 0)
+        val mirrorH = prefs.getBoolean("mirror_horizontal", false)
+        val mirrorV = prefs.getBoolean("mirror_vertical", false)
+        if (::rootLayout.isInitialized) {
+            runOnUiThread {
+                when (rotation) {
+                    90 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    270 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                    180 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                    0 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    -1 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                }
+                rootLayout.scaleX = if (mirrorH) -1f else 1f
+                rootLayout.scaleY = if (mirrorV) -1f else 1f
+            }
+        }
     }
 
     private fun ensureServiceRunning() {
@@ -178,14 +210,6 @@ class PlayerActivity : ComponentActivity() {
             Log.i(tag, "Restart scheduled via AlarmManager")
         } catch (e: Exception) {
             Log.e(tag, "Failed to schedule restart: ${e.message}")
-        }
-    }
-
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        Log.i(tag, "onTrimMemory level=$level")
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
-            ensureServiceRunning()
         }
     }
 
@@ -287,7 +311,6 @@ class PlayerActivity : ComponentActivity() {
         rootLayout = findViewById(R.id.root)
         statusText = findViewById(R.id.statusText)
 
-        // Hidden config: 6x tap anywhere
         rootLayout.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
                 val now = System.currentTimeMillis()
@@ -312,13 +335,6 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             sendHeartbeatOn()
             syncAndPlay()
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                delay(15000)
-                sendHeartbeatOn()
-            }
         }
 
         startClockUpdates()
@@ -537,11 +553,6 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         syncHandler?.postDelayed(runnable, syncIntervalSeconds * 1000L)
-    }
-
-    private fun stopPeriodicSync() {
-        syncHandler?.removeCallbacksAndMessages(null)
-        syncHandler = null
     }
 
     private suspend fun syncAndPlay() {
@@ -873,15 +884,15 @@ class PlayerActivity : ComponentActivity() {
                 put("player_version", getVersionName())
                 put("uptime_seconds", uptime)
             }
-            Log.i(tag, "Sending heartbeat to $apiUrl with device_id=$deviceId")
+            Log.i(tag, "Sending heartbeat ON to $apiUrl with device_id=$deviceId")
             val result = httpPost("$apiUrl/api/device/heartbeat", body.toString())
-            Log.i(tag, "Heartbeat response: ${result.take(200)}")
+            Log.i(tag, "Heartbeat ON response: ${result.take(200)}")
             if (result.isNotEmpty()) {
                 val json = JSONObject(result)
                 applyDeviceSettings(json)
             }
         } catch (e: Exception) {
-            Log.e(tag, "Heartbeat failed: ${e.message}", e)
+            Log.e(tag, "Heartbeat ON failed: ${e.message}", e)
         }
     }
 
@@ -919,7 +930,7 @@ class PlayerActivity : ComponentActivity() {
                         90 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                         270 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
                         180 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                        else -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        0 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                     }
                     rootLayout.scaleX = if (mirrorH) -1f else 1f
                     rootLayout.scaleY = if (mirrorV) -1f else 1f
@@ -1000,11 +1011,6 @@ class PlayerActivity : ComponentActivity() {
         return try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
         } catch (e: Exception) { "1.0.0" }
-    }
-
-    private fun getResolution(): String {
-        val dm = resources.displayMetrics
-        return "${dm.widthPixels}x${dm.heightPixels}"
     }
 
     private fun showStatus(msg: String) {

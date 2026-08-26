@@ -6,54 +6,114 @@
   - Environments: .env.local
 
    Creating an optimized production build ...
-<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (107kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
-<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (258kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
  ✓ Compiled successfully
    Linting and checking validity of types ...
    Collecting page data ...
-   Generating static pages (0/27) ...
-   Generating static pages (6/27) 
-   Generating static pages (13/27) 
-   Generating static pages (20/27) 
- ✓ Generating static pages (27/27)
+   Generating static pages (0/74) ...
+GET /api/admin/playlists/pending error: Dynamic server usage: Route /api/admin/playlists/pending couldn't be rendered statically because it used `cookies`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+   Generating static pages (18/74) 
+GET /api/campaigns/active error: Dynamic server usage: Route /api/campaigns/active couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+   Generating static pages (36/74) 
+   Generating static pages (55/74) 
+ ⚠ Unsupported metadata viewport is configured in metadata export in /player. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /player. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Generating static pages (74/74)
    Finalizing page optimization ...
    Collecting build traces ...
 
-Route (app)                              Size     First Load JS
-┌ ○ /                                    175 B          96.2 kB
-├ ○ /_not-found                          873 B          88.2 kB
-├ ƒ /api/admin/partners                  0 B                0 B
-├ ƒ /api/admin/partners/[id]             0 B                0 B
-├ ƒ /api/admin/partners/devices          0 B                0 B
-├ ƒ /api/partner/auth/login              0 B                0 B
-├ ƒ /api/partner/auth/logout             0 B                0 B
-├ ƒ /api/partner/devices                 0 B                0 B
-├ ƒ /api/partner/media                   0 B                0 B
-├ ƒ /api/partner/media/[id]              0 B                0 B
-├ ƒ /api/partner/media/reorder           0 B                0 B
-├ ○ /campaigns                           1.8 kB          156 kB
-├ ○ /dashboard                           1.24 kB         155 kB
-├ ○ /devices                             1.29 kB         155 kB
-├ ○ /login                               1.39 kB         164 kB
-├ ○ /media                               1.53 kB         156 kB
-├ ○ /monitoring                          1.49 kB         155 kB
-├ ○ /organizations                       1.45 kB         155 kB
-├ ○ /partner                             1.15 kB        88.5 kB
-├ ○ /partner/login                       1.13 kB        88.4 kB
-├ ○ /partner/media                       1.82 kB        89.1 kB
-├ ○ /partners                            2.84 kB         157 kB
-├ ○ /playlists                           1.37 kB         155 kB
-├ ○ /settings                            681 B            88 kB
-├ ○ /signup                              1.44 kB         164 kB
-├ ○ /units                               1.45 kB         155 kB
-└ ○ /users                               1.21 kB         155 kB
-+ First Load JS shared by all            87.3 kB
-  ├ chunks/1dd3208c-6a9c9e74f589d906.js  53.6 kB
-  ├ chunks/528-d52822d89e745515.js       31.7 kB
-  └ other shared chunks (total)          1.95 kB
+Route (app)                                 Size     First Load JS
+┌ ○ /                                       175 B          96.1 kB
+├ ○ /_not-found                             873 B          88.1 kB
+├ ○ /activation-codes                       1.89 kB        89.1 kB
+├ ƒ /api/admin/activation-codes             0 B                0 B
+├ ƒ /api/admin/crud/[table]                 0 B                0 B
+├ ƒ /api/admin/device-groups                0 B                0 B
+├ ƒ /api/admin/device-groups/assign         0 B                0 B
+├ ƒ /api/admin/device-logs                  0 B                0 B
+├ ƒ /api/admin/devices/all                  0 B                0 B
+├ ƒ /api/admin/invite                       0 B                0 B
+├ ƒ /api/admin/layouts                      0 B                0 B
+├ ƒ /api/admin/media/save                   0 B                0 B
+├ ƒ /api/admin/media/upload                 0 B                0 B
+├ ƒ /api/admin/partners                     0 B                0 B
+├ ƒ /api/admin/partners/[id]                0 B                0 B
+├ ƒ /api/admin/partners/devices             0 B                0 B
+├ ƒ /api/admin/pending-approvals            0 B                0 B
+├ ƒ /api/admin/playlists/[id]/approve       0 B                0 B
+├ ƒ /api/admin/playlists/[id]/reject        0 B                0 B
+├ ƒ /api/admin/playlists/[id]/slots         0 B                0 B
+├ ƒ /api/admin/playlists/pending            0 B                0 B
+├ ƒ /api/admin/reports                      0 B                0 B
+├ ƒ /api/admin/rpc/[fn]                     0 B                0 B
+├ ƒ /api/admin/saas/stats                   0 B                0 B
+├ ƒ /api/admin/schedules                    0 B                0 B
+├ ƒ /api/admin/stats                        0 B                0 B
+├ ƒ /api/admin/time-slots                   0 B                0 B
+├ ƒ /api/admin/uptime                       0 B                0 B
+├ ƒ /api/admin/users                        0 B                0 B
+├ ƒ /api/auth/invite                        0 B                0 B
+├ ƒ /api/auth/login                         0 B                0 B
+├ ƒ /api/auth/logout                        0 B                0 B
+├ ƒ /api/auth/profile                       0 B                0 B
+├ ƒ /api/auth/signup                        0 B                0 B
+├ ƒ /api/campaigns                          0 B                0 B
+├ ƒ /api/campaigns/active                   0 B                0 B
+├ ƒ /api/device/activate                    0 B                0 B
+├ ƒ /api/device/heartbeat                   0 B                0 B
+├ ƒ /api/device/live                        0 B                0 B
+├ ƒ /api/device/screenshot                  0 B                0 B
+├ ƒ /api/device/sync                        0 B                0 B
+├ ○ /api/keepalive                          0 B                0 B
+├ ƒ /api/partner/auth/login                 0 B                0 B
+├ ƒ /api/partner/auth/logout                0 B                0 B
+├ ƒ /api/partner/devices                    0 B                0 B
+├ ƒ /api/partner/media                      0 B                0 B
+├ ƒ /api/partner/media/[id]                 0 B                0 B
+├ ƒ /api/partner/media/reorder              0 B                0 B
+├ ƒ /api/partner/playlists/modify           0 B                0 B
+├ ƒ /api/partner/slots                      0 B                0 B
+├ ƒ /api/partner/slots/[id]/items           0 B                0 B
+├ ƒ /api/partner/slots/[id]/items/[itemId]  0 B                0 B
+├ ƒ /api/partner/slots/[id]/reorder         0 B                0 B
+├ ○ /approvals                              2.11 kB        89.4 kB
+├ ○ /campaign-schedule                      2.86 kB        90.1 kB
+├ ○ /campaigns                              3.04 kB        90.3 kB
+├ ○ /dashboard                              857 B          88.1 kB
+├ ○ /device-groups                          2.05 kB        89.3 kB
+├ ○ /devices                                4.01 kB        91.3 kB
+├ ƒ /devices/[id]                           2.93 kB        90.2 kB
+├ ○ /diagramacao                            4.37 kB        91.6 kB
+├ ○ /invite                                 1.49 kB        88.7 kB
+├ ○ /login                                  1.23 kB        97.2 kB
+├ ○ /media                                  2.69 kB        89.9 kB
+├ ○ /monitoring                             2.3 kB         89.5 kB
+├ ○ /organizations                          1.71 kB          89 kB
+├ ○ /partner                                1.15 kB        88.4 kB
+├ ○ /partner/login                          1.16 kB        88.4 kB
+├ ○ /partner/media                          1.82 kB        89.1 kB
+├ ○ /partner/playlists                      2.31 kB        89.6 kB
+├ ○ /partners                               2.64 kB        89.9 kB
+├ ○ /pending-approvals                      1.5 kB         88.7 kB
+├ ○ /player                                 2.31 kB        89.6 kB
+├ ○ /playlists                              4.99 kB        92.2 kB
+├ ○ /reports                                2.92 kB        90.2 kB
+├ ○ /saas                                   3.87 kB        91.1 kB
+├ ○ /schedules                              2.15 kB        89.4 kB
+├ ○ /settings                               1.63 kB        88.9 kB
+├ ○ /signup                                 1.65 kB        97.6 kB
+├ ○ /subscription-expired                   142 B          87.4 kB
+├ ○ /units                                  1.89 kB        89.1 kB
+├ ○ /uptime                                 1.88 kB        89.1 kB
+└ ○ /users                                  2.39 kB        89.6 kB
++ First Load JS shared by all               87.2 kB
+  ├ chunks/1dd3208c-c3e217787348fe2a.js     53.6 kB
+  ├ chunks/528-d19bf8d5d130166b.js          31.7 kB
+  └ other shared chunks (total)             1.89 kB
 
 
-ƒ Middleware                             90.6 kB
+ƒ Middleware                                32.5 kB
 
 ○  (Static)   prerendered as static content
 ƒ  (Dynamic)  server-rendered on demand

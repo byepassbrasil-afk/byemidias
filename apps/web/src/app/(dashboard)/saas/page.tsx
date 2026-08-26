@@ -58,7 +58,7 @@ export default function SaasDashboard() {
   const [onboarding, setOnboarding] = useState<OnboardingForm>({
     org_name: '', org_slug: '', plan: 'pro', renewal_date: '', monthly_price: '', owner_name: '', owner_email: '',
   });
-  const [onboardingResult, setOnboardingResult] = useState<{ invite_url: string; org_name: string; user_name: string; user_email: string } | null>(null);
+  const [onboardingResult, setOnboardingResult] = useState<{ temp_password: string; org_name: string; user_name: string; user_email: string } | null>(null);
   const [onboardingError, setOnboardingError] = useState('');
   const [onboardingLoading, setOnboardingLoading] = useState(false);
 
@@ -118,7 +118,7 @@ export default function SaasDashboard() {
       });
 
       setOnboardingResult({
-        invite_url: userData.invite_url,
+        temp_password: userData.temp_password,
         org_name: onboarding.org_name,
         user_name: onboarding.owner_name,
         user_email: onboarding.owner_email,
@@ -326,17 +326,20 @@ export default function SaasDashboard() {
                   <div><span className="text-gray-500">Usuário:</span> <span className="font-medium">{onboardingResult.user_name}</span></div>
                   <div><span className="text-gray-500">Email:</span> <span className="font-medium">{onboardingResult.user_email}</span></div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Link de convite (envie ao usuário)</label>
-                  <div className="flex gap-2">
-                    <input readOnly value={onboardingResult.invite_url}
-                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50 font-mono" />
-                    <button onClick={() => navigator.clipboard.writeText(onboardingResult.invite_url)}
-                      className="bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap">
+                <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4 mb-2">
+                  <p className="text-sm font-medium text-yellow-800 mb-2">Senha temporária do usuário:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-white rounded px-3 py-2 text-sm font-mono text-gray-900 border border-yellow-300">
+                      {onboardingResult.temp_password}
+                    </code>
+                    <button onClick={() => navigator.clipboard.writeText(onboardingResult.temp_password)}
+                      className="bg-yellow-200 hover:bg-yellow-300 px-3 py-2 rounded text-sm font-medium whitespace-nowrap">
                       Copiar
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">O link expira em 7 dias. O usuário definirá a senha ao acessar.</p>
+                  <p className="text-xs text-yellow-700 mt-2">
+                    Anote esta senha. O usuário será solicitado a criar uma nova no primeiro login.
+                  </p>
                 </div>
                 <button onClick={resetOnboarding} className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700">
                   Fechar

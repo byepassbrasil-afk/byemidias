@@ -51,7 +51,11 @@ export default function PartnersPage() {
 
     if (partnersRes.ok) {
       const partnersData = await partnersRes.json();
-      setPartners(partnersData.partners ?? []);
+      const list = (partnersData.partners ?? []).map((p: Partner & { partner_devices: unknown }) => ({
+        ...p,
+        partner_devices: typeof p.partner_devices === 'string' ? JSON.parse(p.partner_devices) : (Array.isArray(p.partner_devices) ? p.partner_devices : []),
+      }));
+      setPartners(list);
     } else {
       console.error('Partners API error:', partnersRes.status);
       setPartners([]);

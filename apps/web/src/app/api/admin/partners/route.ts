@@ -19,9 +19,9 @@ export async function GET() {
     if (profile.role !== 'super_admin' && profile.organization_id) {
       partners = await sql`
         SELECT pa.id, pa.username, pa.display_name, pa.name as display_name_fallback, pa.status, pa.created_at, pa.updated_at,
-          (SELECT json_agg(json_build_object(
-            'id', pd.id, 'device_id', pd.device_id
-          )) FROM partner_devices pd WHERE pd.partner_id = pa.id) as partner_devices
+          COALESCE((SELECT json_agg(json_build_object(
+            'id', pd.id, 'device_id', pd.device_id, 'playlist_id', pd.playlist_id
+          )) FROM partner_devices pd WHERE pd.partner_id = pa.id), '[]'::json) as partner_devices
         FROM partner_access pa
         WHERE pa.organization_id = ${profile.organization_id}
         ORDER BY pa.created_at DESC
@@ -29,9 +29,9 @@ export async function GET() {
     } else {
       partners = await sql`
         SELECT pa.id, pa.username, pa.display_name, pa.name as display_name_fallback, pa.status, pa.created_at, pa.updated_at,
-          (SELECT json_agg(json_build_object(
-            'id', pd.id, 'device_id', pd.device_id
-          )) FROM partner_devices pd WHERE pd.partner_id = pa.id) as partner_devices
+          COALESCE((SELECT json_agg(json_build_object(
+            'id', pd.id, 'device_id', pd.device_id, 'playlist_id', pd.playlist_id
+          )) FROM partner_devices pd WHERE pd.partner_id = pa.id), '[]'::json) as partner_devices
         FROM partner_access pa
         ORDER BY pa.created_at DESC
       `;

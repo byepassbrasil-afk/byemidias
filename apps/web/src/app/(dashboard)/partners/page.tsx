@@ -104,7 +104,7 @@ export default function PartnersPage() {
   function openAssign(partner: Partner) {
     setShowAssign(partner.id);
     const initial: Record<string, string> = {};
-    partner.partner_devices.forEach((pd) => {
+    partner.partner_devices?.forEach((pd) => {
       initial[pd.device_id] = pd.playlist_id ?? '';
     });
     setSelectedDevices(initial);
@@ -291,7 +291,7 @@ export default function PartnersPage() {
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{partner.display_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500 font-mono">{partner.username}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">
-                    {partner.partner_devices.length} dispositivo(s)
+                    {partner.partner_devices?.length ?? 0} dispositivo(s)
                   </td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${

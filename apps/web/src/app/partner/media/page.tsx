@@ -18,6 +18,10 @@ export default function PartnerMediaPage() {
   async function loadMedia() {
     try {
       const res = await fetch('/api/partner/media');
+      if (!res.ok) {
+        setLoading(false);
+        return;
+      }
       const data = await res.json();
       setMedia(data.media ?? []);
     } catch (err) {
@@ -33,20 +37,44 @@ export default function PartnerMediaPage() {
     setError(null);
 
     for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append('file', file);
-
       try {
-        const res = await fetch('/api/partner/media', {
+        const ct = new FormData();
+        ct.append('file', file);
+
+        const presignRes = await fetch('/api/partner/media', {
           method: 'POST',
-          body: formData,
+          body: ct,
         });
 
-        const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.error || 'Erro ao enviar arquivo');
+        if (!presignRes.ok) {
+          const errData = await presignRes.json();
+          setError(errData.error || 'Erro ao gerar upload URL');
+          continue;
         }
+
+        const { upload_url, public_url, file_name, file_size, content_type } = await presignRes.json();
+
+        const putRes = await fetch(upload_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': content_type },
+          body: file,
+        });
+
+        if (!putRes.ok) {
+          setError('Erro ao enviar arquivo para storage');
+          continue;
+        }
+
+        await fetch('/api/partner/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file_name,
+            mime_type: content_type,
+            file_url: public_url,
+            file_size,
+          }),
+        });
       } catch {
         setError('Erro de conexão ao enviar arquivo');
       }
@@ -60,16 +88,12 @@ export default function PartnerMediaPage() {
     if (!confirm('Tem certeza que deseja remover este arquivo?')) return;
 
     try {
-      const res = await fetch(`/api/partner/media/${mediaId}`, {
-        method: 'DELETE',
-      });
-
+      const res = await fetch(`/api/partner/media/${mediaId}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json();
         setError(data.error || 'Erro ao remover');
         return;
       }
-
       loadMedia();
     } catch {
       setError('Erro ao remover arquivo');
@@ -117,20 +141,15 @@ export default function PartnerMediaPage() {
         </div>
       )}
 
-      {/* Drop zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         className={`mb-6 rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
-          dragOver
-            ? 'border-blue-500 bg-blue-500/10'
-            : 'border-gray-700 bg-gray-800/50'
+          dragOver ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700 bg-gray-800/50'
         }`}
       >
-        <p className="text-gray-400">
-          Arraste arquivos aqui ou clique em &quot;Enviar Arquivo&quot;
-        </p>
+        <p className="text-gray-400">Arraste arquivos aqui ou clique em &quot;Enviar Arquivo&quot;</p>
         <p className="text-xs text-gray-500 mt-1">
           Imagens (JPG, PNG, GIF, WebP) e vídeos (MP4, WebM) — máx 50MB
         </p>
@@ -150,9 +169,9 @@ export default function PartnerMediaPage() {
                 {item.type === 'image' || item.type === 'gif' ? (
                   <img src={item.file_url} alt={item.name} className="w-full h-full object-cover" />
                 ) : item.type === 'video' ? (
-                  <div className="text-4xl">🎬</div>
+                  <div className="text-4xl">&#127916;</div>
                 ) : (
-                  <div className="text-4xl">📄</div>
+                  <div className="text-4xl">&#128196;</div>
                 )}
               </div>
               <div className="p-3">
@@ -161,7 +180,6 @@ export default function PartnerMediaPage() {
                   {item.type} · {formatSize(item.file_size)}
                 </p>
               </div>
-              {/* Delete button - only for partner uploads */}
               <button
                 onClick={() => handleDelete(item.id)}
                 className="absolute top-2 right-2 rounded-lg bg-red-600/80 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"

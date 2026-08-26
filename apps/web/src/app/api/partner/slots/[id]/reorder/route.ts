@@ -4,30 +4,33 @@ import sql from '@/lib/db';
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getPartnerSession();
-  if (!session) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  try {
+    const session = await getPartnerSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    const { id: slotId } = await params;
+
+    const [slot] = await sql`SELECT id FROM playlist_slots WHERE id = ${slotId} AND partner_access_id = ${session.partnerAccessId}`;
+    if (!slot) {
+      return NextResponse.json({ error: 'Slot não encontrado' }, { status: 404 });
+    }
+
+    const { items } = await request.json();
+    if (!items || !Array.isArray(items)) {
+      return NextResponse.json({ error: 'items obrigatório' }, { status: 400 });
+    }
+
+    for (const item of items) {
+      await sql`UPDATE playlist_items SET position = ${item.position} WHERE id = ${item.id} AND slot_id = ${slotId}`;
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  const slotId = params.id;
-
-  const [slot] = await sql`SELECT id FROM playlist_slots WHERE id = ${slotId} AND partner_access_id = ${session.partnerAccessId}`;
-
-  if (!slot) {
-    return NextResponse.json({ error: 'Slot não encontrado ou não autorizado' }, { status: 404 });
-  }
-
-  const { items } = await request.json();
-
-  if (!items || !Array.isArray(items)) {
-    return NextResponse.json({ error: 'items obrigatório' }, { status: 400 });
-  }
-
-  for (const item of items) {
-    await sql`UPDATE playlist_items SET position = ${item.position} WHERE id = ${item.id} AND slot_id = ${slotId}`;
-  }
-
-  return NextResponse.json({ success: true });
 }

@@ -16,9 +16,22 @@ export async function POST(request: Request) {
 
     // Update device
     if (status === 'offline') {
+      const [prevDevice] = await sql`SELECT status, name, organization_id FROM devices WHERE id = ${device_id}`;
       await sql`UPDATE devices SET last_heartbeat = '1970-01-01T00:00:00Z', status = 'offline', player_version = ${player_version || null}, storage_available = ${storage_available || null} WHERE id = ${device_id}`;
+      if (prevDevice && prevDevice.status === 'online') {
+        try {
+          await sql`INSERT INTO notifications (organization_id, type, title, message, device_id) VALUES (${prevDevice.organization_id}, 'device_offline', 'Dispositivo Offline', ${`O dispositivo "${prevDevice.name}" ficou offline.`}, ${device_id})`;
+        } catch (_) {}
+      }
     } else {
+      const [prevDevice] = await sql`SELECT status, name, organization_id FROM devices WHERE id = ${device_id}`;
       await sql`UPDATE devices SET last_heartbeat = NOW(), status = 'online', player_version = ${player_version || null}, storage_available = ${storage_available || null} WHERE id = ${device_id}`;
+      if (prevDevice && prevDevice.status === 'offline') {
+        try {
+          await sql`INSERT INTO notifications (organization_id, type, title, message, device_id) VALUES (${prevDevice.organization_id}, 'device_online', 'Dispositivo Online', ${`O dispositivo "${prevDevice.name}" voltou ao online.`}, ${device_id})`;
+          await sql`UPDATE notifications SET read = true WHERE device_id = ${device_id} AND type = 'device_offline' AND read = false`;
+        } catch (_) {}
+      }
     }
 
     // Log heartbeat event

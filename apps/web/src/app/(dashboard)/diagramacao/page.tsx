@@ -334,9 +334,10 @@ export default function DiagramacaoPage() {
                           <div className="text-[8px] opacity-60">{zone.config?.city || 'Sao Paulo'}</div>
                         </div>
                       ) : zone.type === 'text' ? (
-                        <div style={{ color: zone.config?.color || '#fff', fontSize: `${Math.max(8, (zone.config?.font_size || 24) / 10)}px`, textAlign: (zone.config?.alignment as 'center') || 'center' }}>
-                          {zone.content || 'Texto...'}
-                        </div>
+                        <div
+                          style={{ color: zone.config?.color || '#fff', fontSize: `${Math.max(8, (zone.config?.font_size || 24) / 10)}px`, textAlign: (zone.config?.alignment as 'center') || 'center' }}
+                          dangerouslySetInnerHTML={{ __html: zone.content || 'Texto...' }}
+                        />
                       ) : zone.type === 'logo' ? (
                         zone.config?.image_url ? (
                           <img src={zone.config.image_url} alt="Logo" className="max-h-full max-w-full object-contain" />
@@ -502,14 +503,27 @@ export default function DiagramacaoPage() {
                   {selectedZoneData.type === 'text' && (
                     <div className="border-t border-gray-700 pt-2 mt-2 space-y-2">
                       <p className="text-xs text-gray-400 font-medium">Widget: Texto</p>
-                      <div>
-                        <label className="text-xs text-gray-500">Conteudo</label>
-                        <textarea value={selectedZoneData.content || ''}
-                          onChange={(e) => updateZone(selectedZoneData.id, { content: e.target.value })}
-                          placeholder="Texto para exibir..."
-                          rows={3}
-                          className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1 text-white text-xs resize-none" />
+                      {/* Rich text toolbar */}
+                      <div className="flex flex-wrap gap-1 p-1 bg-gray-900 rounded">
+                        <button onClick={() => document.execCommand('bold')} className="px-2 py-1 rounded text-xs text-gray-300 hover:bg-gray-700 font-bold" title="Negrito">B</button>
+                        <button onClick={() => document.execCommand('italic')} className="px-2 py-1 rounded text-xs text-gray-300 hover:bg-gray-700 italic" title="Italico">I</button>
+                        <button onClick={() => document.execCommand('underline')} className="px-2 py-1 rounded text-xs text-gray-300 hover:bg-gray-700 underline" title="Sublinhado">U</button>
+                        <div className="w-px bg-gray-700 mx-1" />
+                        <button onClick={() => document.execCommand('justifyLeft')} className="px-2 py-1 rounded text-xs text-gray-300 hover:bg-gray-700" title="Esquerda">⫷</button>
+                        <button onClick={() => document.execCommand('justifyCenter')} className="px-2 py-1 rounded text-xs text-gray-300 hover:bg-gray-700" title="Centro">☰</button>
+                        <button onClick={() => document.execCommand('justifyRight')} className="px-2 py-1 rounded text-xs text-gray-300 hover:bg-gray-700" title="Direita">⫸</button>
+                        <div className="w-px bg-gray-700 mx-1" />
+                        <button onClick={() => document.execCommand('insertUnorderedList')} className="px-2 py-1 rounded text-xs text-gray-300 hover:bg-gray-700" title="Lista">•≡</button>
+                        <button onClick={() => { const url = prompt('URL do link:'); if (url) document.execCommand('createLink', false, url); }} className="px-2 py-1 rounded text-xs text-gray-300 hover:bg-gray-700" title="Link">🔗</button>
                       </div>
+                      <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        dangerouslySetInnerHTML={{ __html: selectedZoneData.content || '' }}
+                        onBlur={(e) => updateZone(selectedZoneData.id, { content: e.currentTarget.innerHTML })}
+                        className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-2 text-white text-sm min-h-[80px] max-h-[200px] overflow-y-auto focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        style={{ textAlign: (selectedZoneData.config?.alignment as 'center') || 'center' }}
+                      />
                       <div>
                         <label className="text-xs text-gray-500">Tamanho da fonte</label>
                         <input type="number" value={selectedZoneData.config?.font_size || 24}

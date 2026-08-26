@@ -585,15 +585,18 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private suspend fun syncAndPlay() {
+        var isFirstSync = true
         while (true) {
             try {
-                showStatus("Sincronizando...")
+                if (isFirstSync || mediaList.isEmpty()) {
+                    showStatus("Sincronizando...")
+                }
                 val result = fetchMedia()
                 val items = result.first
                 val zones = result.second
                 if (items.isEmpty()) {
                     showStatus("Sem midia vinculada. Aguardando campanha...")
-                    delay(30000)
+                    delay(5000)
                     continue
                 }
                 mediaList.clear()
@@ -611,12 +614,13 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 hideStatus()
+                isFirstSync = false
                 startPeriodicSync()
                 playLoop()
             } catch (e: Exception) {
                 Log.e(tag, "Sync failed", e)
                 showStatus("Erro sync: ${e.message?.take(60)}")
-                delay(10000)
+                delay(5000)
             }
         }
     }
@@ -728,14 +732,16 @@ class PlayerActivity : ComponentActivity() {
 
     private suspend fun playImage(item: MediaItem) {
         val iv = imageView ?: run { delay(item.duration * 1000L); return }
-        withContext(Dispatchers.Main) {
-            videoView?.visibility = View.GONE
-            iv.visibility = View.VISIBLE
-            iv.scaleType = ImageView.ScaleType.CENTER_CROP
-        }
         try {
             val bitmap = withContext(Dispatchers.IO) { URL(item.fileUrl).openStream().use { BitmapFactory.decodeStream(it) } }
-            if (bitmap != null) withContext(Dispatchers.Main) { iv.setImageBitmap(bitmap) }
+            if (bitmap != null) {
+                withContext(Dispatchers.Main) {
+                    videoView?.visibility = View.GONE
+                    iv.visibility = View.VISIBLE
+                    iv.scaleType = ImageView.ScaleType.CENTER_CROP
+                    iv.setImageBitmap(bitmap)
+                }
+            }
         } catch (e: Exception) { Log.e(tag, "Image load failed: ${item.name}") }
         delay(item.duration * 1000L)
     }

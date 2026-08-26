@@ -234,6 +234,16 @@ export default function PlaylistsPage() {
     openItems(selectedPlaylist);
   }
 
+  async function handleUpdateTransition(item: PlaylistItem, newTransition: string) {
+    if (!selectedPlaylist) return;
+    await fetch('/api/admin/crud/playlist_items', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, transition: newTransition }),
+    });
+    openItems(selectedPlaylist);
+  }
+
   async function handleUpdateVolume(item: PlaylistItem, newVolume: number) {
     if (!selectedPlaylist) return;
     await fetch('/api/admin/crud/playlist_items', {
@@ -607,7 +617,22 @@ export default function PlaylistsPage() {
                         <span className="text-xs text-gray-300">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{item.transition ?? 'fade'}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={item.transition ?? 'fade'}
+                        onChange={(e) => handleUpdateTransition(item, e.target.value)}
+                        className="rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                      >
+                        <option value="cut">Corte</option>
+                        <option value="fade">Fade</option>
+                        <option value="slide_left">Deslizar Esquerda</option>
+                        <option value="slide_right">Deslizar Direita</option>
+                        <option value="slide_up">Deslizar Cima</option>
+                        <option value="slide_down">Deslizar Baixo</option>
+                        <option value="zoom">Zoom</option>
+                        <option value="dissolve">Dissolver</option>
+                      </select>
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button

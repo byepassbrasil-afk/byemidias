@@ -10,7 +10,7 @@ export default function SignupPage() {
   const [companySlug, setCompanySlug] = useState('');
   const [slugEdited, setSlugEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [successData, setSuccessData] = useState<{ temp_password: string; org_name: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   function handleCompanyChange(value: string) {
@@ -47,29 +47,50 @@ export default function SignupPage() {
         setLoading(false);
         return;
       }
-      setSuccess(true);
+      setSuccessData({ temp_password: data.temp_password, org_name: data.organization.name });
     } catch {
       setError('Erro de conexão');
       setLoading(false);
     }
   }
 
-  if (success) {
+  if (successData) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-        <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-lg text-center">
-          <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl">⏳</span>
+        <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-lg">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">✓</span>
+            </div>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">Conta criada com sucesso!</h1>
+            <p className="text-sm text-gray-600">Empresa: <strong>{successData.org_name}</strong></p>
           </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Conta criada!</h1>
-          <p className="text-sm text-gray-600 mb-6">
-            Sua conta e organização foram criadas com sucesso. Um administrador precisa aprovar seu acesso antes que você possa entrar no sistema.
-          </p>
-          <p className="text-xs text-gray-500 mb-6">
-            Você receberá uma notificação quando sua conta for aprovada.
-          </p>
+
+          <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4 mb-4">
+            <p className="text-sm font-medium text-yellow-800 mb-2">Sua senha temporária:</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-white rounded px-3 py-2 text-sm font-mono text-gray-900 border border-yellow-300">
+                {successData.temp_password}
+              </code>
+              <button onClick={() => navigator.clipboard.writeText(successData.temp_password)}
+                className="bg-yellow-200 hover:bg-yellow-300 px-3 py-2 rounded text-sm font-medium whitespace-nowrap">
+                Copiar
+              </button>
+            </div>
+            <p className="text-xs text-yellow-700 mt-2">
+              ⚠ Anote esta senha. Ao fazer login pela primeira vez, você será solicitado a criar uma nova senha.
+            </p>
+          </div>
+
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 mb-6">
+            <p className="text-sm text-blue-800">
+              <strong>Email:</strong> {email}<br />
+              <strong>Acesse:</strong> <Link href="/login" className="underline">byemidias.com/login</Link>
+            </p>
+          </div>
+
           <Link href="/login"
-            className="inline-block w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
+            className="block w-full text-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
             Ir para o login
           </Link>
         </div>

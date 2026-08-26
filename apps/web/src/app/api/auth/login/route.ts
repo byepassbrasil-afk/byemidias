@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email e senha são obrigatórios' }, { status: 400 });
     }
 
-    const [profile] = await sql`SELECT id, email, full_name, role, status, password_hash FROM profiles WHERE email = ${email} LIMIT 1`;
+    const [profile] = await sql`SELECT id, email, full_name, role, status, password_hash, organization_id FROM profiles WHERE email = ${email} LIMIT 1`;
 
     if (!profile) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
@@ -29,8 +29,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
+    const mustChangePassword = profile.password_hash.startsWith('temp:');
+
     const response = NextResponse.json({
       user: { id: profile.id, email: profile.email, full_name: profile.full_name, role: profile.role },
+      must_change_password: mustChangePassword,
     });
 
     response.cookies.set('session', JSON.stringify({ email: profile.email }), {
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7,
     });
 
     return response;

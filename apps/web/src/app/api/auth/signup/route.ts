@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import sql from '@/lib/db';
+
+function generateTempPassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const buf = randomBytes(10);
+  let result = '';
+  for (let i = 0; i < 10; i++) {
+    result += chars[buf[i] % chars.length];
+  }
+  return result;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,6 +36,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Esse slug já está em uso. Tente outro.' }, { status: 409 });
     }
 
+    const bcrypt = await import('bcryptjs');
+    const tempPassword = generateTempPassword();
+    const passwordHash = 'temp:' + await bcrypt.hash(tempPassword, 10);
+
     const orgId = randomUUID();
     const userId = randomUUID();
 
@@ -36,8 +50,8 @@ export async function POST(request: NextRequest) {
     `;
 
     const [profile] = await sql`
-      INSERT INTO profiles (id, email, full_name, role, organization_id, status, created_at)
-      VALUES (${userId}, ${email}, ${full_name}, 'admin', ${orgId}, 'pending_invite', NOW())
+      INSERT INTO profiles (id, email, full_name, role, organization_id, status, password_hash, created_at)
+      VALUES (${userId}, ${email}, ${full_name}, 'manager', ${orgId}, 'active', ${passwordHash}, NOW())
       RETURNING id, email, full_name, role
     `;
 
@@ -47,9 +61,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Conta criada com sucesso! Aguarde a aprovação do administrador para acessar.',
+      message: 'Conta criada com sucesso!',
       user: { id: profile.id, email: profile.email, full_name: profile.full_name },
       organization: { id: org.id, name: org.name, slug: org.slug },
+      temp_password: tempPassword,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';

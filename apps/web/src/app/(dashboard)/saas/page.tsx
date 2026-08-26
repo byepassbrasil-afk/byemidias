@@ -28,6 +28,7 @@ interface Org {
   monthly_price: number;
   total_revenue: number;
   total_expenses: number;
+  max_devices: number;
   device_count: number;
   campaign_count: number;
   media_count: number;
@@ -146,6 +147,7 @@ export default function SaasDashboard() {
         monthly_price: editingOrg.monthly_price,
         total_revenue: editingOrg.total_revenue,
         total_expenses: editingOrg.total_expenses,
+        max_devices: editingOrg.max_devices,
         status: editingOrg.status,
       }),
     });
@@ -461,6 +463,12 @@ export default function SaasDashboard() {
                     onChange={e => setEditingOrg({ ...editingOrg, total_expenses: parseFloat(e.target.value) || 0 })}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Máximo de Dispositivos</label>
+                <input type="number" value={editingOrg.max_devices || 10}
+                  onChange={e => setEditingOrg({ ...editingOrg, max_devices: parseInt(e.target.value) || 10 })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               </div>
             </div>
             <div className="flex gap-3 mt-6">

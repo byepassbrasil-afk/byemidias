@@ -318,6 +318,7 @@ class PlayerActivity : ComponentActivity() {
             while (isActive) {
                 delay(15000)
                 sendHeartbeatOn()
+                sendScreenshot()
             }
         }
 
@@ -939,6 +940,40 @@ class PlayerActivity : ComponentActivity() {
             Log.i(tag, "Heartbeat OFF sent")
         } catch (e: Exception) {
             Log.e(tag, "Heartbeat OFF failed: ${e.message}")
+        }
+    }
+
+    private var lastScreenshotTime = 0L
+    private fun sendScreenshot() {
+        try {
+            val now = System.currentTimeMillis()
+            if (now - lastScreenshotTime < 30000) return
+            lastScreenshotTime = now
+
+            val deviceId = prefs.getString("device_id", "") ?: ""
+            if (deviceId.isEmpty()) return
+
+            val view = rootLayout ?: return
+            val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            view.draw(canvas)
+
+            val baos = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, baos)
+            val base64 = android.util.Base64.encodeToString(baos.toByteArray(), android.util.Base64.NO_WRAP)
+            bitmap.recycle()
+
+            val apiUrl = getApiUrl()
+            val body = JSONObject().apply {
+                put("device_id", deviceId)
+                put("screenshot", "data:image/jpeg;base64,$base64")
+            }
+            lifecycleScope.launch(Dispatchers.IO) {
+                httpPost("$apiUrl/api/device/screenshot", body.toString())
+                Log.i(tag, "Screenshot sent (${base64.length / 1024}KB)")
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Screenshot failed: ${e.message}")
         }
     }
 

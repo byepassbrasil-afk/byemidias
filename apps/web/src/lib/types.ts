@@ -17,6 +17,7 @@ export type UserStatus = 'active' | 'inactive' | 'invited';
 export interface Profile {
   id: string;
   organization_id: string | null;
+  email: string;
   full_name: string;
   phone: string | null;
   avatar_url: string | null;
@@ -73,6 +74,8 @@ export interface Device {
   support_id: string | null;
   support_type: string;
   restart_requested: boolean;
+  last_screenshot: string | null;
+  screenshot_updated_at: string | null;
   created_at: string;
   updated_at: string;
 }

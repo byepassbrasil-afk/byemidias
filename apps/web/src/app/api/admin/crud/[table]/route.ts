@@ -29,6 +29,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (key.startsWith('_') || ['limit', 'offset', 'order', 'asc'].includes(key)) continue;
       filters.push(`${key} = '${value.replace(/'/g, "''")}'`);
     }
+
+    if (user.role !== 'super_admin' && table !== 'profiles' && table !== 'organizations') {
+      const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);
+      if (hasOrgCol.length > 0 && user.organization_id) {
+        filters.push(`organization_id = '${user.organization_id}'`);
+      }
+    }
+
     const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
 
     const data = await sql.unsafe(`SELECT * FROM ${table} ${whereClause} ORDER BY ${orderBy} ${ascending ? 'ASC' : 'DESC'} LIMIT ${limit} OFFSET ${offset}`);

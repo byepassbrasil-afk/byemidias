@@ -19,12 +19,14 @@ interface NavItem {
   name: string;
   href: string;
   icon: string;
+  adminOnly?: boolean;
 }
 
 interface NavSection {
   title: string;
   icon: string;
   items: NavItem[];
+  adminOnly?: boolean;
 }
 
 const sections: NavSection[] = [
@@ -65,7 +67,7 @@ const sections: NavSection[] = [
     title: 'Administração',
     icon: '⚙️',
     items: [
-      { name: 'Organizações', href: '/organizations', icon: '🏢' },
+      { name: 'Organizações', href: '/organizations', icon: '🏢', adminOnly: true },
       { name: 'Usuários', href: '/users', icon: '👥' },
       { name: 'Unidades', href: '/units', icon: '📍' },
       { name: 'Agendamento', href: '/schedules', icon: '📅' },
@@ -88,7 +90,6 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [openSections, setOpenSections] = useState<Set<string>>(
     new Set(sections.map(s => s.title))
   );
@@ -121,6 +122,18 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   };
 
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??';
+  const isAdmin = profile?.role === 'super_admin' || profile?.role === 'admin';
+
+  const filteredSections = sections.filter(s => {
+    if (s.adminOnly && !isAdmin) return false;
+    return true;
+  }).map(s => ({
+    ...s,
+    items: s.items.filter(i => {
+      if (i.adminOnly && !isAdmin) return false;
+      return true;
+    }),
+  }));
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -129,8 +142,19 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
         <span className="ml-1.5 text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">DOOH</span>
       </div>
 
+      {isAdmin && (
+        <Link href="/saas" onClick={handleLinkClick}
+          className={clsx(
+            'mx-3 mt-3 mb-1 flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+            pathname.startsWith('/saas') ? 'bg-purple-600 text-white' : 'bg-purple-900/30 text-purple-300 hover:bg-purple-800/40'
+          )}>
+          <span>🏢</span>
+          <span>Painel SAAS</span>
+        </Link>
+      )}
+
       <nav className="flex-1 py-2 overflow-y-auto">
-        {sections.map((section) => {
+        {filteredSections.map((section) => {
           const isOpen = openSections.has(section.title);
           const isActive = section.items.some(item => pathname.startsWith(item.href));
 

@@ -67,6 +67,7 @@ const sections: NavSection[] = [
     title: 'Administração',
     icon: '⚙️',
     items: [
+      { name: 'Cadastros Pendentes', href: '/pending-approvals', icon: '⏳', adminOnly: true },
       { name: 'Organizações', href: '/organizations', icon: '🏢', adminOnly: true },
       { name: 'Usuários', href: '/users', icon: '👥' },
       { name: 'Unidades', href: '/units', icon: '📍' },
@@ -94,10 +95,18 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
     new Set(sections.map(s => s.title))
   );
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     fetch('/api/auth/profile').then(r => r.json()).then(d => {
-      if (d.profile) setProfile(d.profile);
+      if (d.profile) {
+        setProfile(d.profile);
+        if (d.profile.role === 'super_admin' || d.profile.role === 'admin') {
+          fetch('/api/admin/pending-approvals').then(r => r.json()).then(pd => {
+            setPendingCount(pd.data?.length || 0);
+          }).catch(() => {});
+        }
+      }
     }).catch(() => {});
   }, []);
 
@@ -190,6 +199,11 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                     >
                       <span className="text-xs">{item.icon}</span>
                       {item.name}
+                      {item.href === '/pending-approvals' && pendingCount > 0 && (
+                        <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                          {pendingCount}
+                        </span>
+                      )}
                     </Link>
                   ))}
                 </div>

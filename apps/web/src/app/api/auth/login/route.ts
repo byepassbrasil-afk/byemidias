@@ -16,8 +16,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
+    if (profile.status === 'pending_invite') {
+      return NextResponse.json({ error: 'Sua conta está aguardando aprovação do administrador.' }, { status: 403 });
+    }
     if (profile.status !== 'active') {
-      return NextResponse.json({ error: 'Conta inativa' }, { status: 403 });
+      return NextResponse.json({ error: 'Conta inativa. Contate o administrador.' }, { status: 403 });
     }
 
     const bcrypt = await import('bcryptjs');

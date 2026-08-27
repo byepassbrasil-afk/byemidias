@@ -183,6 +183,7 @@ export interface PartnerDeviceWithInfo extends PartnerDevice {
   device_name: string;
   device_status: string;
   device_uuid: string;
+  device_last_heartbeat: string | null;
   playlist_name: string | null;
 }
 

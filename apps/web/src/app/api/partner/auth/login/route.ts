@@ -1,15 +1,20 @@
 import { NextResponse } from 'next/server';
 import { createPartnerSession, setPartnerSessionCookie, validatePartnerCredentials } from '@/lib/partner-auth';
 
+// Legacy route — redirects to slug-based login
 export async function POST(request: Request) {
   try {
-    const { username, password } = await request.json();
+    const { username, password, slug } = await request.json();
 
     if (!username || !password) {
       return NextResponse.json({ error: 'Username e senha obrigatórios' }, { status: 400 });
     }
 
-    const result = await validatePartnerCredentials(username, password);
+    if (!slug) {
+      return NextResponse.json({ error: 'Slug da organização obrigatório. Use /api/partner/[slug]/auth/login' }, { status: 400 });
+    }
+
+    const result = await validatePartnerCredentials(username, password, slug);
 
     if (!result.valid || !result.partner) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });

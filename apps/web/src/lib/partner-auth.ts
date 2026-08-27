@@ -61,7 +61,8 @@ export async function clearPartnerSessionCookie() {
  */
 export async function validateOrgSlug(slug: string): Promise<{ id: string; name: string } | null> {
   const [org] = await sql`SELECT id, name FROM organizations WHERE slug = ${slug} AND status != 'inactive' LIMIT 1`;
-  return org || null;
+  if (!org) return null;
+  return { id: org.id as string, name: org.name as string };
 }
 
 /**

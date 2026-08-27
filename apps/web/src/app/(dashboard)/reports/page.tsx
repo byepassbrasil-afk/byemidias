@@ -33,10 +33,12 @@ export default function ReportsPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const formatHours = (h: number) => {
-    if (h < 1) return `${Math.round(h * 60)}min`;
-    const hours = Math.floor(h);
-    const mins = Math.round((h - hours) * 60);
+  const formatHours = (h: number | null | undefined) => {
+    const n = h ?? 0;
+    if (!Number.isFinite(n) || n <= 0) return '0min';
+    if (n < 1) return `${Math.round(n * 60)}min`;
+    const hours = Math.floor(n);
+    const mins = Math.round((n - hours) * 60);
     return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
   };
 
@@ -97,21 +99,21 @@ export default function ReportsPage() {
   );
 }
 
-function BasicReport({ data, formatHours }: { data: Record<string, unknown>; formatHours: (h: number) => string }) {
-  const summary = data.summary as Record<string, number>;
-  const devices = data.devices as Array<Record<string, unknown>>;
+function BasicReport({ data, formatHours }: { data: Record<string, unknown>; formatHours: (h: number | null | undefined) => string }) {
+  const summary = (data.summary as Record<string, number | undefined> | undefined) ?? {};
+  const devices = (data.devices as Array<Record<string, unknown>> | undefined) ?? [];
 
   return (
     <div className="space-y-6">
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
-          { label: 'Dispositivos', value: summary.total_devices, icon: '📺', color: 'blue' },
-          { label: 'Online', value: summary.online_devices, icon: '🟢', color: 'green' },
-          { label: 'Offline', value: summary.offline_devices, icon: '🔴', color: 'red' },
-          { label: 'Mídias', value: summary.total_media, icon: '📁', color: 'purple' },
-          { label: 'Campanhas', value: summary.active_campaigns, icon: '📢', color: 'yellow' },
-          { label: 'Reproduções', value: summary.total_plays, icon: '▶️', color: 'cyan' },
+          { label: 'Dispositivos', value: summary.total_devices, icon: '📺' },
+          { label: 'Online', value: summary.online_devices, icon: '🟢' },
+          { label: 'Offline', value: summary.offline_devices, icon: '🔴' },
+          { label: 'Mídias', value: summary.total_media, icon: '📁' },
+          { label: 'Campanhas', value: summary.active_campaigns, icon: '📢' },
+          { label: 'Reproduções', value: summary.total_plays, icon: '▶️' },
         ].map((card) => (
           <div key={card.label} className="rounded-xl bg-gray-900 border border-gray-800 p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -141,25 +143,34 @@ function BasicReport({ data, formatHours }: { data: Record<string, unknown>; for
               </tr>
             </thead>
             <tbody>
-              {devices.map((d) => (
-                <tr key={d.id as string} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                  <td className="px-5 py-3">
-                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      d.is_online ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-400'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${d.is_online ? 'bg-green-400' : 'bg-gray-500'}`} />
-                      {d.is_online ? 'Online' : 'Offline'}
-                    </span>
+              {devices.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-8 text-gray-500 text-sm">
+                    Nenhum dispositivo encontrado
                   </td>
-                  <td className="px-5 py-3 text-white">{d.name as string}</td>
-                  <td className="px-5 py-3 text-gray-300">{d.model as string}</td>
-                  <td className="px-5 py-3 text-gray-400">{d.player_version as string}</td>
-                  <td className="px-5 py-3 text-right text-green-400 font-medium">
-                    {formatHours(d.uptime_hours as number)}
-                  </td>
-                  <td className="px-5 py-3 text-right text-white">{d.play_count as number}</td>
                 </tr>
-              ))}
+              ) : devices.map((d) => {
+                const isOnline = Boolean(d.is_online);
+                return (
+                  <tr key={(d.id as string) ?? Math.random()} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                    <td className="px-5 py-3">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        isOnline ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-400'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-400' : 'bg-gray-500'}`} />
+                        {isOnline ? 'Online' : 'Offline'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-white">{(d.name as string) ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-300">{(d.model as string) ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-400">{(d.player_version as string) ?? '—'}</td>
+                    <td className="px-5 py-3 text-right text-green-400 font-medium">
+                      {formatHours(d.uptime_hours as number)}
+                    </td>
+                    <td className="px-5 py-3 text-right text-white">{(d.play_count as number) ?? 0}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -169,50 +180,73 @@ function BasicReport({ data, formatHours }: { data: Record<string, unknown>; for
 }
 
 function CampaignReport({ data }: { data: Record<string, unknown> }) {
-  const campaigns = data.campaigns as Array<Record<string, unknown>>;
+  const campaigns = (data.campaigns as Array<Record<string, unknown>> | undefined) ?? [];
+  const totalPlays = (data.total_plays as number) ?? 0;
 
   return (
     <div className="space-y-4">
       <div className="text-sm text-gray-400">
-        Total de reproduções: <span className="text-white font-semibold">{data.total_plays as number}</span>
+        Total de reproduções: <span className="text-white font-semibold">{totalPlays}</span>
       </div>
 
-      {campaigns.map((c) => (
-        <div key={c.id as string} className="rounded-xl bg-gray-900 border border-gray-800 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-white text-lg">{c.name as string}</h3>
-            <span className="text-blue-400 font-semibold">{c.plays as number} reproduções</span>
-          </div>
-
-          <div className="text-xs text-gray-500 mb-2">Top mídias:</div>
-          <div className="space-y-1">
-            {(c.top_media as Array<Record<string, unknown>>).map((m, i) => (
-              <div key={i} className="flex items-center justify-between text-sm">
-                <span className="text-gray-300">{m.name as string}</span>
-                <span className="text-gray-500">{m.count as number}x</span>
-              </div>
-            ))}
-          </div>
+      {campaigns.length === 0 ? (
+        <div className="rounded-xl bg-gray-900 border border-gray-800 p-12 text-center text-gray-500">
+          Nenhum dado de campanha encontrado no período
         </div>
-      ))}
+      ) : campaigns.map((c) => {
+        const topMedia = (c.top_media as Array<Record<string, unknown>> | undefined) ?? [];
+        return (
+          <div key={(c.id as string) ?? Math.random()} className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-white text-lg">{(c.name as string) ?? 'Sem nome'}</h3>
+              <span className="text-blue-400 font-semibold">{(c.plays as number) ?? 0} reproduções</span>
+            </div>
 
-      {campaigns.length === 0 && (
-        <div className="text-center py-12 text-gray-500">Nenhum dado de campanha encontrado</div>
-      )}
+            {topMedia.length > 0 && (
+              <>
+                <div className="text-xs text-gray-500 mb-2">Top mídias:</div>
+                <div className="space-y-1">
+                  {topMedia.map((m, i) => (
+                    <div key={(m.id as string) ?? i} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-300">{(m.name as string) ?? '—'}</span>
+                      <span className="text-gray-500">{((m.count as number) ?? 0)}x</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function ActivityReport({ data }: { data: Record<string, unknown> }) {
-  const heatmap = data.heatmap as number[][];
-  const hourlyTotal = data.hourly_total as number[];
-  const dailyTotal = data.daily_total as number[];
-  const deviceActivity = data.device_activity as Array<Record<string, unknown>>;
+  const heatmapRaw = (data.heatmap as number[][] | undefined) ?? [];
+  const hourlyTotal = (data.hourly_total as number[] | undefined) ?? [];
+  const dailyTotal = (data.daily_total as number[] | undefined) ?? [];
+  const deviceActivity = (data.device_activity as Array<Record<string, unknown>> | undefined) ?? [];
+
+  // Garante shape 7x24 mesmo se o back mandou vazio
+  const heatmap: number[][] = Array.from({ length: 7 }, (_, dayIdx) =>
+    Array.from({ length: 24 }, (_, hourIdx) => heatmapRaw[dayIdx]?.[hourIdx] ?? 0)
+  );
+  const hourly: number[] = Array.from({ length: 24 }, (_, i) => hourlyTotal[i] ?? 0);
+  const daily: number[] = Array.from({ length: 7 }, (_, i) => dailyTotal[i] ?? 0);
 
   const maxVal = Math.max(...heatmap.flat(), 1);
+  const maxHourly = Math.max(...hourly, 1);
+  const maxPlays = Math.max(...deviceActivity.map(x => (x.plays as number) ?? 0), 1);
+  const totalEvents = (data.total_events as number) ?? hourly.reduce((a, b) => a + b, 0);
 
   return (
     <div className="space-y-6">
+      {/* Total events header */}
+      <div className="text-sm text-gray-400">
+        Total de eventos no período: <span className="text-white font-semibold">{totalEvents}</span>
+      </div>
+
       {/* Heatmap */}
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
         <h2 className="font-semibold text-white mb-4">Mapa de Atividade (Hora x Dia)</h2>
@@ -256,14 +290,13 @@ function ActivityReport({ data }: { data: Record<string, unknown> }) {
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
         <h2 className="font-semibold text-white mb-4">Atividade por Hora</h2>
         <div className="flex items-end gap-1 h-32">
-          {hourlyTotal.map((val, i) => {
-            const maxH = Math.max(...hourlyTotal, 1);
-            const height = (val / maxH) * 100;
+          {hourly.map((val, i) => {
+            const height = (val / maxHourly) * 100;
             return (
               <div key={i} className="flex-1 flex flex-col items-center gap-1">
                 <div
                   className="w-full bg-blue-500 rounded-t"
-                  style={{ height: `${Math.max(height, 2)}%` }}
+                  style={{ height: `${Math.max(height, val > 0 ? 2 : 0)}%` }}
                   title={`${i}:00 - ${val}`}
                 />
                 <span className="text-[9px] text-gray-500">{i}</span>
@@ -273,34 +306,61 @@ function ActivityReport({ data }: { data: Record<string, unknown> }) {
         </div>
       </div>
 
+      {/* Daily totals */}
+      {daily.some(v => v > 0) && (
+        <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+          <h2 className="font-semibold text-white mb-4">Atividade por Dia da Semana</h2>
+          <div className="flex items-end gap-2 h-24">
+            {DAYS_OF_WEEK.map((day, i) => {
+              const height = (daily[i] / Math.max(...daily, 1)) * 100;
+              return (
+                <div key={day} className="flex-1 flex flex-col items-center gap-1">
+                  <div className="w-full bg-purple-500 rounded-t" style={{ height: `${Math.max(height, daily[i] > 0 ? 2 : 0)}%` }} title={`${day} - ${daily[i]}`} />
+                  <span className="text-[10px] text-gray-400">{day}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Device activity */}
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
         <h2 className="font-semibold text-white mb-4">Atividade por Dispositivo</h2>
-        <div className="space-y-2">
-          {deviceActivity.map((d, i) => {
-            const maxPlays = Math.max(...deviceActivity.map(x => x.plays as number), 1);
-            const width = ((d.plays as number) / maxPlays) * 100;
-            return (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-40 text-sm text-gray-300 truncate">{d.name as string}</div>
-                <div className="flex-1 bg-gray-800 rounded-full h-4">
-                  <div className="bg-blue-500 rounded-full h-4 flex items-center justify-end pr-2" style={{ width: `${Math.max(width, 5)}%` }}>
-                    <span className="text-[10px] text-white font-medium">{d.plays as number}</span>
+        {deviceActivity.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 text-sm">Nenhuma atividade registrada no período</div>
+        ) : (
+          <div className="space-y-2">
+            {deviceActivity.map((d, i) => {
+              const plays = (d.plays as number) ?? 0;
+              const width = (plays / maxPlays) * 100;
+              return (
+                <div key={(d.id as string) ?? i} className="flex items-center gap-3">
+                  <div className="w-40 text-sm text-gray-300 truncate">{(d.name as string) ?? 'Sem nome'}</div>
+                  <div className="flex-1 bg-gray-800 rounded-full h-4">
+                    <div className="bg-blue-500 rounded-full h-4 flex items-center justify-end pr-2" style={{ width: `${Math.max(width, plays > 0 ? 5 : 0)}%` }}>
+                      <span className="text-[10px] text-white font-medium">{plays}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function FinancialReport({ data, formatHours }: { data: Record<string, unknown>; formatHours: (h: number) => string }) {
-  const partners = data.partners as Array<Record<string, unknown>>;
-  const totalAmount = data.total_amount as number;
-  const totalHours = data.total_hours as number;
+  // Back pode mandar `partners` (novo) ou `devices` (legado). Aceita os dois.
+  const partners = (data.partners as Array<Record<string, unknown>> | undefined)
+    ?? (data.devices as Array<Record<string, unknown>> | undefined)
+    ?? [];
+  const totalAmount = (data.total_amount as number) ?? 0;
+  const totalHours = (data.total_hours as number) ?? 0;
+
+  const formatMoney = (n: number | undefined | null) => `R$ ${(n ?? 0).toFixed(2)}`;
 
   return (
     <div className="space-y-6">
@@ -312,7 +372,7 @@ function FinancialReport({ data, formatHours }: { data: Record<string, unknown>;
         </div>
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
           <div className="text-sm text-gray-400 mb-1">Total Estimado</div>
-          <div className="text-3xl font-bold text-yellow-400">R$ {totalAmount.toFixed(2)}</div>
+          <div className="text-3xl font-bold text-yellow-400">{formatMoney(totalAmount)}</div>
         </div>
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
           <div className="text-sm text-gray-400 mb-1">Parceiros Ativos</div>
@@ -339,29 +399,39 @@ function FinancialReport({ data, formatHours }: { data: Record<string, unknown>;
               </tr>
             </thead>
             <tbody>
-              {partners.map((p, i) => (
-                <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                  <td className="px-5 py-3 text-white font-medium">{p.partner_id as string}</td>
-                  <td className="px-5 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${
-                      p.payment_type === 'hourly' ? 'bg-blue-900/50 text-blue-400' : 'bg-purple-900/50 text-purple-400'
-                    }`}>
-                      {p.payment_type === 'hourly' ? 'Por Hora' : 'Mensal'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-right text-gray-300">{p.devices_count as number}</td>
-                  <td className="px-5 py-3 text-right text-white">{formatHours(p.hours as number)}</td>
-                  <td className="px-5 py-3 text-right text-gray-300">
-                    {p.payment_type === 'hourly' ? `R$ ${(p.hourly_rate as number).toFixed(2)}` : '-'}
-                  </td>
-                  <td className="px-5 py-3 text-right text-gray-300">
-                    {p.payment_type === 'monthly' ? `R$ ${(p.monthly_rate as number).toFixed(2)}` : '-'}
-                  </td>
-                  <td className="px-5 py-3 text-right text-yellow-400 font-semibold">
-                    R$ {(p.estimated_amount as number).toFixed(2)}
+              {partners.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-8 text-gray-500 text-sm">
+                    Nenhum parceiro com cobrança no período
                   </td>
                 </tr>
-              ))}
+              ) : partners.map((p, i) => {
+                const paymentType = (p.payment_type as string) ?? 'hourly';
+                const hours = (p.hours as number) ?? 0;
+                return (
+                  <tr key={(p.partner_id as string) ?? (p.device_id as string) ?? i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                    <td className="px-5 py-3 text-white font-medium">{(p.partner_id as string) ?? (p.device_id as string) ?? '—'}</td>
+                    <td className="px-5 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${
+                        paymentType === 'hourly' ? 'bg-blue-900/50 text-blue-400' : 'bg-purple-900/50 text-purple-400'
+                      }`}>
+                        {paymentType === 'hourly' ? 'Por Hora' : 'Mensal'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-right text-gray-300">{(p.devices_count as number) ?? 1}</td>
+                    <td className="px-5 py-3 text-right text-white">{formatHours(hours)}</td>
+                    <td className="px-5 py-3 text-right text-gray-300">
+                      {paymentType === 'hourly' ? formatMoney(p.hourly_rate as number) : '-'}
+                    </td>
+                    <td className="px-5 py-3 text-right text-gray-300">
+                      {paymentType === 'monthly' ? formatMoney(p.monthly_rate as number) : '-'}
+                    </td>
+                    <td className="px-5 py-3 text-right text-yellow-400 font-semibold">
+                      {formatMoney(p.estimated_amount as number)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

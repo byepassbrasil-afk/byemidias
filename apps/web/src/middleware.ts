@@ -5,7 +5,7 @@ const PARTNER_SECRET = new TextEncoder().encode(
   process.env.PARTNER_JWT_SECRET || 'byemidias-partner-secret-change-in-production'
 );
 
-const PUBLIC_ROUTES = ['/login', '/signup', '/api/auth/login', '/api/auth/signup', '/api/auth/logout', '/manifest.json', '/sw.js', '/offline.html'];
+const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password', '/api/auth/login', '/api/auth/signup', '/api/auth/logout', '/api/auth/forgot-password', '/api/auth/reset-password', '/manifest.json', '/sw.js', '/offline.html'];
 
 const PUBLIC_API_PREFIXES = ['/api/device/', '/api/keepalive', '/api/auth/'];
 
@@ -14,7 +14,7 @@ function isAdminRoute(pathname: string) {
     return !PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p));
   }
   if (pathname.startsWith('/partner/') || pathname === '/partner') return false;
-  if (pathname.startsWith('/login') || pathname.startsWith('/signup')) return false;
+  if (pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password') || pathname.startsWith('/reset-password')) return false;
   return pathname.startsWith('/') && !pathname.startsWith('/_next') && !pathname.startsWith('/icons');
 }
 

@@ -42,24 +42,77 @@ export default function ReportsPage() {
     return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
   };
 
+  // Export CSV
+  function exportCSV() {
+    if (!data) return;
+    let csv = '';
+    const filename = `relatorio-${activeTab}-${days}d.csv`;
+
+    if (activeTab === 'basic') {
+      const devices = (data.devices as Array<Record<string, unknown>>) ?? [];
+      csv = 'Status,Nome,Modelo,Versão,Uptime,Reproduções\n';
+      devices.forEach(d => {
+        csv += `${d.is_online ? 'Online' : 'Offline'},"${d.name ?? ''}","${d.model ?? ''}","${d.player_version ?? ''}","${d.uptime_hours ?? 0}h",${d.play_count ?? 0}\n`;
+      });
+    } else if (activeTab === 'campaign') {
+      const campaigns = (data.campaigns as Array<Record<string, unknown>>) ?? [];
+      csv = 'Campanha,Reproduções\n';
+      campaigns.forEach(c => { csv += `"${c.name ?? ''}",${c.plays ?? 0}\n`; });
+    } else if (activeTab === 'financial') {
+      const partners = (data.partners as Array<Record<string, unknown>>) ?? [];
+      csv = 'Parceiro,Tipo,Dispositivos,Horas,Valor/Hora,Valor Mensal,Total\n';
+      partners.forEach(p => {
+        csv += `"${p.partner_id ?? ''}",${p.payment_type ?? ''},${p.devices_count ?? 1},"${p.hours ?? 0}h",${p.hourly_rate ?? 0},${p.monthly_rate ?? 0},${p.estimated_amount ?? 0}\n`;
+      });
+    }
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Export PDF (browser print)
+  function exportPDF() {
+    window.print();
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .report-print, .report-print * { visibility: visible; }
+          .report-print { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      <div className="flex items-center justify-between no-print">
         <h1 className="text-2xl font-bold">Relatórios</h1>
-        <select
-          value={days}
-          onChange={(e) => setDays(parseInt(e.target.value))}
-          className="rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm"
-        >
-          <option value={7}>Últimos 7 dias</option>
-          <option value={15}>Últimos 15 dias</option>
-          <option value={30}>Últimos 30 dias</option>
-          <option value={90}>Últimos 90 dias</option>
-        </select>
+        <div className="flex items-center gap-3">
+          <select
+            value={days}
+            onChange={(e) => setDays(parseInt(e.target.value))}
+            className="rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm"
+          >
+            <option value={7}>Últimos 7 dias</option>
+            <option value={15}>Últimos 15 dias</option>
+            <option value={30}>Últimos 30 dias</option>
+            <option value={90}>Últimos 90 dias</option>
+          </select>
+          <button onClick={exportCSV} className="rounded-lg bg-gray-700 px-3 py-2 text-sm text-white hover:bg-gray-600 transition-colors" title="Exportar CSV">
+            📄 CSV
+          </button>
+          <button onClick={exportPDF} className="rounded-lg bg-gray-700 px-3 py-2 text-sm text-white hover:bg-gray-600 transition-colors" title="Exportar PDF">
+            📑 PDF
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 rounded-lg bg-gray-900 p-1">
+      <div className="flex gap-1 rounded-lg bg-gray-900 p-1 no-print">
         {REPORT_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -80,21 +133,23 @@ export default function ReportsPage() {
         <div className="text-center py-12 text-gray-500">Carregando...</div>
       )}
 
-      {!loading && data && activeTab === 'basic' && (
-        <BasicReport data={data} formatHours={formatHours} />
-      )}
+      <div className="report-print">
+        {!loading && data && activeTab === 'basic' && (
+          <BasicReport data={data} formatHours={formatHours} />
+        )}
 
-      {!loading && data && activeTab === 'campaign' && (
-        <CampaignReport data={data} />
-      )}
+        {!loading && data && activeTab === 'campaign' && (
+          <CampaignReport data={data} />
+        )}
 
-      {!loading && data && activeTab === 'activity' && (
-        <ActivityReport data={data} />
-      )}
+        {!loading && data && activeTab === 'activity' && (
+          <ActivityReport data={data} />
+        )}
 
-      {!loading && data && activeTab === 'financial' && (
-        <FinancialReport data={data} formatHours={formatHours} />
-      )}
+        {!loading && data && activeTab === 'financial' && (
+          <FinancialReport data={data} formatHours={formatHours} />
+        )}
+      </div>
     </div>
   );
 }
@@ -115,12 +170,12 @@ function BasicReport({ data, formatHours }: { data: Record<string, unknown>; for
           { label: 'Campanhas', value: summary.active_campaigns, icon: '📢' },
           { label: 'Reproduções', value: summary.total_plays, icon: '▶️' },
         ].map((card) => (
-          <div key={card.label} className="rounded-xl bg-gray-900 border border-gray-800 p-4">
+          <div key={card.label} className="rounded-xl bg-gray-900 print:bg-gray-100 border border-gray-800 print:border-gray-300 p-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-lg">{card.icon}</span>
-              <span className="text-xs text-gray-400">{card.label}</span>
+              <span className="text-xs text-gray-400 print:text-gray-600">{card.label}</span>
             </div>
-            <div className="text-2xl font-bold text-white">{card.value ?? 0}</div>
+            <div className="text-2xl font-bold text-white print:text-gray-900">{card.value ?? 0}</div>
           </div>
         ))}
       </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import sql from '@/lib/db';
+import { sendEmail, forgotPasswordEmail } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,17 +33,24 @@ export async function POST(request: NextRequest) {
 
     const resetUrl = `${request.nextUrl.origin}/reset-password?token=${token}`;
 
-    console.log('=== LINK DE RECUPERAÇÃO ===');
-    console.log(`Usuário: ${profile.full_name} (${profile.email})`);
-    console.log(`Link: ${resetUrl}`);
-    console.log(`Expira: ${expiresAt.toLocaleString('pt-BR')}`);
-    console.log('==========================');
+    // Send email
+    const emailTemplate = forgotPasswordEmail(resetUrl, profile.full_name || 'Usuário');
+    const emailSent = await sendEmail({
+      to: profile.email,
+      subject: emailTemplate.subject,
+      html: emailTemplate.html,
+      text: emailTemplate.text,
+    });
+
+    if (!emailSent) {
+      console.log(`[FORGOT-PASSWORD] Email not sent (no API key). Reset URL: ${resetUrl}`);
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Se o email estiver cadastrado, você receberá um link de recuperação.',
-      reset_url: resetUrl,
-      expires_at: expiresAt.toISOString(),
+      // Only return reset_url in dev (no email service)
+      ...(emailSent ? {} : { reset_url: resetUrl }),
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';

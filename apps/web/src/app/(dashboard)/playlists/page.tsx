@@ -141,7 +141,8 @@ export default function PlaylistsPage() {
 
     const allMedia = mediaJson.data ?? [];
     const mediaMap = new Map(allMedia.map((m: Media) => [m.id, m]));
-    const partnerMap = new Map((partnersJson.data ?? []).map((p: { id: string; username: string; display_name: string }) => [p.id, p]));
+    const partnerData = (partnersJson.data ?? []) as { id: string; username: string; display_name: string }[];
+    const partnerMap = new Map(partnerData.map((p) => [p.id, p]));
 
     // Build unified list
     const mediaItems: UnifiedItem[] = (itemsJson.data ?? []).map((i: PlaylistItem & { slot_id?: string | null }) => ({

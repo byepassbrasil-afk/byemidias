@@ -153,12 +153,12 @@ export default function LoginPage() {
             className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
-          <div className="text-right">
-            <Link href="/forgot-password" className="text-sm text-blue-600 hover:underline">
-              Esqueci a senha
-            </Link>
-          </div>
         </form>
+        <div className="mt-3 text-right">
+          <Link href="/forgot-password" className="text-sm text-blue-600 hover:underline">
+            Esqueci a senha
+          </Link>
+        </div>
         <p className="mt-4 text-center text-sm text-gray-500">
           Não tem conta?{' '}
           <Link href="/signup" className="text-blue-600 hover:underline">Criar conta</Link>

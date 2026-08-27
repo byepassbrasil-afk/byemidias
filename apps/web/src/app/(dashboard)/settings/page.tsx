@@ -25,7 +25,7 @@ export default function SettingsPage() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [msg, setMsg] = useState('');
-  const [pushStatus, setPushStatus] = useState<'loading' | 'granted' | 'denied' | 'unsupported'>('loading');
+  const [pushStatus, setPushStatus] = useState<'loading' | 'granted' | 'denied' | 'unsupported' | 'default'>('loading');
   const [pushSubscribed, setPushSubscribed] = useState(false);
 
   useEffect(() => {
@@ -221,7 +221,7 @@ export default function SettingsPage() {
           <p className="text-sm text-gray-400">Seu navegador não suporta notificações push.</p>
         ) : pushStatus === 'denied' ? (
           <p className="text-sm text-amber-600">Notificações bloqueadas. Habilite nas configurações do navegador.</p>
-        ) : pushSubscribed ? (
+        ) : pushStatus === 'granted' && pushSubscribed ? (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 bg-green-500 rounded-full" />

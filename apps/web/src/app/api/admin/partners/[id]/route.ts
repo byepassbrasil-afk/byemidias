@@ -13,7 +13,7 @@ export async function PUT(
 
   const [profile] = await sql`SELECT organization_id, role FROM profiles WHERE id = ${user.id}`;
 
-  if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
+  if (!profile || !['super_admin', 'admin', 'manager'].includes(profile.role)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
   }
 
@@ -52,7 +52,7 @@ export async function DELETE(
 
   const [profile] = await sql`SELECT organization_id, role FROM profiles WHERE id = ${user.id}`;
 
-  if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
+  if (!profile || !['super_admin', 'admin', 'manager'].includes(profile.role)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
   }
 

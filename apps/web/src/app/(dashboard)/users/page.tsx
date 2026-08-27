@@ -17,11 +17,27 @@ interface OrgOption {
   slug: string;
 }
 
-const CAN_CREATE: Record<string, string[]> = {
-  super_admin: ['super_admin', 'admin', 'manager', 'operator', 'viewer'],
-  admin: ['admin', 'manager', 'operator', 'viewer'],
-  manager: ['manager', 'operator', 'viewer'],
+const ROLE_HIERARCHY = ['super_admin', 'admin', 'manager', 'operator', 'viewer'] as const;
+type Role = (typeof ROLE_HIERARCHY)[number];
+
+const ROLE_LEVEL: Record<Role, number> = {
+  super_admin: 5,
+  admin: 4,
+  manager: 3,
+  operator: 2,
+  viewer: 1,
 };
+
+// Roles que cada um pode criar/definir: igual ou inferior, nunca super_admin
+function manageableRoles(actorRole: string): Role[] {
+  if (!isRole(actorRole)) return [];
+  if (actorRole === 'super_admin') return []; // super_admin não cria via essa rota
+  return ROLE_HIERARCHY.filter(r => r !== 'super_admin' && ROLE_LEVEL[actorRole] > ROLE_LEVEL[r]);
+}
+
+function isRole(v: unknown): v is Role {
+  return typeof v === 'string' && (ROLE_HIERARCHY as readonly string[]).includes(v);
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<Profile[]>([]);
@@ -151,7 +167,7 @@ export default function UsersPage() {
     super_admin: 'Super Admin', admin: 'Admin', manager: 'Gerente', operator: 'Operador', viewer: 'Visualizador',
   };
 
-  const availableRoles = currentUser ? (CAN_CREATE[currentUser.role] || []) : [];
+  const availableRoles = currentUser ? manageableRoles(currentUser.role) : [];
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const currentOrg = currentUser?.org_name ?? '—';
 
@@ -240,6 +256,8 @@ export default function UsersPage() {
             {isSuperAdmin
               ? 'Como super_admin, você pode adicionar o usuário em qualquer organização.'
               : 'O novo usuário será vinculado à sua organização atual. Ele receberá um link de convite por email.'}
+            <br />
+            <span className="text-gray-400">Hierarquia: super_admin → admin → manager → operator → viewer. Você só pode criar funções iguais ou inferiores à sua, e nunca super_admin.</span>
           </p>
 
           <div className="flex gap-2">
@@ -254,17 +272,31 @@ export default function UsersPage() {
       {editing && (
         <div className="rounded-xl bg-white p-4 sm:p-6 shadow-sm border border-gray-200 space-y-4">
           <h3 className="font-semibold text-gray-900">Editar — {editing.full_name}</h3>
-          <select value={role} onChange={e => setRole(e.target.value as UserRole)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm">
-            {availableRoles.map(r => (
-              <option key={r} value={r}>{roleLabels[r]}</option>
-            ))}
-          </select>
+          <p className="text-xs text-gray-500">
+            Você pode atribuir apenas funções iguais ou inferiores à sua ({currentUser?.role}).
+            <br />
+            <span className="text-gray-400">Hierarquia: super_admin → admin → manager → operator → viewer</span>
+          </p>
+          {editing.id === currentUser?.id ? (
+            <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800">
+              Você não pode alterar o seu próprio role.
+            </div>
+          ) : (
+            <select value={role} onChange={e => setRole(e.target.value as UserRole)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm">
+              {availableRoles.map(r => (
+                <option key={r} value={r}>{roleLabels[r]}</option>
+              ))}
+            </select>
+          )}
+          {error && editing.id !== currentUser?.id && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>
+          )}
           <div className="flex gap-2">
-            <button onClick={handleUpdateRole} disabled={saving} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
+            <button onClick={handleUpdateRole} disabled={saving || editing.id === currentUser?.id} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
               {saving ? 'Salvando...' : 'Salvar'}
             </button>
-            <button onClick={() => setEditing(null)} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Cancelar</button>
+            <button onClick={() => { setEditing(null); setError(null); }} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Cancelar</button>
           </div>
         </div>
       )}
@@ -317,8 +349,20 @@ export default function UsersPage() {
                   </span>
                 </div>
                 <div className="flex gap-1 flex-shrink-0">
-                  <button onClick={() => startEdit(user)} className="text-blue-600 hover:text-blue-800 text-xs p-1.5">✏️</button>
-                  <button onClick={() => setDeleteId(user.id)} className="text-red-600 hover:text-red-800 text-xs p-1.5">🗑️</button>
+                  <button
+                    onClick={() => startEdit(user)}
+                    disabled={user.id === currentUser?.id}
+                    title={user.id === currentUser?.id ? 'Você não pode editar seu próprio role' : 'Editar função'}
+                    className="text-blue-600 hover:text-blue-800 text-xs p-1.5 disabled:opacity-30 disabled:cursor-not-allowed">
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => setDeleteId(user.id)}
+                    disabled={user.id === currentUser?.id}
+                    title={user.id === currentUser?.id ? 'Você não pode excluir a si mesmo' : 'Excluir usuário'}
+                    className="text-red-600 hover:text-red-800 text-xs p-1.5 disabled:opacity-30 disabled:cursor-not-allowed">
+                    🗑️
+                  </button>
                 </div>
               </div>
             );

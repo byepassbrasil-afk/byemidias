@@ -515,12 +515,15 @@ class PlayerActivity : ComponentActivity() {
 
     private fun clearZoneViews() {
         try { videoView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
+        try { imageViewA?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
+        try { imageViewB?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
         try { imageView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
         for (v in activeZoneViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
         for (v in clockTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
         for (v in weatherTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
         for (v in widgetTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
-        videoView = null; imageView = null
+        videoView = null; imageView = null; imageViewA = null; imageViewB = null; activeImageView = null
+        lastBitmap = null
         activeZoneViews.clear(); clockTextViews.clear(); weatherTextViews.clear(); widgetTextViews.clear()
     }
 
@@ -529,7 +532,8 @@ class PlayerActivity : ComponentActivity() {
             try {
                 val rl = rootLayout ?: return@runOnUiThread
                 videoView?.let { rl.removeView(it) }
-                imageView?.let { rl.removeView(it) }
+                imageViewA?.let { rl.removeView(it) }
+                imageViewB?.let { rl.removeView(it) }
 
                 val dm = resources.displayMetrics
                 val screenW = dm.widthPixels; val screenH = dm.heightPixels
@@ -545,14 +549,26 @@ class PlayerActivity : ComponentActivity() {
                 rl.addView(vv, lpV)
                 videoView = vv
 
-                val iv = ImageView(this)
-                iv.visibility = View.GONE
-                iv.scaleType = ImageView.ScaleType.CENTER_CROP
-                iv.adjustViewBounds = false
-                val lpI = FrameLayout.LayoutParams(zoneW, zoneH)
-                lpI.leftMargin = zoneX; lpI.topMargin = zoneY
-                rl.addView(iv, lpI)
-                imageView = iv
+                val ivA = ImageView(this)
+                ivA.visibility = View.GONE
+                ivA.scaleType = ImageView.ScaleType.CENTER_CROP
+                ivA.adjustViewBounds = false
+                val lpA = FrameLayout.LayoutParams(zoneW, zoneH)
+                lpA.leftMargin = zoneX; lpA.topMargin = zoneY
+                rl.addView(ivA, lpA)
+                imageViewA = ivA
+
+                val ivB = ImageView(this)
+                ivB.visibility = View.GONE
+                ivB.scaleType = ImageView.ScaleType.CENTER_CROP
+                ivB.adjustViewBounds = false
+                val lpB = FrameLayout.LayoutParams(zoneW, zoneH)
+                lpB.leftMargin = zoneX; lpB.topMargin = zoneY
+                rl.addView(ivB, lpB)
+                imageViewB = ivB
+
+                activeImageView = ivA
+                imageView = ivA
             } catch (e: Exception) {
                 Log.e(tag, "createMediaViewsForZone error: ${e.message}")
             }
@@ -584,6 +600,24 @@ class PlayerActivity : ComponentActivity() {
         syncHandler?.postDelayed(runnable, syncIntervalSeconds * 1000L)
     }
 
+    private fun ensureDualImageViews() {
+        val rl = rootLayout ?: return
+        if (imageViewA != null) return
+        val ivA = ImageView(this)
+        ivA.visibility = View.GONE
+        ivA.scaleType = ImageView.ScaleType.CENTER_CROP
+        val lpA = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        rl.addView(ivA, lpA)
+        imageViewA = ivA
+        val ivB = ImageView(this)
+        ivB.visibility = View.GONE
+        ivB.scaleType = ImageView.ScaleType.CENTER_CROP
+        val lpB = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        rl.addView(ivB, lpB)
+        imageViewB = ivB
+        activeImageView = ivA
+    }
+
     private suspend fun syncAndPlay() {
         var isFirstSync = true
         var usingCache = false
@@ -611,6 +645,7 @@ class PlayerActivity : ComponentActivity() {
                             } else {
                                 videoView = findViewById(R.id.videoView)
                                 imageView = findViewById(R.id.imageView)
+                                ensureDualImageViews()
                             }
                             hideStatus()
                             showStatus("Modo offline — reproduzindo cache")
@@ -639,6 +674,7 @@ class PlayerActivity : ComponentActivity() {
                 } else {
                     videoView = findViewById(R.id.videoView)
                     imageView = findViewById(R.id.imageView)
+                    ensureDualImageViews()
                 }
 
                 hideStatus()
@@ -662,6 +698,7 @@ class PlayerActivity : ComponentActivity() {
                         } else {
                             videoView = findViewById(R.id.videoView)
                             imageView = findViewById(R.id.imageView)
+                            ensureDualImageViews()
                         }
                         hideStatus()
                         showStatus("Modo offline — reproduzindo cache")
@@ -771,11 +808,79 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    private var imageViewA: ImageView? = null
+    private var imageViewB: ImageView? = null
+    private var activeImageView: ImageView? = null
+    private var lastBitmap: android.graphics.Bitmap? = null
+
+    private fun loadBitmapFromFileUrl(fileUrl: String): android.graphics.Bitmap? {
+        return try {
+            if (fileUrl.startsWith("data:")) {
+                val base64Data = fileUrl.substringAfter("base64,")
+                val decoded = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(decoded, 0, decoded.size)
+            } else {
+                URL(fileUrl).openStream().use { BitmapFactory.decodeStream(it) }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "loadBitmap failed: ${e.message}")
+            null
+        }
+    }
+
+    private fun crossfadeToImage(newBitmap: android.graphics.Bitmap) {
+        val current = activeImageView ?: imageViewA ?: return
+        val next = if (current == imageViewA) imageViewB else imageViewA ?: return
+
+        runOnUiThread {
+            try {
+                videoView?.visibility = View.GONE
+                next?.setImageBitmap(newBitmap)
+                next?.scaleType = ImageView.ScaleType.CENTER_CROP
+                current.alpha = 1f
+                next?.alpha = 0f
+                next?.visibility = View.VISIBLE
+
+                val anim = android.animation.ObjectAnimator.ofFloat(next!!, "alpha", 0f, 1f)
+                anim.duration = 500
+                anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        current.visibility = View.GONE
+                        current.setImageBitmap(null)
+                    }
+                })
+                anim.start()
+                activeImageView = next
+                lastBitmap = newBitmap
+            } catch (e: Exception) {
+                Log.e(tag, "crossfade error: ${e.message}")
+            }
+        }
+    }
+
+    private fun showImageImmediate(bitmap: android.graphics.Bitmap) {
+        val iv = activeImageView ?: imageViewA ?: return
+        runOnUiThread {
+            try {
+                videoView?.visibility = View.GONE
+                iv.setImageBitmap(bitmap)
+                iv.scaleType = ImageView.ScaleType.CENTER_CROP
+                iv.visibility = View.VISIBLE
+                iv.alpha = 1f
+                activeImageView = iv
+                lastBitmap = bitmap
+            } catch (e: Exception) {
+                Log.e(tag, "showImageImmediate error: ${e.message}")
+            }
+        }
+    }
+
     private suspend fun playVideo(item: MediaItem) {
         val vv = videoView ?: run { delay(item.duration * 1000L); return }
         val latch = java.util.concurrent.CountDownLatch(1)
         withContext(Dispatchers.Main) {
-            imageView?.visibility = View.GONE
+            imageViewA?.visibility = View.GONE
+            imageViewB?.visibility = View.GONE
             vv.visibility = View.VISIBLE
             vv.setOnPreparedListener { mp -> mp.isLooping = false; mp.start() }
             vv.setOnCompletionListener { latch.countDown() }
@@ -786,18 +891,21 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private suspend fun playImage(item: MediaItem) {
-        val iv = imageView ?: run { delay(item.duration * 1000L); return }
-        try {
-            val bitmap = withContext(Dispatchers.IO) { URL(item.fileUrl).openStream().use { BitmapFactory.decodeStream(it) } }
-            if (bitmap != null) {
-                withContext(Dispatchers.Main) {
-                    videoView?.visibility = View.GONE
-                    iv.visibility = View.VISIBLE
-                    iv.scaleType = ImageView.ScaleType.CENTER_CROP
-                    iv.setImageBitmap(bitmap)
-                }
+        if (item.fileUrl.isEmpty()) {
+            delay(item.duration * 1000L)
+            return
+        }
+        val bitmap = withContext(Dispatchers.IO) { loadBitmapFromFileUrl(item.fileUrl) }
+        if (bitmap != null) {
+            val isFirstDisplay = lastBitmap == null && (activeImageView?.drawable == null)
+            if (isFirstDisplay) {
+                showImageImmediate(bitmap)
+            } else {
+                crossfadeToImage(bitmap)
             }
-        } catch (e: Exception) { Log.e(tag, "Image load failed: ${item.name}") }
+        } else if (lastBitmap != null) {
+            Log.w(tag, "Image load failed: ${item.name} — keeping previous image")
+        }
         delay(item.duration * 1000L)
     }
 

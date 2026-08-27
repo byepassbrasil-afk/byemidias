@@ -24,6 +24,18 @@ interface HeaderProps {
   onToggleMobile: () => void;
 }
 
+// Convert VAPID key for PushManager
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 export function Header({ onToggleMobile }: HeaderProps) {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -52,6 +64,53 @@ export function Header({ onToggleMobile }: HeaderProps) {
     const interval = setInterval(loadNotifications, 30000);
     return () => clearInterval(interval);
   }, [loadNotifications]);
+
+  // Auto-subscribe to push notifications
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    // Check permission already granted
+    if (Notification.permission !== 'granted') return;
+
+    async function subscribe() {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        // Check existing subscription
+        let sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          // Re-register to ensure server is up to date
+          const endpoint = sub.endpoint;
+          const keys = sub.toJSON().keys;
+          if (keys) {
+            await fetch('/api/push/subscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint, keys }),
+            });
+          }
+          return;
+        }
+        // Get VAPID key and subscribe
+        const res = await fetch('/api/push/vapid-key');
+        const { publicKey } = await res.json();
+        const convertedVapidKey = urlBase64ToUint8Array(publicKey);
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedVapidKey,
+        });
+        const subKeys = sub.toJSON().keys;
+        if (subKeys) {
+          await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: sub.endpoint, keys: subKeys }),
+          });
+        }
+      } catch (e) {
+        console.log('Push subscribe skipped:', e);
+      }
+    }
+    subscribe();
+  }, []);
 
   async function markAllRead() {
     await fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });

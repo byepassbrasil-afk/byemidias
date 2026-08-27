@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
+import { sendPushToOrg } from '@/lib/push';
 
 // POST /api/device/heartbeat
 export async function POST(request: Request) {
@@ -21,6 +22,8 @@ export async function POST(request: Request) {
       if (prevDevice && prevDevice.status === 'online') {
         try {
           await sql`INSERT INTO notifications (organization_id, type, title, message, device_id) VALUES (${prevDevice.organization_id}, 'device_offline', 'Dispositivo Offline', ${`O dispositivo "${prevDevice.name}" ficou offline.`}, ${device_id})`;
+          // Send push notification to admin users
+          sendPushToOrg(prevDevice.organization_id, '🔴 Dispositivo Offline', `O dispositivo "${prevDevice.name}" ficou offline.`, '/monitoring').catch(() => {});
         } catch (_) {}
       }
     } else {
@@ -30,6 +33,8 @@ export async function POST(request: Request) {
         try {
           await sql`INSERT INTO notifications (organization_id, type, title, message, device_id) VALUES (${prevDevice.organization_id}, 'device_online', 'Dispositivo Online', ${`O dispositivo "${prevDevice.name}" voltou ao online.`}, ${device_id})`;
           await sql`UPDATE notifications SET read = true WHERE device_id = ${device_id} AND type = 'device_offline' AND read = false`;
+          // Send push notification to admin users
+          sendPushToOrg(prevDevice.organization_id, '🟢 Dispositivo Online', `O dispositivo "${prevDevice.name}" voltou ao online.`, '/monitoring').catch(() => {});
         } catch (_) {}
       }
     }

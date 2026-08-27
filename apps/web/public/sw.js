@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'byemidias-static-v6';
+const STATIC_CACHE = 'byemidias-static-v7';
 const CONTENT_CACHE = 'byemidias-content-v1';
 const API_CACHE = 'byemidias-api-v1';
 
@@ -92,6 +92,53 @@ self.addEventListener('fetch', (event) => {
         }
         return new Response('Offline', { status: 503 });
       });
+    })
+  );
+});
+
+// Push notifications
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  try {
+    const data = event.data.json();
+    const title = data.title || 'ByeMidias';
+    const options = {
+      body: data.body || '',
+      icon: data.icon || '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: data.url || '/monitoring' },
+      tag: 'byemidias-notification',
+      renotify: true,
+      requireInteraction: false,
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch (e) {
+    // If not JSON, show as plain text
+    event.waitUntil(
+      self.registration.showNotification('ByeMidias', {
+        body: event.data.text(),
+        icon: '/icons/icon-192.png',
+      })
+    );
+  }
+});
+
+// Notification click — open/focus the relevant page
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/monitoring';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Try to focus existing window
+      for (const client of windowClients) {
+        if (client.url.includes(url) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Open new window
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
     })
   );
 });

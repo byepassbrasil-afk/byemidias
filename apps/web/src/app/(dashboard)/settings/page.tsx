@@ -25,6 +25,8 @@ export default function SettingsPage() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [msg, setMsg] = useState('');
+  const [pushStatus, setPushStatus] = useState<'loading' | 'granted' | 'denied' | 'unsupported'>('loading');
+  const [pushSubscribed, setPushSubscribed] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/profile').then(r => r.json()).then(d => {
@@ -35,6 +37,25 @@ export default function SettingsPage() {
       }
       setLoading(false);
     }).catch(() => setLoading(false));
+  }, []);
+
+  // Check push status
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      setPushStatus('unsupported');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      setPushStatus('denied');
+      return;
+    }
+    setPushStatus(Notification.permission);
+    // Check if already subscribed
+    navigator.serviceWorker.ready.then(reg => {
+      reg.pushManager.getSubscription().then(sub => {
+        setPushSubscribed(!!sub);
+      });
+    }).catch(() => {});
   }, []);
 
   async function handleSave() {
@@ -54,6 +75,48 @@ export default function SettingsPage() {
     setSaving(false);
   }
 
+  async function handleEnablePush() {
+    try {
+      const permission = await Notification.requestPermission();
+      setPushStatus(permission);
+      if (permission === 'granted') {
+        const reg = await navigator.serviceWorker.ready;
+        const res = await fetch('/api/push/vapid-key');
+        const { publicKey } = await res.json();
+        const convertedVapidKey = urlBase64ToUint8Array(publicKey);
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedVapidKey,
+        });
+        const keys = sub.toJSON().keys;
+        if (keys) {
+          await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: sub.endpoint, keys }),
+          });
+          setPushSubscribed(true);
+        }
+      }
+    } catch (e) {
+      console.error('Push subscribe error:', e);
+    }
+  }
+
+  async function handleDisablePush() {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch(`/api/push/subscribe?endpoint=${encodeURIComponent(sub.endpoint)}`, { method: 'DELETE' });
+        await sub.unsubscribe();
+        setPushSubscribed(false);
+      }
+    } catch (e) {
+      console.error('Push unsubscribe error:', e);
+    }
+  }
+
   if (loading) return <div className="p-6 text-gray-500">Carregando...</div>;
   if (!profile) return <div className="p-6 text-red-500">Erro ao carregar perfil</div>;
 
@@ -62,6 +125,17 @@ export default function SettingsPage() {
     super_admin: 'Super Admin', admin: 'Admin', manager: 'Gerente', operator: 'Operador', viewer: 'Visualizador',
   };
   const planLabel: Record<string, string> = { free: 'Gratuito', basic: 'Básico', pro: 'Profissional', enterprise: 'Empresarial' };
+
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -138,6 +212,29 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Push Notifications */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Notificações Push</h3>
+        <p className="text-sm text-gray-500 mb-4">Receba alertas no navegador quando dispositivos ficarem offline ou online.</p>
+        {pushStatus === 'unsupported' ? (
+          <p className="text-sm text-gray-400">Seu navegador não suporta notificações push.</p>
+        ) : pushStatus === 'denied' ? (
+          <p className="text-sm text-amber-600">Notificações bloqueadas. Habilite nas configurações do navegador.</p>
+        ) : pushSubscribed ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 bg-green-500 rounded-full" />
+              <span className="text-sm text-green-700 font-medium">Ativo</span>
+            </div>
+            <button onClick={handleDisablePush} className="text-sm text-red-600 hover:text-red-800 font-medium">Desativar</button>
+          </div>
+        ) : (
+          <button onClick={handleEnablePush} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+            Ativar Notificações
+          </button>
+        )}
+      </div>
     </div>
   );
 }

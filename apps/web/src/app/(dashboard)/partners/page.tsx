@@ -46,6 +46,7 @@ export default function PartnersPage() {
   const [password, setPassword] = useState('');
 
   const [selectedDevices, setSelectedDevices] = useState<Record<string, string>>({});
+  const [orgSlug, setOrgSlug] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -54,10 +55,11 @@ export default function PartnersPage() {
   async function loadData() {
     try {
       setError(null);
-      const [partnersRes, devicesRes, playlistsRes] = await Promise.all([
+      const [partnersRes, devicesRes, playlistsRes, profileRes] = await Promise.all([
         fetch('/api/admin/partners').catch(() => null),
         fetch('/api/admin/crud/devices?order=name&asc=true').catch(() => null),
         fetch('/api/admin/crud/playlists?order=name&asc=true').catch(() => null),
+        fetch('/api/auth/profile').catch(() => null),
       ]);
 
       if (partnersRes && partnersRes.ok) {
@@ -83,6 +85,11 @@ export default function PartnersPage() {
       if (playlistsRes && playlistsRes.ok) {
         const p = await playlistsRes.json();
         setAllPlaylists(p.data ?? []);
+      }
+
+      if (profileRes && profileRes.ok) {
+        const prof = await profileRes.json();
+        if (prof.profile?.org_slug) setOrgSlug(prof.profile.org_slug);
       }
     } catch (e) {
       console.error('loadData error:', e);
@@ -156,7 +163,8 @@ export default function PartnersPage() {
   }
 
   function copyPartnerLink() {
-    const url = `${window.location.origin}/partner/login`;
+    const slug = orgSlug || 'org';
+    const url = `${window.location.origin}/partner/${slug}/login`;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -185,10 +193,10 @@ export default function PartnersPage() {
       <div className="mb-6 rounded-xl bg-blue-50 border border-blue-200 p-4">
         <p className="text-sm text-blue-800">
           <strong>Link de acesso para parceiros:</strong>{' '}
-          <code className="rounded bg-blue-100 px-2 py-0.5 text-xs">byemidias.vercel.app/partner/login</code>
+          <code className="rounded bg-blue-100 px-2 py-0.5 text-xs">byemidias.vercel.app/partner/{orgSlug || 'sua-org'}/login</code>
         </p>
         <p className="text-xs text-blue-600 mt-1">
-          Compartilhe este link. O parceiro fará login com o usuário e senha criados abaixo.
+          Cada organização tem seu link exclusivo. Compartilhe com o parceiro correto.
         </p>
       </div>
 

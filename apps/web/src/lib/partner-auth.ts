@@ -11,6 +11,7 @@ const COOKIE_NAME = 'partner_session';
 export interface PartnerSession {
   partnerAccessId: string;
   organizationId: string;
+  slug: string;
   username: string;
   displayName: string;
 }
@@ -55,14 +56,31 @@ export async function clearPartnerSessionCookie() {
   cookieStore.delete(COOKIE_NAME);
 }
 
+/**
+ * Validate slug → returns organization_id or null
+ */
+export async function validateOrgSlug(slug: string): Promise<{ id: string; name: string } | null> {
+  const [org] = await sql`SELECT id, name FROM organizations WHERE slug = ${slug} AND status != 'inactive' LIMIT 1`;
+  return org || null;
+}
+
+/**
+ * Validate partner credentials against a specific org slug
+ */
 export async function validatePartnerCredentials(
   username: string,
-  password: string
+  password: string,
+  slug: string
 ): Promise<{ valid: boolean; partner?: PartnerSession }> {
+  // First validate slug
+  const org = await validateOrgSlug(slug);
+  if (!org) return { valid: false };
+
   const partners = await sql`
     SELECT id, organization_id, username, name as display_name, password_hash, status
     FROM partner_access
     WHERE username = ${username.toLowerCase().trim()}
+      AND organization_id = ${org.id}
     LIMIT 1
   `;
 
@@ -89,8 +107,19 @@ export async function validatePartnerCredentials(
     partner: {
       partnerAccessId: partner.id,
       organizationId: partner.organization_id,
+      slug,
       username: partner.username,
       displayName: partner.display_name,
     },
   };
+}
+
+/**
+ * Get partner session, optionally validating slug matches
+ */
+export async function getPartnerSessionWithSlug(slug: string): Promise<PartnerSession | null> {
+  const session = await getPartnerSession();
+  if (!session) return null;
+  if (session.slug !== slug) return null;
+  return session;
 }

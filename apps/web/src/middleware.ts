@@ -13,7 +13,8 @@ function isAdminRoute(pathname: string) {
   if (pathname.startsWith('/api/')) {
     return !PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p));
   }
-  if (pathname.startsWith('/partner/') || pathname === '/partner') return false;
+  // Exclude all partner routes (old and slug-based)
+  if (pathname === '/partner' || pathname.startsWith('/partner/')) return false;
   if (pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password') || pathname.startsWith('/reset-password')) return false;
   return pathname.startsWith('/') && !pathname.startsWith('/_next') && !pathname.startsWith('/icons');
 }
@@ -29,12 +30,68 @@ function hasValidSession(request: NextRequest): boolean {
   }
 }
 
+/**
+ * Check if path matches /partner/[slug]/... pattern
+ */
+function parsePartnerSlug(pathname: string): string | null {
+  // Match /partner/[slug] or /partner/[slug]/*
+  const match = pathname.match(/^\/partner\/([a-z0-9-]+)(?:\/.*)?$/);
+  if (match) return match[1];
+  return null;
+}
+
 async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
   const token = request.cookies.get('partner_session')?.value;
+  const slug = parsePartnerSlug(pathname);
 
-  const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/');
+  // Slug-based partner routes: /partner/[slug]/*
+  if (slug) {
+    const isLogin = pathname === `/partner/${slug}/login`;
+    const isSignup = pathname === `/partner/${slug}/signup`;
+    const isApiAuth = pathname.startsWith(`/api/partner/${slug}/auth/`);
 
+    // Login/signup pages — redirect to dashboard if already logged in
+    if (isLogin || isSignup) {
+      if (token) {
+        try {
+          const { payload } = await jwtVerify(token, PARTNER_SECRET);
+          // Check if slug matches the token
+          if (payload.slug === slug) {
+            return NextResponse.redirect(new URL(`/partner/${slug}`, request.url));
+          }
+        } catch {
+          // Invalid token, stay on login
+        }
+      }
+      return NextResponse.next();
+    }
+
+    // API auth routes — always allow (login/signup/logout)
+    if (isApiAuth) {
+      return NextResponse.next();
+    }
+
+    // All other partner routes — require valid session with matching slug
+    if (!token) {
+      return NextResponse.redirect(new URL(`/partner/${slug}/login`, request.url));
+    }
+
+    try {
+      const { payload } = await jwtVerify(token, PARTNER_SECRET);
+      if (payload.slug !== slug) {
+        // Wrong slug — redirect to correct login
+        return NextResponse.redirect(new URL(`/partner/${slug}/login`, request.url));
+      }
+      return NextResponse.next();
+    } catch {
+      const response = NextResponse.redirect(new URL(`/partner/${slug}/login`, request.url));
+      response.cookies.delete('partner_session');
+      return response;
+    }
+  }
+
+  // Legacy partner routes: /partner, /partner/login, /partner/signup
   if (pathname === '/partner/login' || pathname === '/partner/signup') {
     if (token) {
       try {
@@ -47,7 +104,7 @@ async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> 
     return NextResponse.next();
   }
 
-  if (isPartnerRoute && pathname !== '/partner/login') {
+  if (pathname === '/partner' || pathname.startsWith('/partner/')) {
     if (!token) {
       return NextResponse.redirect(new URL('/partner/login', request.url));
     }
@@ -88,7 +145,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Handle partner routes
+  // Handle partner routes (both legacy and slug-based)
   const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/');
   if (isPartnerRoute) {
     return handlePartnerRoutes(request);

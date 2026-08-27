@@ -19,6 +19,40 @@ function generateTempPassword(): string {
   return result;
 }
 
+export async function GET() {
+  try {
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
+    const isSuperAdmin = user.role === 'super_admin';
+    let users;
+
+    if (isSuperAdmin) {
+      users = await sql`
+        SELECT p.id, p.email, p.full_name, p.role, p.status, p.avatar_url, p.phone, p.created_at,
+               p.organization_id, o.name as org_name
+        FROM profiles p
+        LEFT JOIN organizations o ON p.organization_id = o.id
+        ORDER BY p.created_at DESC
+      `;
+    } else {
+      users = await sql`
+        SELECT p.id, p.email, p.full_name, p.role, p.status, p.avatar_url, p.phone, p.created_at,
+               p.organization_id, o.name as org_name
+        FROM profiles p
+        LEFT JOIN organizations o ON p.organization_id = o.id
+        WHERE p.organization_id = ${user.organization_id}
+        ORDER BY p.created_at DESC
+      `;
+    }
+
+    return NextResponse.json({ users: users || [] });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   const user = await requireAuthApi();
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });

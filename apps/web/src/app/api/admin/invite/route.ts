@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 import { randomUUID } from 'crypto';
 
 export async function POST(request: NextRequest) {
+  const user = await requireAuthApi();
+  if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
   const body = await request.json();
   const { user_id } = body;
 
-  if (!user_id) {
-    return NextResponse.json({ error: 'user_id obrigatório' }, { status: 400 });
+  if (!user_id) return NextResponse.json({ error: 'user_id obrigatório' }, { status: 400 });
+
+  const isSuperAdmin = user.role === 'super_admin';
+  if (!isSuperAdmin) {
+    const [target] = await sql`SELECT organization_id FROM profiles WHERE id = ${user_id}`;
+    if (!target || target.organization_id !== user.organization_id) {
+      return NextResponse.json({ error: 'Usuário não encontrado ou sem permissão' }, { status: 404 });
+    }
   }
 
   const token = randomUUID();

@@ -10,37 +10,30 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'basic';
     const days = parseInt(searchParams.get('days') || '30');
-    const orgId = searchParams.get('org_id');
 
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    const isSuperAdmin = user.role === 'super_admin';
+    const orgId = user.organization_id;
+
     switch (type) {
       case 'basic': {
-        let devices;
-        if (orgId) {
-          devices = await sql`SELECT id, name, model, player_version, status, last_heartbeat, content_version FROM devices WHERE organization_id = ${orgId}`;
-        } else {
-          devices = await sql`SELECT id, name, model, player_version, status, last_heartbeat, content_version FROM devices`;
-        }
+        const devices = isSuperAdmin
+          ? await sql`SELECT id, name, model, player_version, status, last_heartbeat, content_version FROM devices`
+          : await sql`SELECT id, name, model, player_version, status, last_heartbeat, content_version FROM devices WHERE organization_id = ${orgId}`;
 
-        const uptimeSessions = orgId
-          ? await sql`SELECT device_id, started_at, ended_at FROM device_uptime_sessions WHERE started_at >= ${startDate.toISOString()} AND organization_id = ${orgId}`
-          : await sql`SELECT device_id, started_at, ended_at FROM device_uptime_sessions WHERE started_at >= ${startDate.toISOString()}`;
+        const uptimeSessions = isSuperAdmin
+          ? await sql`SELECT device_id, started_at, ended_at FROM device_uptime_sessions WHERE started_at >= ${startDate.toISOString()}`
+          : await sql`SELECT device_id, started_at, ended_at FROM device_uptime_sessions WHERE started_at >= ${startDate.toISOString()} AND organization_id = ${orgId}`;
 
-        let mediaCountResult;
-        if (orgId) {
-          mediaCountResult = await sql`SELECT count(*) FROM media WHERE organization_id = ${orgId}`;
-        } else {
-          mediaCountResult = await sql`SELECT count(*) FROM media`;
-        }
+        const mediaCountResult = isSuperAdmin
+          ? await sql`SELECT count(*) FROM media`
+          : await sql`SELECT count(*) FROM media WHERE organization_id = ${orgId}`;
 
-        let campaignCountResult;
-        if (orgId) {
-          campaignCountResult = await sql`SELECT count(*) FROM campaigns WHERE status = 'active' AND organization_id = ${orgId}`;
-        } else {
-          campaignCountResult = await sql`SELECT count(*) FROM campaigns WHERE status = 'active'`;
-        }
+        const campaignCountResult = isSuperAdmin
+          ? await sql`SELECT count(*) FROM campaigns WHERE status = 'active'`
+          : await sql`SELECT count(*) FROM campaigns WHERE status = 'active' AND organization_id = ${orgId}`;
 
         const uptimeByDevice: Record<string, number> = {};
         for (const s of uptimeSessions || []) {
@@ -86,9 +79,9 @@ export async function GET(request: Request) {
       }
 
       case 'financial': {
-        const sessions = orgId
-          ? await sql`SELECT device_id, started_at, ended_at, organization_id FROM device_uptime_sessions WHERE started_at >= ${startDate.toISOString()} AND organization_id = ${orgId}`
-          : await sql`SELECT device_id, started_at, ended_at, organization_id FROM device_uptime_sessions WHERE started_at >= ${startDate.toISOString()}`;
+        const sessions = isSuperAdmin
+          ? await sql`SELECT device_id, started_at, ended_at, organization_id FROM device_uptime_sessions WHERE started_at >= ${startDate.toISOString()}`
+          : await sql`SELECT device_id, started_at, ended_at, organization_id FROM device_uptime_sessions WHERE started_at >= ${startDate.toISOString()} AND organization_id = ${orgId}`;
 
         const deviceHours: Record<string, number> = {};
         for (const s of sessions || []) {

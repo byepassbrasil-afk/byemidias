@@ -7,7 +7,15 @@ export async function GET() {
     const user = await requireAuthApi();
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
 
-    const devices = await sql`SELECT * FROM devices ORDER BY created_at DESC`;
+    const isSuperAdmin = user.role === 'super_admin';
+    let devices;
+
+    if (isSuperAdmin) {
+      devices = await sql`SELECT * FROM devices ORDER BY created_at DESC`;
+    } else {
+      devices = await sql`SELECT * FROM devices WHERE organization_id = ${user.organization_id} ORDER BY created_at DESC`;
+    }
+
     return NextResponse.json({ data: devices ?? [] });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';

@@ -14,23 +14,46 @@ export async function GET(request: Request) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    const isSuperAdmin = user.role === 'super_admin';
+    const orgId = user.organization_id;
+
     let sessions;
     if (deviceId) {
-      sessions = await sql.unsafe(`
-        SELECT dus.*, d.name as device_name, d.model as device_model
-        FROM device_uptime_sessions dus
-        LEFT JOIN devices d ON d.id = dus.device_id
-        WHERE dus.started_at >= $1 AND dus.device_id = $2
-        ORDER BY dus.started_at DESC
-      `, [startDate.toISOString(), deviceId]);
+      if (isSuperAdmin) {
+        sessions = await sql.unsafe(`
+          SELECT dus.*, d.name as device_name, d.model as device_model
+          FROM device_uptime_sessions dus
+          LEFT JOIN devices d ON d.id = dus.device_id
+          WHERE dus.started_at >= $1 AND dus.device_id = $2
+          ORDER BY dus.started_at DESC
+        `, [startDate.toISOString(), deviceId]);
+      } else {
+        sessions = await sql.unsafe(`
+          SELECT dus.*, d.name as device_name, d.model as device_model
+          FROM device_uptime_sessions dus
+          LEFT JOIN devices d ON d.id = dus.device_id
+          WHERE dus.started_at >= $1 AND dus.device_id = $2 AND dus.organization_id = $3
+          ORDER BY dus.started_at DESC
+        `, [startDate.toISOString(), deviceId, orgId]);
+      }
     } else {
-      sessions = await sql.unsafe(`
-        SELECT dus.*, d.name as device_name, d.model as device_model
-        FROM device_uptime_sessions dus
-        LEFT JOIN devices d ON d.id = dus.device_id
-        WHERE dus.started_at >= $1
-        ORDER BY dus.started_at DESC
-      `, [startDate.toISOString()]);
+      if (isSuperAdmin) {
+        sessions = await sql.unsafe(`
+          SELECT dus.*, d.name as device_name, d.model as device_model
+          FROM device_uptime_sessions dus
+          LEFT JOIN devices d ON d.id = dus.device_id
+          WHERE dus.started_at >= $1
+          ORDER BY dus.started_at DESC
+        `, [startDate.toISOString()]);
+      } else {
+        sessions = await sql.unsafe(`
+          SELECT dus.*, d.name as device_name, d.model as device_model
+          FROM device_uptime_sessions dus
+          LEFT JOIN devices d ON d.id = dus.device_id
+          WHERE dus.started_at >= $1 AND dus.organization_id = $2
+          ORDER BY dus.started_at DESC
+        `, [startDate.toISOString(), orgId]);
+      }
     }
 
     const dailyUptime: Record<string, Record<string, number>> = {};
@@ -55,7 +78,12 @@ export async function GET(request: Request) {
       };
     });
 
-    const payments = await sql.unsafe('SELECT * FROM partner_payments');
+    let payments;
+    if (isSuperAdmin) {
+      payments = await sql.unsafe('SELECT * FROM partner_payments');
+    } else {
+      payments = await sql`SELECT * FROM partner_payments WHERE organization_id = ${orgId}`;
+    }
 
     return NextResponse.json({
       sessions: sessions || [],

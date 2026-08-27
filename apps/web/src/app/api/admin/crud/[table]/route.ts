@@ -34,13 +34,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       filters.push(`${key} = '${value.replace(/'/g, "''")}'`);
     }
 
-    if (user.role !== 'super_admin' && table !== 'profiles') {
+    if (user.role !== 'super_admin') {
       if (table === 'organizations') {
-        if (user.role === 'admin') {
-          filters.push(`id = '${user.organization_id}'`);
-        } else {
-          return NextResponse.json({ data: [] });
-        }
+        filters.push(`id = '${user.organization_id}'`);
       } else {
         const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);
         if (hasOrgCol.length > 0 && user.organization_id) {
@@ -121,12 +117,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (org.owner_id !== user.id) return NextResponse.json({ error: 'Apenas o proprietário pode editar esta organização' }, { status: 403 });
     }
 
+    let whereClause = `WHERE id = $${Object.values(updates).length + 1}`;
+    const queryValues: (string | number | boolean | null)[] = [...Object.values(updates), id];
+
+    if (user.role !== 'super_admin' && table !== 'organizations') {
+      const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);
+      if (hasOrgCol.length > 0 && user.organization_id) {
+        whereClause += ` AND organization_id = $${queryValues.length + 1}`;
+        queryValues.push(user.organization_id);
+      }
+    }
+
     const setClauses = Object.entries(updates).map(([key, value], i) => `${key} = $${i + 1}`);
-    const values = Object.values(updates);
 
     const [row] = await sql.unsafe(
-      `UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $${values.length + 1} RETURNING *`,
-      [...values, id] as (string | number | boolean | null)[]
+      `UPDATE ${table} SET ${setClauses.join(', ')} ${whereClause} RETURNING *`,
+      queryValues
     );
 
     return NextResponse.json({ data: row });
@@ -153,6 +159,14 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       const [org] = await sql`SELECT owner_id FROM organizations WHERE id = ${id}`;
       if (!org) return NextResponse.json({ error: 'Organização não encontrada' }, { status: 404 });
       if (org.owner_id !== user.id) return NextResponse.json({ error: 'Apenas o proprietário pode excluir esta organização' }, { status: 403 });
+    }
+
+    if (user.role !== 'super_admin' && table !== 'organizations') {
+      const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);
+      if (hasOrgCol.length > 0 && user.organization_id) {
+        await sql.unsafe(`DELETE FROM ${table} WHERE id = $1 AND organization_id = $2`, [id, user.organization_id]);
+        return NextResponse.json({ success: true });
+      }
     }
 
     await sql.unsafe(`DELETE FROM ${table} WHERE id = $1`, [id]);

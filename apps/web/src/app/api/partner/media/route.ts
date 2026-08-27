@@ -75,7 +75,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const uploads = await sql`SELECT media_id FROM partner_media_uploads WHERE partner_access_id = ${session.partnerAccessId}`;
+    const uploads = await sql`SELECT media_id FROM partner_media_uploads WHERE partner_access_id = ${session.partnerAccessId} AND status = 'approved'`;
     const mediaIds = uploads.map((u) => u.media_id);
 
     if (mediaIds.length === 0) {
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       RETURNING id
     `;
 
-    await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'approved')`;
+    await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'pending')`;
 
     return NextResponse.json({ success: true, mediaId: mediaRecord.id });
   } catch (e: unknown) {

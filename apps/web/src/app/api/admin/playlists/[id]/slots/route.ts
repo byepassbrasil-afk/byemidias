@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import sql, { bumpContentVersion } from '@/lib/db';
 
 export async function GET(
   request: Request,
@@ -70,6 +70,10 @@ export async function POST(
 
       const [partnerInfo] = await sql`SELECT id, username, display_name FROM partner_access WHERE id = ${partner_access_id}`;
 
+      // Bump content version
+      const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${params.id}`;
+      if (pl?.organization_id) bumpContentVersion(pl.organization_id).catch(() => {});
+
       return NextResponse.json({ slot: { ...slot, partner: partnerInfo || null } });
     } catch (error: unknown) {
       const err = error as { code?: string; message?: string };
@@ -116,6 +120,10 @@ export async function PUT(
 
     await sql`UPDATE playlist_slots SET ${sql(updateData)} WHERE id = ${slot_id} AND playlist_id = ${params.id}`;
 
+    // Bump content version
+    const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${params.id}`;
+    if (pl?.organization_id) bumpContentVersion(pl.organization_id).catch(() => {});
+
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
@@ -146,6 +154,10 @@ export async function DELETE(request: Request) {
     await sql`DELETE FROM playlist_items WHERE slot_id = ${slotId}`;
 
     await sql`DELETE FROM playlist_slots WHERE id = ${slotId}`;
+
+    // Bump content version
+    const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${params.id}`;
+    if (pl?.organization_id) bumpContentVersion(pl.organization_id).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

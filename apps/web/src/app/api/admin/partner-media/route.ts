@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import sql, { bumpContentVersion } from '@/lib/db';
 
 // GET /api/admin/partner-media — List pending partner media uploads
 export async function GET(request: NextRequest) {
@@ -73,6 +73,11 @@ export async function PUT(request: NextRequest) {
       if (upload?.media_id) {
         await sql`UPDATE media SET status = 'active' WHERE id = ${upload.media_id}`;
       }
+    }
+
+    // Bump content_version so devices pick up the change
+    if (user.organization_id) {
+      bumpContentVersion(user.organization_id).catch(() => {});
     }
 
     return NextResponse.json({ success: true });

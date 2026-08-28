@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import sql, { bumpContentVersion } from '@/lib/db';
 
 export async function POST(
   request: Request,
@@ -31,6 +31,8 @@ export async function POST(
     await sql`DELETE FROM playlist_items WHERE playlist_id = ${playlistId}`;
 
     await sql`DELETE FROM playlists WHERE id = ${playlistId}`;
+
+    bumpContentVersion(user.organization_id).catch(() => {});
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import sql, { bumpContentVersion } from '@/lib/db';
 
 export async function POST(
   request: Request,
@@ -41,6 +41,8 @@ export async function POST(
     if (parentId) {
       await sql`UPDATE partner_devices SET playlist_id = ${playlistId} WHERE playlist_id = ${parentId}`;
     }
+
+    bumpContentVersion(user.organization_id).catch(() => {});
 
     return NextResponse.json({
       success: true,

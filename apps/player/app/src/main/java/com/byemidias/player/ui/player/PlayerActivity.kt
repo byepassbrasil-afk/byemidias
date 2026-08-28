@@ -597,7 +597,26 @@ class PlayerActivity : ComponentActivity() {
         syncHandler = Handler(Looper.getMainLooper())
         val runnable = object : Runnable {
             override fun run() {
-                needsResync = true
+                // Check content_version via heartbeat instead of blindly resyncing
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val deviceId = prefs?.getString("device_id", "") ?: ""
+                        if (deviceId.isEmpty()) return@launch
+                        val body = JSONObject().apply {
+                            put("device_id", deviceId); put("status", "playing")
+                            put("player_version", getVersionName())
+                        }
+                        val result = httpPost("${getApiUrl()}/api/device/heartbeat", body.toString())
+                        if (result.isNotEmpty()) {
+                            val json = JSONObject(result)
+                            val serverVersion = json.optLong("content_version", 0)
+                            if (serverVersion > currentContentVersion) {
+                                Log.i(tag, "Periodic check: content changed $currentContentVersion -> $serverVersion, resyncing")
+                                needsResync = true
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
                 syncHandler?.postDelayed(this, syncIntervalSeconds * 1000L)
             }
         }
@@ -627,12 +646,14 @@ class PlayerActivity : ComponentActivity() {
         var usingCache = false
         while (true) {
             try {
+                Log.i(tag, "syncAndPlay loop: isFirstSync=$isFirstSync, mediaList.size=${mediaList.size}, needsResync=$needsResync")
                 if (isFirstSync || mediaList.isEmpty()) {
                     showStatus("Sincronizando...")
                 }
                 val result = fetchMedia()
                 val items = result.first
                 val zones = result.second
+                Log.i(tag, "syncAndPlay: fetched items=${items.size}, zones=${zones.size}")
                 if (items.isEmpty()) {
                     if (!usingCache && mediaList.isEmpty()) {
                         val cachedItems = loadCache()
@@ -726,11 +747,14 @@ class PlayerActivity : ComponentActivity() {
         val apiUrl = getApiUrl()
 
         val url = "$apiUrl/api/device/sync?device_id=$deviceId&content_version=$currentContentVersion"
+        Log.i(tag, "fetchMedia: URL=$url")
         val response = httpGet(url)
+        Log.i(tag, "fetchMedia: response length=${response.length}, first 200 chars: ${response.take(200)}")
         val json = JSONObject(response)
 
         if (json.has("error")) {
             val errorMsg = json.getString("error")
+            Log.e(tag, "fetchMedia: error=$errorMsg")
             if (errorMsg.contains("não encontrado") || errorMsg.contains("404")) {
                 prefs?.edit()?.remove("device_id")?.commit()
                 withContext(Dispatchers.Main) { showActivation() }
@@ -740,8 +764,14 @@ class PlayerActivity : ComponentActivity() {
         }
 
         val items = mutableListOf<MediaItem>()
-        val playlists = json.optJSONArray("playlists") ?: return@withContext Pair(emptyList(), emptyList())
-        val mediaArray = json.optJSONArray("media") ?: return@withContext Pair(emptyList(), emptyList())
+        val playlists = json.optJSONArray("playlists")
+        val mediaArray = json.optJSONArray("media")
+
+        if (playlists == null || mediaArray == null) {
+            Log.e(tag, "fetchMedia: playlists=${playlists != null}, media=${mediaArray != null}")
+            return@withContext Pair(emptyList(), emptyList())
+        }
+        Log.i(tag, "fetchMedia: playlists=${playlists.length()}, media=${mediaArray.length()}")
 
         val respCampaignId = json.optString("campaign_id", "")
         currentCampaignId = if (!respCampaignId.isNullOrEmpty()) respCampaignId else null
@@ -755,11 +785,18 @@ class PlayerActivity : ComponentActivity() {
             val m = mediaArray.getJSONObject(i)
             mediaMap[m.getString("id")] = m
         }
+        Log.i(tag, "fetchMedia: mediaMap built, ${mediaMap.size} entries. Keys: ${mediaMap.keys.take(5)}")
 
         for (i in 0 until playlists.length()) {
             val playlist = playlists.getJSONObject(i)
             val playlistId = playlist.optString("id", "")
-            val playlistItems = playlist.optJSONArray("items") ?: continue
+            val playlistItems = playlist.optJSONArray("items")
+            Log.i(tag, "fetchMedia: playlist[$i] id=$playlistId, items=${playlistItems?.length() ?: "null"}, slots=${playlist.optJSONArray("slots")?.length() ?: 0}")
+
+            if (playlistItems == null || playlistItems.length() == 0) {
+                Log.w(tag, "fetchMedia: playlist $playlistId has no items, skipping")
+                continue
+            }
 
             // Split items: regular media vs slot-bound media
             val regularItems = mutableListOf<MediaItem>()
@@ -768,8 +805,9 @@ class PlayerActivity : ComponentActivity() {
             for (j in 0 until playlistItems.length()) {
                 val item = playlistItems.getJSONObject(j)
                 val mediaId = item.optString("media_id", "")
-                if (mediaId.isEmpty()) continue
-                val media = mediaMap[mediaId] ?: continue
+                if (mediaId.isEmpty()) { Log.w(tag, "fetchMedia: item[$j] empty media_id, skip"); continue }
+                val media = mediaMap[mediaId]
+                if (media == null) { Log.w(tag, "fetchMedia: item[$j] mediaId=$mediaId NOT in mediaMap, skip"); continue }
                 val duration = item.optInt("duration", 0).coerceAtLeast(media.optInt("duration", 0)).coerceAtLeast(5)
                 val mediaItem = MediaItem(mediaId, media.optString("name", ""), media.optString("type", "image"),
                     media.optString("file_url", ""), duration, respCampaignId, playlistId)
@@ -781,6 +819,7 @@ class PlayerActivity : ComponentActivity() {
                     regularItems.add(mediaItem)
                 }
             }
+            Log.i(tag, "fetchMedia: regularItems=${regularItems.size}, slotMediaGroups=${slotMediaMap.size}")
 
             // Parse slots to build merged list
             val slotsArray = playlist.optJSONArray("slots")
@@ -816,11 +855,14 @@ class PlayerActivity : ComponentActivity() {
                     merged.add(regularItems[regIdx])
                     regIdx++
                 }
+                Log.i(tag, "fetchMedia: merged ${merged.size} items from ${slotPositions.size} slots + regular")
                 items.addAll(merged)
             } else {
+                Log.i(tag, "fetchMedia: no slots, adding ${regularItems.size} regular items")
                 items.addAll(regularItems)
             }
         }
+        Log.i(tag, "fetchMedia: FINAL items=${items.size}, zones parsed from ${json.optJSONArray("layout_zones")?.length() ?: 0} layout_zones")
 
         val respVersion = json.optLong("content_version", 0)
         if (respVersion > 0) currentContentVersion = respVersion
@@ -983,10 +1025,8 @@ class PlayerActivity : ComponentActivity() {
                 val result = httpPost("$apiUrl/api/device/heartbeat", body.toString())
                 if (result.isNotEmpty()) {
                     val json = JSONObject(result)
-                val serverVersion = json.optLong("content_version", 0)
-                if (serverVersion > currentContentVersion && currentContentVersion > 0) {
-                    currentContentVersion = serverVersion; needsResync = true
-                    }
+                    // Only apply settings — heartbeat content_version check already in applyDeviceSettings
+                    // Don't duplicate the check here
                     applyDeviceSettings(json)
                 }
             } catch (_: Exception) {}
@@ -1039,14 +1079,12 @@ class PlayerActivity : ComponentActivity() {
 
     private fun applyDeviceSettings(json: JSONObject) {
         try {
-            val serverVersion = json.optLong("content_version", 0)
-            if (serverVersion > currentContentVersion && currentContentVersion > 0) {
-                currentContentVersion = serverVersion; needsResync = true
-            } else if (currentContentVersion == 0L) {
-                currentContentVersion = serverVersion
-            }
+            // DON'T check content_version from heartbeat — it causes false-positive resyncs
+            // Content version is only updated from sync endpoint via fetchMedia()
+            // The heartbeat returns the same version sync already set on the APK
 
             if (json.optBoolean("restart", false)) {
+                Log.i(tag, "applyDeviceSettings: restart requested")
                 runOnUiThread {
                     try {
                         val intent = packageManager.getLaunchIntentForPackage(packageName)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import sql, { bumpContentVersion } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
       VALUES (${organization_id}, ${sanitizedName}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active')
       RETURNING id, name, type, file_url, file_size, status, created_at
     `;
+
+    bumpContentVersion(organization_id).catch(() => {});
 
     return NextResponse.json({ media });
   } catch (e: unknown) {

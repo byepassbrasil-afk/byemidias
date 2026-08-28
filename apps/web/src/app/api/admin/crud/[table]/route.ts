@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import sql, { bumpContentVersion } from '@/lib/db';
 
 const ALLOWED_TABLES = ['organizations', 'units', 'campaigns', 'playlists', 'devices', 'media', 'playlist_items', 'campaign_playlists', 'campaign_targets', 'partner_access', 'partner_devices', 'profiles', 'activation_codes', 'device_logs', 'playlist_slots', 'campaign_time_slots', 'campaign_calendar', 'content_schedules', 'device_groups', 'device_group_members', 'device_uptime_sessions', 'partner_payments', 'partner_invoices', 'partner_media_uploads', 'playback_logs', 'keepalive_log', 'layout_templates'];
 
@@ -78,6 +78,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       values as (string | number | boolean | null)[]
     );
 
+    // Bump content_version when content-related tables are created
+    const CONTENT_TABLES = ['playlists', 'playlist_items', 'playlist_slots', 'campaigns', 'campaign_playlists', 'campaign_time_slots', 'campaign_targets', 'media', 'layout_templates'];
+    if (CONTENT_TABLES.includes(table) && user.organization_id) {
+      bumpContentVersion(user.organization_id).catch(() => {});
+    }
+
     return NextResponse.json({ data: row });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
@@ -135,6 +141,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       queryValues
     );
 
+    // Bump content_version when content-related tables change
+    const CONTENT_TABLES = ['playlists', 'playlist_items', 'playlist_slots', 'campaigns', 'campaign_playlists', 'campaign_time_slots', 'campaign_targets', 'media', 'layout_templates'];
+    if (CONTENT_TABLES.includes(table) && user.organization_id) {
+      bumpContentVersion(user.organization_id).catch(() => {});
+    }
+
     return NextResponse.json({ data: row });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
@@ -165,6 +177,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);
       if (hasOrgCol.length > 0 && user.organization_id) {
         await sql.unsafe(`DELETE FROM ${table} WHERE id = $1 AND organization_id = $2`, [id, user.organization_id]);
+        // Bump content_version when content-related tables are deleted
+        const CONTENT_TABLES = ['playlists', 'playlist_items', 'playlist_slots', 'campaigns', 'campaign_playlists', 'campaign_time_slots', 'campaign_targets', 'media', 'layout_templates'];
+        if (CONTENT_TABLES.includes(table)) {
+          bumpContentVersion(user.organization_id).catch(() => {});
+        }
         return NextResponse.json({ success: true });
       }
     }
@@ -176,6 +193,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     await sql.unsafe(`DELETE FROM ${table} WHERE id = $1`, [id]);
+
+    // Bump content_version when content-related tables are deleted (super_admin path)
+    const CONTENT_TABLES = ['playlists', 'playlist_items', 'playlist_slots', 'campaigns', 'campaign_playlists', 'campaign_time_slots', 'campaign_targets', 'media', 'layout_templates'];
+    if (CONTENT_TABLES.includes(table) && user.organization_id) {
+      bumpContentVersion(user.organization_id).catch(() => {});
+    }
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

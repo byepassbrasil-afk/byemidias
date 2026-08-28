@@ -178,12 +178,10 @@ export async function GET(request: Request) {
       mediaList = await sql`SELECT * FROM media WHERE id = ANY(${Array.from(allMediaIds)})`;
     }
 
-    const serverVersion = (device.content_version || 0) + 1;
-    const needsUpdate = serverVersion > contentVersion;
-
-    if (allPlaylists.length > 0) {
-      await sql`UPDATE devices SET content_version = ${serverVersion}, updated_at = NOW() WHERE id = ${deviceId}`;
-    }
+    // Only return current version — DON'T increment on every call
+    // Increment content_version only when actual content changes (playlist/media/campaign edits)
+    const serverVersion = device.content_version || 0;
+    const needsUpdate = contentVersion < serverVersion && contentVersion > 0;
 
     const [deviceFull] = await sql`SELECT layout_template_id, screenshot_requested FROM devices WHERE id = ${deviceId}`;
     let layoutZones: unknown[] = [];

@@ -830,9 +830,9 @@ class PlayerActivity : ComponentActivity() {
                 continue
             }
 
-            // Split items: regular media vs slot-bound media
-            val regularItems = mutableListOf<MediaItem>()
-            val slotMediaMap = mutableMapOf<String, MutableList<MediaItem>>() // slot_id -> items
+            // Build list of (position, slotId, MediaItem) for each playlist item
+            data class ItemPos(val position: Int, val slotId: String, val media: MediaItem)
+            val allItems = mutableListOf<ItemPos>()
 
             for (j in 0 until playlistItems.length()) {
                 val item = playlistItems.getJSONObject(j)
@@ -844,57 +844,39 @@ class PlayerActivity : ComponentActivity() {
                 val fileUrl = media.optString("file_url", "")
                 val mediaItem = MediaItem(mediaId, media.optString("name", ""), media.optString("type", "image"),
                     fileUrl, duration, respCampaignId, playlistId)
-                flog("I", "Fetch", "fetchMedia: item[$j] name=${media.optString("name", "")}, type=${media.optString("type", "")}, url=${fileUrl.take(80)}")
-
+                val pos = item.optInt("position", j)
                 val slotId = item.optString("slot_id", "")
-                if (slotId.isNotEmpty()) {
-                    slotMediaMap.getOrPut(slotId) { mutableListOf() }.add(mediaItem)
-                } else {
-                    regularItems.add(mediaItem)
-                }
+                flog("I", "Fetch", "fetchMedia: item[$j] name=${mediaItem.name}, pos=$pos, slotId='$slotId'")
+                allItems.add(ItemPos(pos, slotId, mediaItem))
             }
-            flog("I", "Fetch", "fetchMedia: regularItems=${regularItems.size}, slotMediaGroups=${slotMediaMap.size}")
+            flog("I", "Fetch", "fetchMedia: parsed ${allItems.size} items")
 
-            // Parse slots to build merged list
+            // Parse slot definitions from playlist
             val slotsArray = playlist.optJSONArray("slots")
-            if (slotsArray != null && slotsArray.length() > 0) {
-                // Build list of (position, content) for slots
-                data class SlotPosition(val order: Int, val contentItems: List<MediaItem>, val empty: Boolean)
-                val slotPositions = mutableListOf<SlotPosition>()
+            val slotDefMap = mutableMapOf<String, Int>() // slot_id -> slot_order
+            if (slotsArray != null) {
                 for (k in 0 until slotsArray.length()) {
                     val slot = slotsArray.getJSONObject(k)
-                    val slotOrder = slot.optInt("slot_order", 0)
-                    val slotId = slot.optString("id", "")
-                    val contentItems = slotMediaMap[slotId] ?: emptyList()
-                    slotPositions.add(SlotPosition(slotOrder, contentItems, contentItems.isEmpty()))
+                    slotDefMap[slot.optString("id", "")] = slot.optInt("slot_order", 0)
                 }
-
-                // Merge: interleave regular items and slot content by position
-                val merged = mutableListOf<MediaItem>()
-                var regIdx = 0
-                val maxPos = regularItems.size + slotPositions.size
-                for (pos in 0 until maxPos) {
-                    val slotAtPos = slotPositions.find { it.order == pos }
-                    if (slotAtPos != null) {
-                        // Slot at this position — add its content (empty slots are skipped)
-                        merged.addAll(slotAtPos.contentItems)
-                    } else if (regIdx < regularItems.size) {
-                        // No slot at this position — add regular media
-                        merged.add(regularItems[regIdx])
-                        regIdx++
-                    }
-                }
-                // Add remaining regular items
-                while (regIdx < regularItems.size) {
-                    merged.add(regularItems[regIdx])
-                    regIdx++
-                }
-                flog("I", "Fetch", "fetchMedia: merged ${merged.size} items from ${slotPositions.size} slots + regular")
-                items.addAll(merged)
-            } else {
-                flog("I", "Fetch", "fetchMedia: no slots, adding ${regularItems.size} regular items")
-                items.addAll(regularItems)
             }
+
+            // Sort by position, then place each item
+            // Items with slot_id that matches a known slot definition are placed at the slot's order
+            // Items without slot_id or with slot_id not matching any definition use their own position
+            val sorted = allItems.sortedWith(compareBy({ it.position }, { it.media.name }))
+
+            // Build play order
+            val playList = mutableListOf<MediaItem>()
+            for (ip in sorted) {
+                // If item has slot_id matching a known slot, use slot's order; else use item position
+                val effectivePos = slotDefMap[ip.slotId] ?: ip.position
+                playList.add(ip.media)
+                flog("I", "Fetch", "fetchMedia: queued ${ip.media.name} (slot='${ip.slotId}', pos=$effectivePos)")
+            }
+
+            flog("I", "Fetch", "fetchMedia: FINAL playList size=${playList.size} for playlist $playlistId")
+            items.addAll(playList)
         }
         flog("I", "Fetch", "fetchMedia: FINAL items=${items.size}, zones=${json.optJSONArray("layout_zones")?.length() ?: 0} layout_zones")
 

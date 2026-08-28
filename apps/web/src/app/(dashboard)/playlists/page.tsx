@@ -156,12 +156,12 @@ export default function PlaylistsPage() {
       media_id: i.media_id,
     }));
 
-    const slotItems: UnifiedItem[] = (slotsJson.data ?? []).map((s: PlaylistSlot, idx: number) => {
+    const slotItems: UnifiedItem[] = (slotsJson.data ?? []).map((s: PlaylistSlot) => {
       const partner = partnerMap.get(s.partner_access_id);
       return {
         type: 'slot' as const,
         id: s.id,
-        position: mediaItems.length + idx, // slots go after media initially
+        position: s.slot_order ?? 0,
         partner_access_id: s.partner_access_id,
         partner_name: partner?.display_name ?? 'Desconhecido',
         partner_username: partner?.username ?? '—',
@@ -169,8 +169,9 @@ export default function PlaylistsPage() {
       };
     });
 
-    // Merge: slots get positions after media items
-    setUnifiedItems([...mediaItems, ...slotItems]);
+    // Merge and sort by saved position
+    const merged = [...mediaItems, ...slotItems].sort((a, b) => a.position - b.position);
+    setUnifiedItems(merged);
     setMedia(allMedia);
     setItemsLoading(false);
   }

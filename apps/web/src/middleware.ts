@@ -11,6 +11,7 @@ const PUBLIC_API_PREFIXES = ['/api/device/', '/api/keepalive', '/api/auth/'];
 
 function isAdminRoute(pathname: string) {
   if (pathname.startsWith('/api/')) {
+    if (pathname.startsWith('/api/partner/') || pathname === '/api/partner') return false;
     return !PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p));
   }
   // Exclude all partner routes (old and slug-based)
@@ -152,7 +153,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Handle partner routes (both legacy and slug-based)
-  const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/');
+  const isPartnerRoute = pathname === '/partner' || pathname.startsWith('/partner/') || pathname === '/api/partner' || pathname.startsWith('/api/partner/');
   if (isPartnerRoute) {
     return handlePartnerRoutes(request);
   }

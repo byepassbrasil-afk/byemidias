@@ -81,7 +81,7 @@ const sections: NavSection[] = [
   {
     title: 'Relatórios',
     icon: '📈',
-    items: [{ name: 'Relatórios', href: '/reports', icon: '📊' }],
+    items: [{ name: 'Relatórios', href: '/reports', icon: '📊' }, { name: 'Tarifas', href: '/partner-payments', icon: '💰' }, { name: 'Faturas', href: '/invoices', icon: '🧾' }],
   },
 ];
 

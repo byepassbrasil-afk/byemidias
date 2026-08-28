@@ -235,69 +235,103 @@ export async function GET(request: Request) {
       }
 
       case 'financial': {
-        // Agrupa horas de uptime por organization (cliente) e soma dispositivos
-        const orgSessions = isSuperAdmin
+        // Busca rates de cada partner via partner_payments
+        const partnerPayments = isSuperAdmin
+          ? await sql`SELECT pp.partner_id, pp.hourly_rate, pp.monthly_rate, pp.currency, pa.display_name, pa.username, pp.organization_id FROM partner_payments pp LEFT JOIN partner_access pa ON pa.id = pp.partner_id`
+          : await sql`SELECT pp.partner_id, pp.hourly_rate, pp.monthly_rate, pp.currency, pa.display_name, pa.username, pp.organization_id FROM partner_payments pp LEFT JOIN partner_access pa ON pa.id = pp.partner_id WHERE pp.organization_id = ${orgId}`;
+
+        // Calcula horas de uptime por partner_devices → partner_access
+        const uptimeData = isSuperAdmin
           ? await sql`
-            SELECT dus.organization_id, dus.device_id, dus.started_at, dus.ended_at,
-                   o.name as org_name, o.monthly_price, o.plan
+            SELECT pd.partner_access_id, pd.device_id, dus.started_at, dus.ended_at,
+                   o.name as org_name, o.id as org_id
             FROM device_uptime_sessions dus
+            LEFT JOIN devices d ON d.id = dus.device_id
+            LEFT JOIN partner_devices pd ON pd.device_id = dus.device_id
             LEFT JOIN organizations o ON o.id = dus.organization_id
             WHERE dus.started_at >= ${startDate.toISOString()}
           `
           : await sql`
-            SELECT dus.organization_id, dus.device_id, dus.started_at, dus.ended_at,
-                   o.name as org_name, o.monthly_price, o.plan
+            SELECT pd.partner_access_id, pd.device_id, dus.started_at, dus.ended_at,
+                   o.name as org_name, o.id as org_id
             FROM device_uptime_sessions dus
+            LEFT JOIN devices d ON d.id = dus.device_id
+            LEFT JOIN partner_devices pd ON pd.device_id = dus.device_id
             LEFT JOIN organizations o ON o.id = dus.organization_id
-            WHERE dus.started_at >= ${startDate.toISOString()} AND dus.organization_id = ${orgId}
+            WHERE dus.started_at >= ${startDate.toISOString()}
+              AND dus.organization_id = ${orgId}
           `;
 
-        // Calcula horas e agrega por org
-        const orgStats: Record<string, { hours: number; devices: Set<string>; monthly_price: number; plan: string | null; name: string }> = {};
-        let totalHours = 0;
+        // Agrega por partner_access_id
+        type PartnerStats = {
+          hours: number;
+          devices: Set<string>;
+          org_name: string;
+          org_id: string;
+          partner_name: string;
+          partner_username: string;
+        };
+        const statsMap: Record<string, PartnerStats> = {};
 
-        for (const s of orgSessions) {
+        for (const s of uptimeData) {
+          if (!s.partner_access_id) continue;
           const ended = s.ended_at ? new Date(s.ended_at) : new Date();
           const hours = (ended.getTime() - new Date(s.started_at).getTime()) / (1000 * 60 * 60);
-          const oid = s.organization_id || 'unknown';
-          if (!orgStats[oid]) {
-            orgStats[oid] = { hours: 0, devices: new Set(), monthly_price: Number(s.monthly_price || 0), plan: s.plan, name: s.org_name || 'Sem nome' };
+          if (!statsMap[s.partner_access_id]) {
+            statsMap[s.partner_access_id] = {
+              hours: 0, devices: new Set(), org_name: s.org_name || 'Sem org',
+              org_id: s.org_id || '', partner_name: s.display_name || s.username || 'Sem nome',
+              partner_username: s.username || '',
+            };
           }
-          orgStats[oid].hours += hours;
-          orgStats[oid].devices.add(s.device_id);
-          totalHours += hours;
+          statsMap[s.partner_access_id].hours += hours;
+          statsMap[s.partner_access_id].devices.add(s.device_id);
         }
 
-        // Tarifa padrão por hora se não tiver plano (R$ 0,50/h por device)
-        const DEFAULT_HOURLY_RATE = 0.5;
+        // Monta rates map: partner_id → rate
+        const ratesMap: Record<string, { hourly_rate: number; monthly_rate: number; currency: string }> = {};
+        for (const p of partnerPayments) {
+          ratesMap[p.partner_id] = {
+            hourly_rate: Number(p.hourly_rate || 0),
+            monthly_rate: Number(p.monthly_rate || 0),
+            currency: p.currency || 'BRL',
+          };
+        }
 
-        const partners = Object.entries(orgStats).map(([organization_id, stats]) => {
-          // Plano mensal: cobra o `monthly_price` integral
-          // Por hora: cobra hours * DEFAULT_HOURLY_RATE * devices
-          const paymentType = stats.monthly_price > 0 ? 'monthly' : 'hourly';
-          const hourlyRate = DEFAULT_HOURLY_RATE;
-          const monthlyRate = stats.monthly_price;
+        // Para partners sem rate configurado, usa padrão
+        const DEFAULT_HOURLY = 0.50;
+        const DEFAULT_MONTHLY = 0;
+
+        let totalHours = 0;
+        let totalAmount = 0;
+
+        const partners = Object.entries(statsMap).map(([partnerId, stats]) => {
+          const rates = ratesMap[partnerId] || { hourly_rate: DEFAULT_HOURLY, monthly_rate: DEFAULT_MONTHLY, currency: 'BRL' };
+          const paymentType = rates.monthly_rate > 0 ? 'monthly' : 'hourly';
           const estimatedAmount = paymentType === 'monthly'
-            ? monthlyRate
-            : stats.hours * hourlyRate;
+            ? rates.monthly_rate
+            : stats.hours * rates.hourly_rate;
+
+          totalHours += stats.hours;
+          totalAmount += estimatedAmount;
 
           return {
-            partner_id: stats.name || organization_id.slice(0, 8),
-            organization_id,
+            partner_id: partnerId,
+            partner_name: stats.partner_name,
+            partner_username: stats.partner_username,
+            org_name: stats.org_name,
             payment_type: paymentType,
             devices_count: stats.devices.size,
             hours: Math.round(stats.hours * 100) / 100,
-            hourly_rate: hourlyRate,
-            monthly_rate: monthlyRate,
+            hourly_rate: rates.hourly_rate,
+            monthly_rate: rates.monthly_rate,
+            currency: rates.currency,
             estimated_amount: Math.round(estimatedAmount * 100) / 100,
           };
         }).sort((a, b) => b.estimated_amount - a.estimated_amount);
 
-        const totalAmount = partners.reduce((sum, p) => sum + p.estimated_amount, 0);
-
         return NextResponse.json({
           partners,
-          devices: partners, // alias pra retrocompatibilidade
           total_hours: Math.round(totalHours * 100) / 100,
           total_amount: Math.round(totalAmount * 100) / 100,
           period_days: days,

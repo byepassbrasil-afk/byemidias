@@ -60,9 +60,9 @@ export default function ReportsPage() {
       campaigns.forEach(c => { csv += `"${c.name ?? ''}",${c.plays ?? 0}\n`; });
     } else if (activeTab === 'financial') {
       const partners = (data.partners as Array<Record<string, unknown>>) ?? [];
-      csv = 'Parceiro,Tipo,Dispositivos,Horas,Valor/Hora,Valor Mensal,Total\n';
+      csv = 'Parceiro,Usuario,Org,Tipo,Dispositivos,Horas,Valor/Hora,Valor Mensal,Total\n';
       partners.forEach(p => {
-        csv += `"${p.partner_id ?? ''}",${p.payment_type ?? ''},${p.devices_count ?? 1},"${p.hours ?? 0}h",${p.hourly_rate ?? 0},${p.monthly_rate ?? 0},${p.estimated_amount ?? 0}\n`;
+        csv += `"${p.partner_name ?? ''}","${p.partner_username ?? ''}","${p.org_name ?? ''}",${p.payment_type ?? ''},${p.devices_count ?? 1},"${p.hours ?? 0}h",${p.hourly_rate ?? 0},${p.monthly_rate ?? 0},${p.estimated_amount ?? 0}\n`;
       });
     }
 
@@ -437,14 +437,19 @@ function FinancialReport({ data, formatHours }: { data: Record<string, unknown>;
 
       {/* Partner table */}
       <div className="rounded-xl bg-gray-900 border border-gray-800">
-        <div className="px-5 py-4 border-b border-gray-800">
-          <h2 className="font-semibold text-white">Pagamento por Parceiro</h2>
+        <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+          <h2 className="font-semibold text-white">Faturamento por Parceiro</h2>
+          <a href="/partner-payments" className="text-sm text-blue-400 hover:text-blue-300 no-print">
+            ⚙️ Configurar tarifas
+          </a>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-400 border-b border-gray-800">
                 <th className="text-left px-5 py-3">Parceiro</th>
+                <th className="text-left px-5 py-3">Usuário</th>
+                <th className="text-left px-5 py-3">Org</th>
                 <th className="text-left px-5 py-3">Tipo</th>
                 <th className="text-right px-5 py-3">Dispositivos</th>
                 <th className="text-right px-5 py-3">Horas</th>
@@ -456,16 +461,19 @@ function FinancialReport({ data, formatHours }: { data: Record<string, unknown>;
             <tbody>
               {partners.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-gray-500 text-sm">
-                    Nenhum parceiro com cobrança no período
+                  <td colSpan={9} className="text-center py-8 text-gray-500 text-sm">
+                    Nenhum dado de uptime no período. Partners sem rate configurado usam R$ 0,50/hora.
                   </td>
                 </tr>
               ) : partners.map((p, i) => {
                 const paymentType = (p.payment_type as string) ?? 'hourly';
                 const hours = (p.hours as number) ?? 0;
+                const currency = (p.currency as string) ?? 'BRL';
                 return (
                   <tr key={(p.partner_id as string) ?? (p.device_id as string) ?? i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="px-5 py-3 text-white font-medium">{(p.partner_id as string) ?? (p.device_id as string) ?? '—'}</td>
+                    <td className="px-5 py-3 text-white font-medium">{(p.partner_name as string) ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-400">{(p.partner_username as string) ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-400">{(p.org_name as string) ?? '—'}</td>
                     <td className="px-5 py-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs ${
                         paymentType === 'hourly' ? 'bg-blue-900/50 text-blue-400' : 'bg-purple-900/50 text-purple-400'
@@ -476,13 +484,13 @@ function FinancialReport({ data, formatHours }: { data: Record<string, unknown>;
                     <td className="px-5 py-3 text-right text-gray-300">{(p.devices_count as number) ?? 1}</td>
                     <td className="px-5 py-3 text-right text-white">{formatHours(hours)}</td>
                     <td className="px-5 py-3 text-right text-gray-300">
-                      {paymentType === 'hourly' ? formatMoney(p.hourly_rate as number) : '-'}
+                      {paymentType === 'hourly' ? `${currency} ${(p.hourly_rate as number)?.toFixed(2)}` : '-'}
                     </td>
                     <td className="px-5 py-3 text-right text-gray-300">
-                      {paymentType === 'monthly' ? formatMoney(p.monthly_rate as number) : '-'}
+                      {paymentType === 'monthly' ? `${currency} ${(p.monthly_rate as number)?.toFixed(2)}` : '-'}
                     </td>
                     <td className="px-5 py-3 text-right text-yellow-400 font-semibold">
-                      {formatMoney(p.estimated_amount as number)}
+                      {`${currency} ${(p.estimated_amount as number)?.toFixed(2)}`}
                     </td>
                   </tr>
                 );

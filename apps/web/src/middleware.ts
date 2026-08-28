@@ -31,11 +31,11 @@ function hasValidSession(request: NextRequest): boolean {
 }
 
 /**
- * Check if path matches /partner/[slug]/... pattern
+ * Check if path matches /partner/[slug]/... or /api/partner/[slug]/... pattern
  */
 function parsePartnerSlug(pathname: string): string | null {
   // Match /partner/[slug] or /partner/[slug]/*
-  const match = pathname.match(/^\/partner\/([a-z0-9-]+)(?:\/.*)?$/);
+  const match = pathname.match(/^\/(?:api\/partner|partner)\/([a-z0-9-]+)(?:\/.*)?$/);
   if (match) return match[1];
   return null;
 }
@@ -106,6 +106,10 @@ async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> 
 
   if (pathname === '/partner' || pathname.startsWith('/partner/')) {
     if (!token) {
+      // API routes should return 401 JSON, not a redirect to a login page
+      if (pathname.startsWith('/api/partner/')) {
+        return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+      }
       return NextResponse.redirect(new URL('/partner/login', request.url));
     }
 
@@ -113,7 +117,9 @@ async function handlePartnerRoutes(request: NextRequest): Promise<NextResponse> 
       await jwtVerify(token, PARTNER_SECRET);
       return NextResponse.next();
     } catch {
-      const response = NextResponse.redirect(new URL('/partner/login', request.url));
+      const response = pathname.startsWith('/api/partner/')
+        ? NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+        : NextResponse.redirect(new URL('/partner/login', request.url));
       response.cookies.delete('partner_session');
       return response;
     }

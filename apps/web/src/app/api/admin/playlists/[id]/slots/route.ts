@@ -71,9 +71,9 @@ export async function POST(
       const [partnerInfo] = await sql`SELECT id, username, display_name FROM partner_access WHERE id = ${partner_access_id}`;
 
     // Bump content version
-    const [slot] = await sql`SELECT playlist_id FROM playlist_slots WHERE id = ${slotId}`;
-    if (slot?.playlist_id) {
-      const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${slot.playlist_id}`;
+    const [deletedSlot] = await sql`SELECT playlist_id FROM playlist_slots WHERE id = ${slotId}`;
+    if (deletedSlot?.playlist_id) {
+      const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${deletedSlot.playlist_id}`;
       if (pl?.organization_id) bumpContentVersion(pl.organization_id).catch(() => {});
     }
 

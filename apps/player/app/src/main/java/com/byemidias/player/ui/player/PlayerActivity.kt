@@ -928,16 +928,32 @@ class PlayerActivity : ComponentActivity() {
                 BitmapFactory.decodeByteArray(decoded, 0, decoded.size)
             } else {
                 flog("I", "Fetch", "loadBitmap: fetching URL=${fileUrl.take(100)}")
-                URL(fileUrl).openStream().use { BitmapFactory.decodeStream(it) }
+                val conn = URL(fileUrl).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 15000
+                conn.readTimeout = 15000
+                conn.requestMethod = "GET"
+                val httpCode = conn.responseCode
+                flog("I", "Fetch", "loadBitmap: HTTP $httpCode for ${fileUrl.take(60)}")
+                if (httpCode != 200) {
+                    val errorBody = conn.errorStream?.bufferedReader()?.readText()?.take(200) ?: "no body"
+                    flog("E", "Fetch", "loadBitmap: HTTP $httpCode error body: $errorBody")
+                    conn.disconnect()
+                    return null
+                }
+                val inputStream = conn.inputStream
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = false }
+                val result = BitmapFactory.decodeStream(inputStream, null, options)
+                conn.disconnect()
+                result
             }
             if (bitmap != null) {
                 flog("I", "Fetch", "loadBitmap: OK — ${bitmap.width}x${bitmap.height}")
             } else {
-                flog("E", "Fetch", "loadBitmap: decodeStream returned NULL for ${fileUrl.take(80)}")
+                flog("E", "Fetch", "loadBitmap: decode returned NULL for ${fileUrl.take(80)}")
             }
             bitmap
         } catch (e: Exception) {
-            flog("E", "Fetch", "loadBitmap FAILED: ${e.message} — URL=${fileUrl.take(80)}")
+            flog("E", "Fetch", "loadBitmap EXCEPTION: ${e.javaClass.simpleName}: ${e.message} — URL=${fileUrl.take(80)}")
             null
         }
     }

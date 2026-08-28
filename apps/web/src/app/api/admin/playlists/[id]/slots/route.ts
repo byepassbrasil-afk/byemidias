@@ -70,7 +70,7 @@ export async function POST(
 
       const [partnerInfo] = await sql`SELECT id, username, display_name FROM partner_access WHERE id = ${partner_access_id}`;
 
-    // Bump content version
+    // Bump content version — look up playlist via slot before deleting
     const [slotInfo] = await sql`SELECT playlist_id FROM playlist_slots WHERE id = ${slotId}`;
     if (slotInfo?.playlist_id) {
       const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${slotInfo.playlist_id}`;
@@ -154,13 +154,18 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'slot_id obrigatório' }, { status: 400 });
     }
 
-    await sql`DELETE FROM playlist_items WHERE slot_id = ${slotId}`;
+    // Look up org before deleting slot
+    const [slotInfo] = await sql`SELECT playlist_id FROM playlist_slots WHERE id = ${slotId}`;
+    let orgId: string | null = null;
+    if (slotInfo?.playlist_id) {
+      const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${slotInfo.playlist_id}`;
+      orgId = pl?.organization_id || null;
+    }
 
+    await sql`DELETE FROM playlist_items WHERE slot_id = ${slotId}`;
     await sql`DELETE FROM playlist_slots WHERE id = ${slotId}`;
 
-    // Bump content version
-    const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${params.id}`;
-    if (pl?.organization_id) bumpContentVersion(pl.organization_id).catch(() => {});
+    if (orgId) bumpContentVersion(orgId).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

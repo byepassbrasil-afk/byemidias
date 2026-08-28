@@ -70,9 +70,12 @@ export async function POST(
 
       const [partnerInfo] = await sql`SELECT id, username, display_name FROM partner_access WHERE id = ${partner_access_id}`;
 
-      // Bump content version
-      const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${params.id}`;
+    // Bump content version
+    const [slot] = await sql`SELECT playlist_id FROM playlist_slots WHERE id = ${slotId}`;
+    if (slot?.playlist_id) {
+      const [pl] = await sql`SELECT organization_id FROM playlists WHERE id = ${slot.playlist_id}`;
       if (pl?.organization_id) bumpContentVersion(pl.organization_id).catch(() => {});
+    }
 
       return NextResponse.json({ slot: { ...slot, partner: partnerInfo || null } });
     } catch (error: unknown) {

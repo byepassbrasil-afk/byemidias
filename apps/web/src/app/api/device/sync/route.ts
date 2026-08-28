@@ -175,7 +175,17 @@ export async function GET(request: Request) {
 
     let mediaList: Record<string, unknown>[] = [];
     if (allMediaIds.size > 0) {
-      mediaList = await sql`SELECT * FROM media WHERE id = ANY(${Array.from(allMediaIds)})`;
+      const rawMedia: Array<Record<string, unknown>> = await sql`SELECT * FROM media WHERE id = ANY(${Array.from(allMediaIds)})`;
+      const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'avif', 'webp', 'gif'];
+      const VIDEO_EXTS = ['mp4', 'avi', 'wmv', 'mkv'];
+      mediaList = rawMedia.map(m => {
+        const fileUrl = (m.file_url as string) || '';
+        const ext = fileUrl.substringAfterLast('.').toLowerCase();
+        let resolvedType = m.type as string;
+        if (IMAGE_EXTS.includes(ext)) resolvedType = 'image';
+        else if (VIDEO_EXTS.includes(ext)) resolvedType = 'video';
+        return { ...m, resolved_type: resolvedType };
+      });
     }
 
     // Only return current version — DON'T increment on every call

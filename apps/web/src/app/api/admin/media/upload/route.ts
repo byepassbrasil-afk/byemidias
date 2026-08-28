@@ -62,10 +62,21 @@ function makeKey(sanitizedName: string) {
   return `media/${timestamp}_${sanitizedName.replace(/\.[^.]+$/, '')}.${ext}`;
 }
 
-function getMediaType(mt: string) {
-  if (mt?.startsWith('video/')) return 'video';
-  if (mt?.startsWith('audio/')) return 'audio';
-  return 'image';
+const ALLOWED_IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'avif', 'webp', 'gif'];
+const ALLOWED_VIDEO_EXTS = ['mp4', 'avi', 'wmv', 'mkv'];
+const ALLOWED_ALL_EXTS = [...ALLOWED_IMAGE_EXTS, ...ALLOWED_VIDEO_EXTS];
+
+function getMediaTypeFromExt(ext: string): string | null {
+  const e = ext.toLowerCase();
+  if (ALLOWED_IMAGE_EXTS.includes(e)) return 'image';
+  if (ALLOWED_VIDEO_EXTS.includes(e)) return 'video';
+  return null;
+}
+
+function validateFileExtension(fileName: string): { valid: boolean; ext: string; mediaType: string } {
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  const mediaType = getMediaTypeFromExt(ext);
+  return { valid: mediaType !== null, ext, mediaType: mediaType || 'unknown' };
 }
 
 export async function POST(request: NextRequest) {
@@ -93,6 +104,13 @@ export async function POST(request: NextRequest) {
       if (!file) return NextResponse.json({ error: 'file obrigatório' }, { status: 400 });
       if (!organization_id) return NextResponse.json({ error: 'organization_id obrigatório' }, { status: 400 });
 
+      const validation = validateFileExtension(file.name);
+      if (!validation.valid) {
+        return NextResponse.json({
+          error: `Extensão .${validation.ext} não permitida. Use: ${ALLOWED_ALL_EXTS.join(', ')}`
+        }, { status: 400 });
+      }
+
       const sanitizedName = sanitizeName(file.name);
       const key = makeKey(sanitizedName);
       const host = `${R2_BUCKET}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
@@ -103,6 +121,7 @@ export async function POST(request: NextRequest) {
         upload_url: uploadUrl, key, public_url: publicUrl,
         content_type: file.type || 'application/octet-stream',
         file_name: file.name, file_size: file.size, organization_id,
+        resolved_type: validation.mediaType,
       });
     }
 
@@ -119,6 +138,13 @@ export async function POST(request: NextRequest) {
 
     if (!organization_id) return NextResponse.json({ error: 'organization_id obrigatório' }, { status: 400 });
 
+    const validation = validateFileExtension(file_name);
+    if (!validation.valid) {
+      return NextResponse.json({
+        error: `Extensão .${validation.ext} não permitida. Use: ${ALLOWED_ALL_EXTS.join(', ')}`
+      }, { status: 400 });
+    }
+
     const sanitizedName = sanitizeName(file_name);
     const key = makeKey(sanitizedName);
     const host = `${R2_BUCKET}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
@@ -128,6 +154,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       upload_url: uploadUrl, key, public_url: publicUrl,
       content_type: mime_type || 'application/octet-stream',
+      resolved_type: validation.mediaType,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';

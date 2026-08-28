@@ -95,7 +95,23 @@ class PlayerActivity : ComponentActivity() {
         val slotDurationSeconds: Int = 0,
         val slotHasContent: Boolean = true,
         val slotContentDuration: Int = 0
-    )
+    ) {
+        companion object {
+            private val IMAGE_EXTS = setOf("png", "jpg", "jpeg", "avif", "webp", "gif")
+            private val VIDEO_EXTS = setOf("mp4", "avi", "wmv", "mkv")
+
+            fun getResolvedType(fileUrl: String, fallbackType: String): String {
+                val ext = fileUrl.substringAfterLast(".", "").lowercase()
+                return when {
+                    IMAGE_EXTS.contains(ext) -> "image"
+                    VIDEO_EXTS.contains(ext) -> "video"
+                    else -> fallbackType
+                }
+            }
+        }
+
+        fun resolvedType(): String = getResolvedType(fileUrl, type)
+    }
 
     data class ZoneData(
         val name: String,
@@ -898,12 +914,13 @@ class PlayerActivity : ComponentActivity() {
             if (needsResync) { needsResync = false; break }
             if (currentIndex >= mediaList.size) currentIndex = 0
             val item = mediaList[currentIndex]
-            flog("I", "Play", "playLoop: index=$currentIndex/${mediaList.size}, item=${item.name}, type=${item.type}, duration=${item.duration}s, url=${item.fileUrl.take(80)}")
+            val resolvedType = item.resolvedType()
+            flog("I", "Play", "playLoop: index=$currentIndex/${mediaList.size}, item=${item.name}, dbType=${item.type}, resolvedType=$resolvedType, duration=${item.duration}s, url=${item.fileUrl.take(80)}")
             try {
-                when (item.type) {
+                when (resolvedType) {
                     "video" -> playVideo(item)
-                    "image", "gif" -> playImage(item)
-                    else -> { flog("W", "Play", "playLoop: unknown type ${item.type}, delaying ${item.duration}s"); delay(item.duration * 1000L) }
+                    "image" -> playImage(item)
+                    else -> { flog("W", "Play", "playLoop: unknown resolved type $resolvedType for ${item.name}, delaying ${item.duration}s"); delay(item.duration * 1000L) }
                 }
                 logPlayback(item)
             } catch (e: Exception) {

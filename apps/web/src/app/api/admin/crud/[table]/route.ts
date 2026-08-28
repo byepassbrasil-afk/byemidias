@@ -184,6 +184,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         }
         return NextResponse.json({ success: true });
       }
+      // Table has no organization_id column or no org set — delete without org filter
+      if (hasOrgCol.length === 0) {
+        await sql.unsafe(`DELETE FROM ${table} WHERE id = $1`, [id]);
+        return NextResponse.json({ success: true });
+      }
+      // hasOrgCol > 0 but no user.organization_id — treat as super_admin path
     }
 
     // Special handling for profiles: clean FKs first

@@ -138,7 +138,13 @@ export default function DevicesPage() {
 
   async function handleDelete() {
     if (!deleteId) return;
-    await fetch(`/api/admin/crud/devices?id=${deleteId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/admin/crud/devices?id=${deleteId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Erro ao excluir' }));
+      alert('Erro ao excluir: ' + (err.error || res.statusText));
+      setDeleteId(null);
+      return;
+    }
     setDeleteId(null); loadAll();
   }
 

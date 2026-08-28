@@ -128,6 +128,34 @@ export async function GET(request: Request) {
       const cpEntry = campaignPlaylists.find((cp: Record<string, unknown>) => cp.playlist_id === playlistId);
       const items = await sql`SELECT * FROM playlist_items WHERE playlist_id = ${pl.id} ORDER BY position ASC`;
 
+      // Load slots for this playlist with content info
+      const slots = await sql`
+        SELECT ps.id, ps.slot_order, ps.duration_seconds, ps.partner_access_id,
+               pa.display_name as partner_name, pa.username as partner_username,
+               COALESCE(
+                 (SELECT SUM(pi.duration) FROM playlist_items pi WHERE pi.slot_id = ps.id),
+                 0
+               ) as content_duration,
+               (SELECT COUNT(*)::int FROM playlist_items pi WHERE pi.slot_id = ps.id) as item_count
+        FROM playlist_slots ps
+        LEFT JOIN partner_access pa ON pa.id = ps.partner_access_id
+        WHERE ps.playlist_id = ${pl.id}
+        ORDER BY ps.slot_order ASC
+      `;
+
+      // Build slots array with has_content flag
+      const slotsWithInfo = slots.map((s: Record<string, unknown>) => ({
+        id: s.id,
+        slot_order: s.slot_order,
+        duration_seconds: s.duration_seconds,
+        partner_access_id: s.partner_access_id,
+        partner_name: s.partner_name,
+        partner_username: s.partner_username,
+        content_duration: s.content_duration || 0,
+        has_content: (s.item_count as number) > 0,
+        type: 'slot',
+      }));
+
       allPlaylists.push({
         id: pl.id,
         name: pl.name,
@@ -137,6 +165,7 @@ export async function GET(request: Request) {
         position: cpEntry?.position ?? 0,
         duration: cpEntry?.duration ?? null,
         items,
+        slots: slotsWithInfo,
       });
 
       items.forEach((item: Record<string, unknown>) => {

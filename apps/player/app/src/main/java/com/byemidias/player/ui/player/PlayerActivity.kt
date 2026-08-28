@@ -86,7 +86,11 @@ class PlayerActivity : ComponentActivity() {
         val fileUrl: String,
         val duration: Int,
         val campaignId: String?,
-        val playlistId: String?
+        val playlistId: String?,
+        val isSlot: Boolean = false,
+        val slotDurationSeconds: Int = 0,
+        val slotHasContent: Boolean = true,
+        val slotContentDuration: Int = 0
     )
 
     data class ZoneData(
@@ -756,14 +760,66 @@ class PlayerActivity : ComponentActivity() {
             val playlist = playlists.getJSONObject(i)
             val playlistId = playlist.optString("id", "")
             val playlistItems = playlist.optJSONArray("items") ?: continue
+
+            // Split items: regular media vs slot-bound media
+            val regularItems = mutableListOf<MediaItem>()
+            val slotMediaMap = mutableMapOf<String, MutableList<MediaItem>>() // slot_id -> items
+
             for (j in 0 until playlistItems.length()) {
                 val item = playlistItems.getJSONObject(j)
                 val mediaId = item.optString("media_id", "")
                 if (mediaId.isEmpty()) continue
                 val media = mediaMap[mediaId] ?: continue
                 val duration = item.optInt("duration", 0).coerceAtLeast(media.optInt("duration", 0)).coerceAtLeast(5)
-                items.add(MediaItem(mediaId, media.optString("name", ""), media.optString("type", "image"),
-                    media.optString("file_url", ""), duration, respCampaignId, playlistId))
+                val mediaItem = MediaItem(mediaId, media.optString("name", ""), media.optString("type", "image"),
+                    media.optString("file_url", ""), duration, respCampaignId, playlistId)
+
+                val slotId = item.optString("slot_id", "")
+                if (slotId.isNotEmpty()) {
+                    slotMediaMap.getOrPut(slotId) { mutableListOf() }.add(mediaItem)
+                } else {
+                    regularItems.add(mediaItem)
+                }
+            }
+
+            // Parse slots to build merged list
+            val slotsArray = playlist.optJSONArray("slots")
+            if (slotsArray != null && slotsArray.length() > 0) {
+                // Build list of (position, content) for slots
+                data class SlotPosition(val order: Int, val contentItems: List<MediaItem>, val empty: Boolean)
+                val slotPositions = mutableListOf<SlotPosition>()
+                for (k in 0 until slotsArray.length()) {
+                    val slot = slotsArray.getJSONObject(k)
+                    val slotOrder = slot.optInt("slot_order", 0)
+                    val slotId = slot.optString("id", "")
+                    val contentItems = slotMediaMap[slotId] ?: emptyList()
+                    slotPositions.add(SlotPosition(slotOrder, contentItems, contentItems.isEmpty()))
+                }
+
+                // Merge: interleave regular items and slot content by position
+                val merged = mutableListOf<MediaItem>()
+                var regIdx = 0
+                val maxPos = regularItems.size + slotPositions.size
+                for (pos in 0 until maxPos) {
+                    val slotAtPos = slotPositions.find { it.order == pos }
+                    if (slotAtPos != null) {
+                        // Add slot content items (empty slots are simply skipped)
+                        merged.addAll(slotAtPos.contentItems)
+                    }
+                    // Find the next regular item that doesn't overlap with a later slot
+                    if (regIdx < regularItems.size) {
+                        merged.add(regularItems[regIdx])
+                        regIdx++
+                    }
+                }
+                // Add remaining regular items
+                while (regIdx < regularItems.size) {
+                    merged.add(regularItems[regIdx])
+                    regIdx++
+                }
+                items.addAll(merged)
+            } else {
+                items.addAll(regularItems)
             }
         }
 
@@ -794,9 +850,9 @@ class PlayerActivity : ComponentActivity() {
             if (currentIndex >= mediaList.size) currentIndex = 0
             val item = mediaList[currentIndex]
             try {
-                when {
-                    item.type == "video" -> playVideo(item)
-                    item.type == "image" || item.type == "gif" -> playImage(item)
+                when (item.type) {
+                    "video" -> playVideo(item)
+                    "image", "gif" -> playImage(item)
                     else -> delay(item.duration * 1000L)
                 }
                 logPlayback(item)

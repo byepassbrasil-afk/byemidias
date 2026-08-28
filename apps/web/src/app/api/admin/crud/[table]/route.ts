@@ -169,6 +169,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       }
     }
 
+    // Special handling for profiles: clean FKs first
+    if (table === 'profiles') {
+      await deleteProfile(id, user);
+      return NextResponse.json({ success: true });
+    }
+
     await sql.unsafe(`DELETE FROM ${table} WHERE id = $1`, [id]);
 
     return NextResponse.json({ success: true });
@@ -176,4 +182,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
+}
+
+// Handle profile deletion with FK cleanup
+async function deleteProfile(id: string, user: { role: string }) {
+  // Clean FK references first
+  await sql`UPDATE organizations SET owner_id = NULL WHERE owner_id = ${id}`;
+  await sql`DELETE FROM push_subscriptions WHERE user_id = ${id}`;
+  // Now safe to delete
+  await sql`DELETE FROM profiles WHERE id = ${id}`;
 }

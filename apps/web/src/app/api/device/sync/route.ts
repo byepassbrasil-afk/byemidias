@@ -180,7 +180,7 @@ export async function GET(request: Request) {
       const VIDEO_EXTS = ['mp4', 'avi', 'wmv', 'mkv'];
       mediaList = rawMedia.map(m => {
         const fileUrl = (m.file_url as string) || '';
-        const ext = fileUrl.substringAfterLast('.').toLowerCase();
+        const ext = fileUrl.split('.').pop()?.toLowerCase() || '';
         let resolvedType = m.type as string;
         if (IMAGE_EXTS.includes(ext)) resolvedType = 'image';
         else if (VIDEO_EXTS.includes(ext)) resolvedType = 'video';

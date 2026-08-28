@@ -100,17 +100,28 @@ class PlayerActivity : ComponentActivity() {
             private val IMAGE_EXTS = setOf("png", "jpg", "jpeg", "avif", "webp", "gif")
             private val VIDEO_EXTS = setOf("mp4", "avi", "wmv", "mkv")
 
+            fun isImageFile(fileUrl: String): Boolean {
+                val clean = fileUrl.substringBefore("?").substringBefore("#")
+                val ext = clean.substringAfterLast(".", "").lowercase()
+                return IMAGE_EXTS.contains(ext)
+            }
+
+            fun isVideoFile(fileUrl: String): Boolean {
+                val clean = fileUrl.substringBefore("?").substringBefore("#")
+                val ext = clean.substringAfterLast(".", "").lowercase()
+                return VIDEO_EXTS.contains(ext)
+            }
+
             fun getResolvedType(fileUrl: String, fallbackType: String): String {
-                val ext = fileUrl.substringAfterLast(".", "").lowercase()
-                return when {
-                    IMAGE_EXTS.contains(ext) -> "image"
-                    VIDEO_EXTS.contains(ext) -> "video"
-                    else -> fallbackType
-                }
+                if (isImageFile(fileUrl)) return "image"
+                if (isVideoFile(fileUrl)) return "video"
+                return fallbackType
             }
         }
 
         fun resolvedType(): String = getResolvedType(fileUrl, type)
+        fun isImage(): Boolean = isImageFile(fileUrl)
+        fun isVideo(): Boolean = isVideoFile(fileUrl)
     }
 
     data class ZoneData(
@@ -127,7 +138,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.47")
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -1030,30 +1041,34 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private suspend fun playVideo(item: MediaItem) {
-        // DEFENSIVE: if file extension is image, delegate to playImage
-        val ext = item.fileUrl.substringAfterLast(".", "").lowercase()
-        val imageExts = setOf("png", "jpg", "jpeg", "avif", "webp", "gif")
-        if (imageExts.contains(ext)) {
-            flog("W", "Play", "playVideo called for image file ${item.name} (ext=.$ext) — redirecting to playImage")
+        // ===== DEFENSIVE: redirect ALL non-video to playImage =====
+        if (!item.isVideo()) {
+            flog("W", "Play", "REDIRECT: ${item.name} (ext=${item.fileUrl.substringAfterLast(".")}) → playImage")
             playImage(item)
             return
         }
 
+        flog("I", "Play", "playVideo REAL: ${item.name}")
         val vv = videoView ?: run { delay(item.duration * 1000L); return }
         flog("I", "Play", "playVideo: starting ${item.name}, url=${item.fileUrl.take(80)}")
         val latch = java.util.concurrent.CountDownLatch(1)
         withContext(Dispatchers.Main) {
-            imageViewA?.visibility = View.GONE
-            imageViewB?.visibility = View.GONE
-            vv.visibility = View.VISIBLE
-            vv.setOnPreparedListener { mp -> mp.isLooping = false; mp.start() }
-            vv.setOnCompletionListener { latch.countDown() }
-            vv.setOnErrorListener { mp: android.media.MediaPlayer, what: Int, extra: Int ->
-                flog("E", "Play", "playVideo MediaPlayer ERROR: what=$what, extra=$extra")
+            try {
+                imageViewA?.visibility = View.GONE
+                imageViewB?.visibility = View.GONE
+                vv.visibility = View.VISIBLE
+                vv.setOnPreparedListener { mp -> mp.isLooping = false; mp.start() }
+                vv.setOnCompletionListener { latch.countDown() }
+                vv.setOnErrorListener { mp: android.media.MediaPlayer, what: Int, extra: Int ->
+                    flog("E", "Play", "playVideo MediaPlayer ERROR: what=$what, extra=$extra")
+                    latch.countDown()
+                    true
+                }
+                vv.setVideoURI(Uri.parse(item.fileUrl))
+            } catch (e: Exception) {
+                flog("E", "Play", "playVideo setVideoURI EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
                 latch.countDown()
-                true
             }
-            vv.setVideoURI(Uri.parse(item.fileUrl))
         }
         withContext(Dispatchers.IO) { latch.await(item.duration.toLong() + 30, java.util.concurrent.TimeUnit.SECONDS) }
         flog("I", "Play", "playVideo: finished ${item.name}")

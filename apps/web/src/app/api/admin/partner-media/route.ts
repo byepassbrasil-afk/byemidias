@@ -76,9 +76,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Bump content_version so devices pick up the change
-    if (user.organization_id) {
-      bumpContentVersion(user.organization_id).catch(() => {});
-    }
+    if (user.organization_id) bumpContentVersion(user.organization_id).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

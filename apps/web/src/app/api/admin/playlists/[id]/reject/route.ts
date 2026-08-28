@@ -32,7 +32,7 @@ export async function POST(
 
     await sql`DELETE FROM playlists WHERE id = ${playlistId}`;
 
-    bumpContentVersion(user.organization_id).catch(() => {});
+    if (user.organization_id) bumpContentVersion(user.organization_id).catch(() => {});
 
     return NextResponse.json({
       success: true,

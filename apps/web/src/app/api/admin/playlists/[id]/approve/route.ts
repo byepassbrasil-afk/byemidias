@@ -42,7 +42,7 @@ export async function POST(
       await sql`UPDATE partner_devices SET playlist_id = ${playlistId} WHERE playlist_id = ${parentId}`;
     }
 
-    bumpContentVersion(user.organization_id).catch(() => {});
+    if (user.organization_id) bumpContentVersion(user.organization_id).catch(() => {});
 
     return NextResponse.json({
       success: true,

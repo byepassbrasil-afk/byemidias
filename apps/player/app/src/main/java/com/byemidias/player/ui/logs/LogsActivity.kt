@@ -119,19 +119,12 @@ class LogsActivity : ComponentActivity() {
                     }
                 }
 
-                // Read player session log (tag-based filter)
-                val process = Runtime.getRuntime().exec(arrayOf(
-                    "logcat", "-d", "-t", "500",
-                    "-s", "Player:V", "Config:V", "PlayerService:V", "BootReceiver:V", "CRASH:E", "Sync:V", "Fetch:V", "Heartbeat:V"
-                ))
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
-                var line: String?
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
-                val parseFormat = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
-
-                while (reader.readLine().also { line = it } != null) {
-                    line?.let { l ->
-                        val entry = parseLogcatLine(l, dateFormat, parseFormat)
+                // Read player.log file (written by PlayerActivity FileLogger)
+                val playerLogFile = File(filesDir, "player.log")
+                if (playerLogFile.exists()) {
+                    val lines = playerLogFile.readLines()
+                    lines.takeLast(500).forEach { line ->
+                        val entry = parseFileLogLine(line)
                         if (entry != null) {
                             synchronized(logEntries) {
                                 logEntries.add(entry)
@@ -139,7 +132,29 @@ class LogsActivity : ComponentActivity() {
                         }
                     }
                 }
-                reader.close()
+
+                // Also try logcat as backup (ignore errors on Android 11+)
+                try {
+                    val process = Runtime.getRuntime().exec(arrayOf(
+                        "logcat", "-d", "-t", "300"
+                    ))
+                    val reader = BufferedReader(InputStreamReader(process.inputStream))
+                    var line: String?
+                    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                    val parseFormat = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
+
+                    while (reader.readLine().also { line = it } != null) {
+                        line?.let { l ->
+                            val entry = parseLogcatLine(l, dateFormat, parseFormat)
+                            if (entry != null) {
+                                synchronized(logEntries) {
+                                    logEntries.add(entry)
+                                }
+                            }
+                        }
+                    }
+                    reader.close()
+                } catch (_: Exception) {}
 
                 // Keep only last 1000 entries
                 synchronized(logEntries) {
@@ -201,6 +216,25 @@ class LogsActivity : ComponentActivity() {
         }
     }
 
+    /** Parse lines from player.log file.
+     * Format: "2026-08-28 12:30:45.123 I Fetch: fetchMedia: URL=https://..."
+     */
+    private fun parseFileLogLine(line: String): LogEntry? {
+        try {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) return null
+            // Pattern: "yyyy-MM-dd HH:mm:ss.SSS Level Tag: Message"
+            val match = Regex("""^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s+([EWI])\s+(\w+):\s*(.*)$""").find(trimmed)
+            if (match != null) {
+                val (timestamp, level, tag, message) = match.destructured
+                return LogEntry(timestamp, level, tag, message.take(500))
+            }
+            return null
+        } catch (_: Exception) {
+            return null
+        }
+    }
+
     private fun startAutoRefresh() {
         mainHandler.postDelayed(object : Runnable {
             override fun run() {
@@ -215,30 +249,50 @@ class LogsActivity : ComponentActivity() {
     private fun refreshLogs() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val process = Runtime.getRuntime().exec(arrayOf(
-                    "logcat", "-d", "-t", "50",
-                    "-s", "Player:V", "Config:V", "PlayerService:V", "BootReceiver:V", "CRASH:E", "Sync:V", "Fetch:V", "Heartbeat:V"
-                ))
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
-                val parseFormat = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
-
-                var line: String?
                 val newEntries = mutableListOf<LogEntry>()
-                while (reader.readLine().also { line = it } != null) {
-                    line?.let { l ->
-                        val entry = parseLogcatLine(l, dateFormat, parseFormat)
-                        if (entry != null) {
-                            val alreadyExists = synchronized(logEntries) {
-                                logEntries.any { it.tag == entry.tag && it.message == entry.message }
-                            }
-                            if (!alreadyExists) {
-                                newEntries.add(entry)
+
+                // Read new entries from player.log
+                try {
+                    val playerLogFile = File(filesDir, "player.log")
+                    if (playerLogFile.exists()) {
+                        val lines = playerLogFile.readLines()
+                        lines.takeLast(100).forEach { line ->
+                            val entry = parseFileLogLine(line)
+                            if (entry != null) {
+                                val alreadyExists = synchronized(logEntries) {
+                                    logEntries.any { it.tag == entry.tag && it.message == entry.message }
+                                }
+                                if (!alreadyExists) {
+                                    newEntries.add(entry)
+                                }
                             }
                         }
                     }
-                }
-                reader.close()
+                } catch (_: Exception) {}
+
+                // Also try logcat
+                try {
+                    val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "50"))
+                    val reader = BufferedReader(InputStreamReader(process.inputStream))
+                    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                    val parseFormat = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
+
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        line?.let { l ->
+                            val entry = parseLogcatLine(l, dateFormat, parseFormat)
+                            if (entry != null) {
+                                val alreadyExists = synchronized(logEntries) {
+                                    logEntries.any { it.tag == entry.tag && it.message == entry.message }
+                                }
+                                if (!alreadyExists) {
+                                    newEntries.add(entry)
+                                }
+                            }
+                        }
+                    }
+                    reader.close()
+                } catch (_: Exception) {}
 
                 if (newEntries.isNotEmpty()) {
                     synchronized(logEntries) {

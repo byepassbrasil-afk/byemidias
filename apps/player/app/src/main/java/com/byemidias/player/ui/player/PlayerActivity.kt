@@ -40,7 +40,10 @@ import com.byemidias.player.ui.config.ConfigActivity
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileWriter
 import java.io.InputStreamReader
+import java.io.PrintWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -50,6 +53,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val tag = "Player"
     private var prefs: SharedPreferences? = null
+    private var fileLogger: FileLogger? = null
 
     private var rootLayout: FrameLayout? = null
     private var statusText: TextView? = null
@@ -144,6 +148,7 @@ class PlayerActivity : ComponentActivity() {
             }
 
             prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
+            fileLogger = FileLogger(filesDir.path)
 
             try {
                 applyRotationFromPrefs()
@@ -646,14 +651,14 @@ class PlayerActivity : ComponentActivity() {
         var usingCache = false
         while (true) {
             try {
-                Log.i(tag, "syncAndPlay loop: isFirstSync=$isFirstSync, mediaList.size=${mediaList.size}, needsResync=$needsResync")
+                flog("I", tag, "=== syncAndPlay: isFirstSync=$isFirstSync, mediaList.size=${mediaList.size}, needsResync=$needsResync ===")
                 if (isFirstSync || mediaList.isEmpty()) {
                     showStatus("Sincronizando...")
                 }
                 val result = fetchMedia()
                 val items = result.first
                 val zones = result.second
-                Log.i(tag, "syncAndPlay: fetched items=${items.size}, zones=${zones.size}")
+                flog("I", tag, "syncAndPlay: fetched items=${items.size}, zones=${zones.size}")
                 if (items.isEmpty()) {
                     if (!usingCache && mediaList.isEmpty()) {
                         val cachedItems = loadCache()
@@ -707,7 +712,7 @@ class PlayerActivity : ComponentActivity() {
                 startPeriodicSync()
                 playLoop()
             } catch (e: Exception) {
-                Log.e(tag, "Sync failed", e)
+                flog("E", "Sync", "Sync EXCEPTION: ${e.message}")
                 if (mediaList.isEmpty()) {
                     val cachedItems = loadCache()
                     if (cachedItems.isNotEmpty()) {
@@ -747,14 +752,14 @@ class PlayerActivity : ComponentActivity() {
         val apiUrl = getApiUrl()
 
         val url = "$apiUrl/api/device/sync?device_id=$deviceId&content_version=$currentContentVersion"
-        Log.i(tag, "fetchMedia: URL=$url")
+        flog("I", "Fetch", "fetchMedia: URL=$url")
         val response = httpGet(url)
-        Log.i(tag, "fetchMedia: response length=${response.length}, first 200 chars: ${response.take(200)}")
+        flog("I", "Fetch", "fetchMedia: response length=${response.length}, first 300: ${response.take(300)}")
         val json = JSONObject(response)
 
         if (json.has("error")) {
             val errorMsg = json.getString("error")
-            Log.e(tag, "fetchMedia: error=$errorMsg")
+            flog("E", "Fetch", "fetchMedia ERROR: $errorMsg")
             if (errorMsg.contains("não encontrado") || errorMsg.contains("404")) {
                 prefs?.edit()?.remove("device_id")?.commit()
                 withContext(Dispatchers.Main) { showActivation() }
@@ -768,10 +773,10 @@ class PlayerActivity : ComponentActivity() {
         val mediaArray = json.optJSONArray("media")
 
         if (playlists == null || mediaArray == null) {
-            Log.e(tag, "fetchMedia: playlists=${playlists != null}, media=${mediaArray != null}")
+            flog("E", "Fetch", "fetchMedia: playlists=${playlists != null}, media=${mediaArray != null} — EMPTY, returning empty")
             return@withContext Pair(emptyList(), emptyList())
         }
-        Log.i(tag, "fetchMedia: playlists=${playlists.length()}, media=${mediaArray.length()}")
+        flog("I", "Fetch", "fetchMedia: playlists=${playlists.length()}, media=${mediaArray.length()}")
 
         val respCampaignId = json.optString("campaign_id", "")
         currentCampaignId = if (!respCampaignId.isNullOrEmpty()) respCampaignId else null
@@ -785,16 +790,16 @@ class PlayerActivity : ComponentActivity() {
             val m = mediaArray.getJSONObject(i)
             mediaMap[m.getString("id")] = m
         }
-        Log.i(tag, "fetchMedia: mediaMap built, ${mediaMap.size} entries. Keys: ${mediaMap.keys.take(5)}")
+        flog("I", "Fetch", "fetchMedia: mediaMap built, ${mediaMap.size} entries. Keys: ${mediaMap.keys.take(5)}")
 
         for (i in 0 until playlists.length()) {
             val playlist = playlists.getJSONObject(i)
             val playlistId = playlist.optString("id", "")
             val playlistItems = playlist.optJSONArray("items")
-            Log.i(tag, "fetchMedia: playlist[$i] id=$playlistId, items=${playlistItems?.length() ?: "null"}, slots=${playlist.optJSONArray("slots")?.length() ?: 0}")
+            flog("I", "Fetch", "fetchMedia: playlist[$i] id=$playlistId, items=${playlistItems?.length() ?: "null"}, slots=${playlist.optJSONArray("slots")?.length() ?: 0}")
 
             if (playlistItems == null || playlistItems.length() == 0) {
-                Log.w(tag, "fetchMedia: playlist $playlistId has no items, skipping")
+                flog("W", "Fetch", "fetchMedia: playlist $playlistId has no items, skipping")
                 continue
             }
 
@@ -805,12 +810,14 @@ class PlayerActivity : ComponentActivity() {
             for (j in 0 until playlistItems.length()) {
                 val item = playlistItems.getJSONObject(j)
                 val mediaId = item.optString("media_id", "")
-                if (mediaId.isEmpty()) { Log.w(tag, "fetchMedia: item[$j] empty media_id, skip"); continue }
+                if (mediaId.isEmpty()) { flog("W", "Fetch", "fetchMedia: item[$j] empty media_id, skip"); continue }
                 val media = mediaMap[mediaId]
-                if (media == null) { Log.w(tag, "fetchMedia: item[$j] mediaId=$mediaId NOT in mediaMap, skip"); continue }
+                if (media == null) { flog("E", "Fetch", "fetchMedia: item[$j] mediaId=$mediaId NOT in mediaMap, skip — MEDIA NOT FOUND"); continue }
                 val duration = item.optInt("duration", 0).coerceAtLeast(media.optInt("duration", 0)).coerceAtLeast(5)
+                val fileUrl = media.optString("file_url", "")
                 val mediaItem = MediaItem(mediaId, media.optString("name", ""), media.optString("type", "image"),
-                    media.optString("file_url", ""), duration, respCampaignId, playlistId)
+                    fileUrl, duration, respCampaignId, playlistId)
+                flog("I", "Fetch", "fetchMedia: item[$j] name=${media.optString("name", "")}, type=${media.optString("type", "")}, url=${fileUrl.take(80)}")
 
                 val slotId = item.optString("slot_id", "")
                 if (slotId.isNotEmpty()) {
@@ -819,7 +826,7 @@ class PlayerActivity : ComponentActivity() {
                     regularItems.add(mediaItem)
                 }
             }
-            Log.i(tag, "fetchMedia: regularItems=${regularItems.size}, slotMediaGroups=${slotMediaMap.size}")
+            flog("I", "Fetch", "fetchMedia: regularItems=${regularItems.size}, slotMediaGroups=${slotMediaMap.size}")
 
             // Parse slots to build merged list
             val slotsArray = playlist.optJSONArray("slots")
@@ -855,14 +862,14 @@ class PlayerActivity : ComponentActivity() {
                     merged.add(regularItems[regIdx])
                     regIdx++
                 }
-                Log.i(tag, "fetchMedia: merged ${merged.size} items from ${slotPositions.size} slots + regular")
+                flog("I", "Fetch", "fetchMedia: merged ${merged.size} items from ${slotPositions.size} slots + regular")
                 items.addAll(merged)
             } else {
-                Log.i(tag, "fetchMedia: no slots, adding ${regularItems.size} regular items")
+                flog("I", "Fetch", "fetchMedia: no slots, adding ${regularItems.size} regular items")
                 items.addAll(regularItems)
             }
         }
-        Log.i(tag, "fetchMedia: FINAL items=${items.size}, zones parsed from ${json.optJSONArray("layout_zones")?.length() ?: 0} layout_zones")
+        flog("I", "Fetch", "fetchMedia: FINAL items=${items.size}, zones=${json.optJSONArray("layout_zones")?.length() ?: 0} layout_zones")
 
         val respVersion = json.optLong("content_version", 0)
         if (respVersion > 0) currentContentVersion = respVersion
@@ -886,23 +893,26 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private suspend fun playLoop() {
+        flog("I", "Play", "playLoop: START, mediaList.size=${mediaList.size}")
         while (mediaList.isNotEmpty()) {
             if (needsResync) { needsResync = false; break }
             if (currentIndex >= mediaList.size) currentIndex = 0
             val item = mediaList[currentIndex]
+            flog("I", "Play", "playLoop: index=$currentIndex/${mediaList.size}, item=${item.name}, type=${item.type}, duration=${item.duration}s, url=${item.fileUrl.take(80)}")
             try {
                 when (item.type) {
                     "video" -> playVideo(item)
                     "image", "gif" -> playImage(item)
-                    else -> delay(item.duration * 1000L)
+                    else -> { flog("W", "Play", "playLoop: unknown type ${item.type}, delaying ${item.duration}s"); delay(item.duration * 1000L) }
                 }
                 logPlayback(item)
             } catch (e: Exception) {
-                Log.e(tag, "Play error: ${item.name}", e)
+                flog("E", "Play", "Play error: ${item.name} — ${e.message}")
                 delay(2000)
             }
             currentIndex++
         }
+        flog("I", "Play", "playLoop: END")
     }
 
     private var imageViewA: ImageView? = null
@@ -912,15 +922,22 @@ class PlayerActivity : ComponentActivity() {
 
     private fun loadBitmapFromFileUrl(fileUrl: String): android.graphics.Bitmap? {
         return try {
-            if (fileUrl.startsWith("data:")) {
+            val bitmap = if (fileUrl.startsWith("data:")) {
                 val base64Data = fileUrl.substringAfter("base64,")
                 val decoded = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
                 BitmapFactory.decodeByteArray(decoded, 0, decoded.size)
             } else {
+                flog("I", "Fetch", "loadBitmap: fetching URL=${fileUrl.take(100)}")
                 URL(fileUrl).openStream().use { BitmapFactory.decodeStream(it) }
             }
+            if (bitmap != null) {
+                flog("I", "Fetch", "loadBitmap: OK — ${bitmap.width}x${bitmap.height}")
+            } else {
+                flog("E", "Fetch", "loadBitmap: decodeStream returned NULL for ${fileUrl.take(80)}")
+            }
+            bitmap
         } catch (e: Exception) {
-            Log.e(tag, "loadBitmap failed: ${e.message}")
+            flog("E", "Fetch", "loadBitmap FAILED: ${e.message} — URL=${fileUrl.take(80)}")
             null
         }
     }
@@ -1034,28 +1051,6 @@ class PlayerActivity : ComponentActivity() {
     }
 
     // ===================== HTTP =====================
-
-    private fun httpGet(urlStr: String): String {
-        val conn = URL(urlStr).openConnection() as HttpURLConnection
-        conn.requestMethod = "GET"; conn.connectTimeout = 15000; conn.readTimeout = 15000
-        conn.setRequestProperty("Accept", "application/json"); conn.connect()
-        val code = conn.responseCode
-        val body = if (code in 200..299) BufferedReader(InputStreamReader(conn.inputStream)).readText()
-        else { val err = conn.errorStream; if (err != null) BufferedReader(InputStreamReader(err)).readText() else "{}" }
-        conn.disconnect(); return body
-    }
-
-    private fun httpPost(urlStr: String, jsonBody: String): String {
-        val conn = URL(urlStr).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Accept", "application/json"); conn.doOutput = true
-        conn.connectTimeout = 15000; conn.readTimeout = 15000; conn.connect()
-        conn.outputStream.use { os -> os.write(jsonBody.toByteArray(Charsets.UTF_8)); os.flush() }
-        val code = conn.responseCode
-        val body = if (code in 200..299) BufferedReader(InputStreamReader(conn.inputStream)).readText()
-        else { val err = conn.errorStream; if (err != null) BufferedReader(InputStreamReader(err)).readText() else "{}" }
-        conn.disconnect(); return body
-    }
 
     // ===================== HEARTBEAT =====================
 
@@ -1264,7 +1259,7 @@ class PlayerActivity : ComponentActivity() {
     } catch (_: Exception) { "1.0.0" }
 
     private fun showStatus(msg: String) {
-        Log.i(tag, msg)
+        flog("I", tag, "STATUS: $msg")
         lifecycleScope.launch(Dispatchers.Main) {
             statusText?.text = msg
             statusText?.visibility = View.VISIBLE
@@ -1274,6 +1269,93 @@ class PlayerActivity : ComponentActivity() {
     private fun hideStatus() {
         lifecycleScope.launch(Dispatchers.Main) {
             statusText?.visibility = View.GONE
+        }
+    }
+
+    // ===================== FILE LOGGER =====================
+    // Writes logs to filesDir/player.log for the Logs screen
+    class FileLogger(private val filesDir: String) {
+        private val logFile: File get() = File(filesDir, "player.log")
+        private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+
+        fun log(level: String, tag: String, message: String) {
+            val timestamp = dateFormat.format(Date())
+            val line = "$timestamp $level $tag: $message"
+            try {
+                FileWriter(logFile, true).use { fw ->
+                    PrintWriter(fw).use { pw ->
+                        pw.println(line)
+                    }
+                }
+            } catch (_: Exception) {}
+            // Also print to logcat
+            when (level) {
+                "E" -> Log.e(tag, message)
+                "W" -> Log.w(tag, message)
+                else -> Log.i(tag, message)
+            }
+        }
+
+        fun e(tag: String, msg: String) = log("E", tag, msg)
+        fun w(tag: String, msg: String) = log("W", tag, msg)
+        fun i(tag: String, msg: String) = log("I", tag, msg)
+    }
+
+    private fun flog(level: String, tag: String, message: String) {
+        fileLogger?.log(level, tag, message)
+    }
+
+    // ===================== HTTP GET =====================
+    private fun httpGet(urlStr: String): String {
+        return try {
+            val conn = URL(urlStr).openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 20000
+            conn.readTimeout = 20000
+            val code = conn.responseCode
+            flog("I", tag, "httpGet: $urlStr → HTTP $code")
+            val body = if (code in 200..299) {
+                BufferedReader(InputStreamReader(conn.inputStream)).readText()
+            } else {
+                val err = conn.errorStream?.let { BufferedReader(InputStreamReader(it)).readText() } ?: "{}"
+                flog("W", tag, "httpGet error: HTTP $code — $err")
+                err
+            }
+            conn.disconnect()
+            body
+        } catch (e: Exception) {
+            flog("E", tag, "httpGet EXCEPTION: ${e.message}")
+            throw e
+        }
+    }
+
+    private fun httpPost(urlStr: String, jsonBody: String): String {
+        return try {
+            val conn = URL(urlStr).openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
+            flog("I", tag, "httpPost: $urlStr")
+            conn.outputStream.use { os ->
+                os.write(jsonBody.toByteArray(Charsets.UTF_8))
+                os.flush()
+            }
+            val code = conn.responseCode
+            flog("I", tag, "httpPost: HTTP $code")
+            val body = if (code in 200..299) {
+                BufferedReader(InputStreamReader(conn.inputStream)).readText()
+            } else {
+                val err = conn.errorStream?.let { BufferedReader(InputStreamReader(it)).readText() } ?: "{}"
+                flog("W", tag, "httpPost error: HTTP $code — $err")
+                err
+            }
+            conn.disconnect()
+            body
+        } catch (e: Exception) {
+            flog("E", tag, "httpPost EXCEPTION: ${e.message}")
+            throw e
         }
     }
 }

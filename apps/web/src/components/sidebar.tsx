@@ -133,6 +133,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
 
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??';
   const isAdmin = profile?.role === 'super_admin' || profile?.role === 'admin';
+  const isSuperAdmin = profile?.role === 'super_admin';
 
   const filteredSections = sections.filter(s => {
     if (s.adminOnly && !isAdmin) return false;
@@ -160,6 +161,17 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
           )}>
           <span>🏢</span>
           <span>Painel SAAS</span>
+        </Link>
+      )}
+
+      {isSuperAdmin && (
+        <Link href="/admin" onClick={handleLinkClick}
+          className={clsx(
+            'mx-3 mb-1 flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+            pathname.startsWith('/admin') ? 'bg-red-600 text-white' : 'bg-red-900/30 text-red-300 hover:bg-red-800/40'
+          )}>
+          <span>🛡️</span>
+          <span>Painel Admin</span>
         </Link>
       )}
 

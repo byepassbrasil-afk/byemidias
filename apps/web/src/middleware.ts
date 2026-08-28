@@ -32,12 +32,16 @@ function hasValidSession(request: NextRequest): boolean {
 }
 
 /**
- * Check if path matches /partner/[slug]/... or /api/partner/[slug]/... pattern
+ * Check if path matches /partner/[slug]/... or /api/partner/[slug]/auth/... pattern
+ * Only slug-based routes have a slug in the URL. Legacy routes like /api/partner/me don't.
  */
 function parsePartnerSlug(pathname: string): string | null {
-  // Match /partner/[slug] or /partner/[slug]/*
-  const match = pathname.match(/^\/(?:api\/partner|partner)\/([a-z0-9-]+)(?:\/.*)?$/);
-  if (match) return match[1];
+  // Match /partner/[slug] or /partner/[slug]/*  (page routes)
+  const pageMatch = pathname.match(/^\/partner\/([a-z0-9-]+)(?:\/.*)?$/);
+  if (pageMatch) return pageMatch[1];
+  // Match /api/partner/[slug]/auth/* (slug-based API auth routes only)
+  const apiMatch = pathname.match(/^\/api\/partner\/([a-z0-9-]+)\/auth(?:\/.*)?$/);
+  if (apiMatch) return apiMatch[1];
   return null;
 }
 

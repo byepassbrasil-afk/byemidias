@@ -198,6 +198,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ success: true });
     }
 
+    // Special handling for devices: clean FKs first
+    if (table === 'devices') {
+      await deleteDevice(id);
+      return NextResponse.json({ success: true });
+    }
+
     await sql.unsafe(`DELETE FROM ${table} WHERE id = $1`, [id]);
 
     // Bump content_version when content-related tables are deleted (super_admin path)
@@ -220,4 +226,18 @@ async function deleteProfile(id: string, user: { role: string }) {
   await sql`DELETE FROM push_subscriptions WHERE user_id = ${id}`;
   // Now safe to delete
   await sql`DELETE FROM profiles WHERE id = ${id}`;
+}
+
+// Handle device deletion with FK cleanup
+async function deleteDevice(id: string) {
+  // Clean all FK references to devices before deleting
+  await sql`UPDATE activation_codes SET linked_device_id = NULL WHERE linked_device_id = ${id}`;
+  await sql`DELETE FROM partner_devices WHERE device_id = ${id}`;
+  await sql`DELETE FROM device_logs WHERE device_id = ${id}`;
+  await sql`DELETE FROM playback_logs WHERE device_id = ${id}`;
+  await sql`DELETE FROM device_uptime_sessions WHERE device_id = ${id}`;
+  await sql`DELETE FROM device_group_members WHERE device_id = ${id}`;
+  await sql`DELETE FROM keepalive_log WHERE device_id = ${id}`;
+  // Now safe to delete the device
+  await sql`DELETE FROM devices WHERE id = ${id}`;
 }

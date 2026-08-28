@@ -950,10 +950,17 @@ class PlayerActivity : ComponentActivity() {
                 conn.readTimeout = 15000
                 conn.requestMethod = "GET"
                 val httpCode = conn.responseCode
-                flog("I", "Fetch", "loadBitmap: HTTP $httpCode for ${fileUrl.take(60)}")
+                val contentType = conn.contentType ?: "unknown"
+                flog("I", "Fetch", "loadBitmap: HTTP $httpCode contentType=$contentType for ${fileUrl.take(60)}")
                 if (httpCode != 200) {
                     val errorBody = conn.errorStream?.bufferedReader()?.readText()?.take(200) ?: "no body"
                     flog("E", "Fetch", "loadBitmap: HTTP $httpCode error body: $errorBody")
+                    conn.disconnect()
+                    return null
+                }
+                // Reject non-image content-types if specified
+                if (contentType.startsWith("text/") || contentType == "application/octet-stream" || contentType == "unknown") {
+                    flog("E", "Fetch", "loadBitmap: suspicious content-type '$contentType' for ${fileUrl.take(80)} — rejecting")
                     conn.disconnect()
                     return null
                 }
@@ -1023,7 +1030,17 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private suspend fun playVideo(item: MediaItem) {
+        // DEFENSIVE: if file extension is image, delegate to playImage
+        val ext = item.fileUrl.substringAfterLast(".", "").lowercase()
+        val imageExts = setOf("png", "jpg", "jpeg", "avif", "webp", "gif")
+        if (imageExts.contains(ext)) {
+            flog("W", "Play", "playVideo called for image file ${item.name} (ext=.$ext) — redirecting to playImage")
+            playImage(item)
+            return
+        }
+
         val vv = videoView ?: run { delay(item.duration * 1000L); return }
+        flog("I", "Play", "playVideo: starting ${item.name}, url=${item.fileUrl.take(80)}")
         val latch = java.util.concurrent.CountDownLatch(1)
         withContext(Dispatchers.Main) {
             imageViewA?.visibility = View.GONE
@@ -1031,27 +1048,35 @@ class PlayerActivity : ComponentActivity() {
             vv.visibility = View.VISIBLE
             vv.setOnPreparedListener { mp -> mp.isLooping = false; mp.start() }
             vv.setOnCompletionListener { latch.countDown() }
-            vv.setOnErrorListener { _, _, _ -> latch.countDown(); true }
+            vv.setOnErrorListener { mp: android.media.MediaPlayer, what: Int, extra: Int ->
+                flog("E", "Play", "playVideo MediaPlayer ERROR: what=$what, extra=$extra")
+                latch.countDown()
+                true
+            }
             vv.setVideoURI(Uri.parse(item.fileUrl))
         }
         withContext(Dispatchers.IO) { latch.await(item.duration.toLong() + 30, java.util.concurrent.TimeUnit.SECONDS) }
+        flog("I", "Play", "playVideo: finished ${item.name}")
     }
 
     private suspend fun playImage(item: MediaItem) {
         if (item.fileUrl.isEmpty()) {
+            flog("W", "Play", "playImage: empty url for ${item.name}, skipping")
             delay(item.duration * 1000L)
             return
         }
         val bitmap = withContext(Dispatchers.IO) { loadBitmapFromFileUrl(item.fileUrl) }
         if (bitmap != null) {
+            flog("I", "Play", "playImage: OK ${item.name} ${bitmap.width}x${bitmap.height}")
             val isFirstDisplay = lastBitmap == null && (activeImageView?.drawable == null)
             if (isFirstDisplay) {
                 showImageImmediate(bitmap)
             } else {
                 crossfadeToImage(bitmap)
             }
-        } else if (lastBitmap != null) {
-            Log.w(tag, "Image load failed: ${item.name} — keeping previous image")
+        } else {
+            flog("E", "Play", "playImage: FAILED to load ${item.name} url=${item.fileUrl.take(80)} — screen stays")
+            // Keep current image visible if we have one
         }
         delay(item.duration * 1000L)
     }

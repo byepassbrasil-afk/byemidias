@@ -20,6 +20,7 @@ interface Org {
 export default function AdminOrganizationsPage() {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [editingOrg, setEditingOrg] = useState<Org | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -29,32 +30,43 @@ export default function AdminOrganizationsPage() {
   async function loadOrgs() {
     try {
       const res = await fetch('/api/admin/crud/organizations?limit=500');
+      if (!res.ok) throw new Error('Erro ao carregar');
       const data = await res.json();
-      setOrgs(data.data || []);
-    } catch {}
-    setLoading(false);
+      if (data.error) throw new Error(data.error);
+      setOrgs(Array.isArray(data.data) ? data.data : []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erro desconhecido');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSave() {
     if (!editingOrg) return;
     setSaving(true);
-    await fetch('/api/admin/crud/organizations', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: editingOrg.id, plan: editingOrg.plan, renewal_date: editingOrg.renewal_date,
-        monthly_price: editingOrg.monthly_price, total_revenue: editingOrg.total_revenue,
-        total_expenses: editingOrg.total_expenses, max_devices: editingOrg.max_devices, status: editingOrg.status,
-      }),
-    });
-    setEditingOrg(null);
-    setSaving(false);
-    loadOrgs();
+    try {
+      const res = await fetch('/api/admin/crud/organizations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingOrg.id, plan: editingOrg.plan, renewal_date: editingOrg.renewal_date,
+          monthly_price: editingOrg.monthly_price, total_revenue: editingOrg.total_revenue,
+          total_expenses: editingOrg.total_expenses, max_devices: editingOrg.max_devices, status: editingOrg.status,
+        }),
+      });
+      if (!res.ok) throw new Error('Erro ao salvar');
+      setEditingOrg(null);
+      loadOrgs();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Erro ao salvar');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const filtered = orgs.filter(o =>
-    o.name.toLowerCase().includes(search.toLowerCase()) ||
-    o.slug.toLowerCase().includes(search.toLowerCase())
+    o.name?.toLowerCase().includes(search.toLowerCase()) ||
+    o.slug?.toLowerCase().includes(search.toLowerCase())
   );
 
   const planLabel: Record<string, string> = { free: 'Gratuito', basic: 'Básico', pro: 'Profissional', enterprise: 'Empresarial' };
@@ -65,6 +77,7 @@ export default function AdminOrganizationsPage() {
   }
 
   if (loading) return <div className="p-6 text-gray-500">Carregando...</div>;
+  if (error) return <div className="p-6 text-red-400">Erro: {error}</div>;
 
   return (
     <div className="space-y-6">

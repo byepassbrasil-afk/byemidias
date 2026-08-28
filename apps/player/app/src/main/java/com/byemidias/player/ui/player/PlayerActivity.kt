@@ -803,11 +803,10 @@ class PlayerActivity : ComponentActivity() {
                 for (pos in 0 until maxPos) {
                     val slotAtPos = slotPositions.find { it.order == pos }
                     if (slotAtPos != null) {
-                        // Add slot content items (empty slots are simply skipped)
+                        // Slot at this position — add its content (empty slots are skipped)
                         merged.addAll(slotAtPos.contentItems)
-                    }
-                    // Find the next regular item that doesn't overlap with a later slot
-                    if (regIdx < regularItems.size) {
+                    } else if (regIdx < regularItems.size) {
+                        // No slot at this position — add regular media
                         merged.add(regularItems[regIdx])
                         regIdx++
                     }

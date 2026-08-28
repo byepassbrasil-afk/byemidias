@@ -138,7 +138,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.47")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.50")
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -409,7 +409,7 @@ class PlayerActivity : ComponentActivity() {
 
             startForegroundService()
 
-            lifecycleScope.launch(Dispatchers.IO) {
+            lifecycleScope.launch(Dispatchers.Main) {
                 sendHeartbeatOn()
                 syncAndPlay()
             }
@@ -564,50 +564,49 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun createMediaViewsForZone(zone: ZoneData) {
-        runOnUiThread {
-            try {
-                val rl = rootLayout ?: return@runOnUiThread
-                videoView?.let { rl.removeView(it) }
-                imageViewA?.let { rl.removeView(it) }
-                imageViewB?.let { rl.removeView(it) }
+        try {
+            val rl = rootLayout ?: return
+            videoView?.let { rl.removeView(it) }
+            imageViewA?.let { rl.removeView(it) }
+            imageViewB?.let { rl.removeView(it) }
 
-                val dm = resources.displayMetrics
-                val screenW = dm.widthPixels; val screenH = dm.heightPixels
-                val zoneW = (zone.width / 100f * screenW).toInt()
-                val zoneH = (zone.height / 100f * screenH).toInt()
-                val zoneX = (zone.x / 100f * screenW).toInt()
-                val zoneY = (zone.y / 100f * screenH).toInt()
+            val dm = resources.displayMetrics
+            val screenW = dm.widthPixels; val screenH = dm.heightPixels
+            val zoneW = (zone.width / 100f * screenW).toInt()
+            val zoneH = (zone.height / 100f * screenH).toInt()
+            val zoneX = (zone.x / 100f * screenW).toInt()
+            val zoneY = (zone.y / 100f * screenH).toInt()
 
-                val vv = VideoView(this)
-                vv.visibility = View.GONE
-                val lpV = FrameLayout.LayoutParams(zoneW, zoneH)
-                lpV.leftMargin = zoneX; lpV.topMargin = zoneY
-                rl.addView(vv, lpV)
-                videoView = vv
+            val vv = VideoView(this)
+            vv.visibility = View.GONE
+            val lpV = FrameLayout.LayoutParams(zoneW, zoneH)
+            lpV.leftMargin = zoneX; lpV.topMargin = zoneY
+            rl.addView(vv, lpV)
+            videoView = vv
 
-                val ivA = ImageView(this)
-                ivA.visibility = View.GONE
-                ivA.scaleType = ImageView.ScaleType.CENTER_CROP
-                ivA.adjustViewBounds = false
-                val lpA = FrameLayout.LayoutParams(zoneW, zoneH)
-                lpA.leftMargin = zoneX; lpA.topMargin = zoneY
-                rl.addView(ivA, lpA)
-                imageViewA = ivA
+            val ivA = ImageView(this)
+            ivA.visibility = View.GONE
+            ivA.scaleType = ImageView.ScaleType.CENTER_CROP
+            ivA.adjustViewBounds = false
+            val lpA = FrameLayout.LayoutParams(zoneW, zoneH)
+            lpA.leftMargin = zoneX; lpA.topMargin = zoneY
+            rl.addView(ivA, lpA)
+            imageViewA = ivA
 
-                val ivB = ImageView(this)
-                ivB.visibility = View.GONE
-                ivB.scaleType = ImageView.ScaleType.CENTER_CROP
-                ivB.adjustViewBounds = false
-                val lpB = FrameLayout.LayoutParams(zoneW, zoneH)
-                lpB.leftMargin = zoneX; lpB.topMargin = zoneY
-                rl.addView(ivB, lpB)
-                imageViewB = ivB
+            val ivB = ImageView(this)
+            ivB.visibility = View.GONE
+            ivB.scaleType = ImageView.ScaleType.CENTER_CROP
+            ivB.adjustViewBounds = false
+            val lpB = FrameLayout.LayoutParams(zoneW, zoneH)
+            lpB.leftMargin = zoneX; lpB.topMargin = zoneY
+            rl.addView(ivB, lpB)
+            imageViewB = ivB
 
-                activeImageView = ivA
-                imageView = ivA
-            } catch (e: Exception) {
-                Log.e(tag, "createMediaViewsForZone error: ${e.message}")
-            }
+            activeImageView = ivA
+            imageView = ivA
+            flog("I", "UI", "createMediaViewsForZone: videoView+imageViewA+imageViewB created for zone ${zone.name}")
+        } catch (e: Exception) {
+            flog("E", "UI", "createMediaViewsForZone error: ${e.message}")
         }
     }
 
@@ -1006,7 +1005,11 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun showImageImmediate(bitmap: android.graphics.Bitmap) {
-        val iv = activeImageView ?: imageViewA ?: return
+        val iv = activeImageView ?: imageViewA
+        if (iv == null) {
+            flog("E", "UI", "showImageImmediate: NO activeImageView and NO imageViewA — image NOT displayed")
+            return
+        }
         runOnUiThread {
             try {
                 videoView?.visibility = View.GONE
@@ -1016,8 +1019,9 @@ class PlayerActivity : ComponentActivity() {
                 iv.alpha = 1f
                 activeImageView = iv
                 lastBitmap = bitmap
+                flog("I", "UI", "showImageImmediate: displayed ${bitmap.width}x${bitmap.height}")
             } catch (e: Exception) {
-                Log.e(tag, "showImageImmediate error: ${e.message}")
+                flog("E", "UI", "showImageImmediate error: ${e.message}")
             }
         }
     }

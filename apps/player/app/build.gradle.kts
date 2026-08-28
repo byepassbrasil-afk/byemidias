@@ -13,8 +13,8 @@ android {
         applicationId = "com.byemidias.player"
         minSdk = 21
         targetSdk = 34
-        versionCode = 42
-        versionName = "1.0.42"
+        versionCode = 43
+        versionName = "1.0.43"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -93,4 +93,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
 }

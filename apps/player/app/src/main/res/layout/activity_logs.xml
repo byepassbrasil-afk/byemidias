@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0F172A"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <Button
+            android:id="@+id/backBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="← Voltar"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#374151"
+            android:textSize="12sp"
+            android:paddingHorizontal="12dp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="📋 Logs do Dispositivo"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginHorizontal="8dp" />
+
+        <Button
+            android:id="@+id/clearBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Limpar"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#DC2626"
+            android:textSize="12sp"
+            android:paddingHorizontal="12dp" />
+    </LinearLayout>
+
+    <!-- Filter tabs -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/tabAll"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Todos"
+                android:textSize="11sp"
+                android:paddingHorizontal="14dp"
+                android:backgroundTint="#3B82F6"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/tabError"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Erros"
+                android:textSize="11sp"
+                android:paddingHorizontal="14dp"
+                android:backgroundTint="#374151"
+                android:textColor="#9CA3AF"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/tabInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Info"
+                android:textSize="11sp"
+                android:paddingHorizontal="14dp"
+                android:backgroundTint="#374151"
+                android:textColor="#9CA3AF"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/tabCrash"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Crashes"
+                android:textSize="11sp"
+                android:paddingHorizontal="14dp"
+                android:backgroundTint="#374151"
+                android:textColor="#9CA3AF"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/tabSync"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Sync"
+                android:textSize="11sp"
+                android:paddingHorizontal="14dp"
+                android:backgroundTint="#374151"
+                android:textColor="#9CA3AF" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Log count -->
+    <TextView
+        android:id="@+id/logCountText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0 entradas"
+        android:textColor="#6B7280"
+        android:textSize="11sp"
+        android:layout_marginBottom="6dp" />
+
+    <!-- Log list -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/logRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#1F2937"
+        android:padding="8dp"
+        android:clipToPadding="false" />
+
+</LinearLayout>

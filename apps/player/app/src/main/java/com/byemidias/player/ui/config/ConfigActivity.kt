@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import com.byemidias.player.BuildConfig
 import com.byemidias.player.R
+import com.byemidias.player.ui.logs.LogsActivity
 import com.byemidias.player.ui.player.PlayerActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,6 +37,7 @@ class ConfigActivity : ComponentActivity() {
         val saveBtn = findViewById<Button>(R.id.saveBtn)
         val exitBtn = findViewById<Button>(R.id.exitBtn)
         val statusText = findViewById<TextView>(R.id.configStatusText)
+        val viewLogsBtn = findViewById<Button>(R.id.viewLogsBtn)
 
         val syncBtn = findViewById<Button>(R.id.syncBtn)
         val forceSyncBtn = findViewById<Button>(R.id.forceSyncBtn)
@@ -173,6 +175,17 @@ class ConfigActivity : ComponentActivity() {
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
             finish()
+        }
+
+        // View logs button
+        viewLogsBtn.setOnClickListener {
+            try {
+                val intent = Intent(this, LogsActivity::class.java)
+                startActivity(intent)
+            } catch (e: Exception) {
+                statusText.text = "Erro ao abrir logs: ${e.message}"
+                statusText.visibility = View.VISIBLE
+            }
         }
 
         // Exit button

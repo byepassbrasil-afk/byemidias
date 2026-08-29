@@ -138,7 +138,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.50")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.51")
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -409,9 +409,12 @@ class PlayerActivity : ComponentActivity() {
 
             startForegroundService()
 
-            lifecycleScope.launch(Dispatchers.Main) {
-                sendHeartbeatOn()
-                syncAndPlay()
+            // Delay syncAndPlay until view is fully laid out — avoids black screen on cold start
+            window.decorView.post {
+                lifecycleScope.launch(Dispatchers.Main) {
+                    sendHeartbeatOn()
+                    syncAndPlay()
+                }
             }
 
             startClockUpdates()

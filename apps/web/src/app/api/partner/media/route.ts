@@ -108,19 +108,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'R2 não configurado' }, { status: 500 });
     }
 
-    const ct = request.headers.get('content-type') || '';
+    // Accept JSON only — multipart would hit Vercel 4.5MB body limit.
+    // Two-step flow: 1) get presigned URL, 2) upload directly to R2.
+    const body = await request.json();
+    const { file_name, mime_type, file_size, action, file_url } = body;
 
-    if (ct.includes('multipart/form-data')) {
-      const formData = await request.formData();
-      const file = formData.get('file') as File | null;
-      if (!file) return NextResponse.json({ error: 'Arquivo obrigatório' }, { status: 400 });
+    if (action === 'presign') {
+      // Step 1: generate presigned URL for direct browser-to-R2 upload
+      if (!file_name || !mime_type) {
+        return NextResponse.json({ error: 'file_name e mime_type obrigatórios' }, { status: 400 });
+      }
 
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm'];
-      if (!allowedTypes.includes(file.type)) {
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'image/avif'];
+      if (!allowedTypes.includes(mime_type)) {
         return NextResponse.json({ error: 'Tipo não permitido' }, { status: 400 });
       }
 
-      const sanitizedName = sanitizeName(file.name);
+      const sanitizedName = sanitizeName(file_name);
       const key = makeKey(session.partnerAccessId, sanitizedName);
       const host = `${R2_BUCKET}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
       const uploadUrl = generatePresignedUrl(key, host, R2_ACCESS_KEY, R2_SECRET_KEY);
@@ -130,30 +134,32 @@ export async function POST(request: NextRequest) {
         upload_url: uploadUrl,
         key,
         public_url: publicUrl,
-        content_type: file.type,
-        file_name: file.name,
-        file_size: file.size,
+        content_type: mime_type,
+        file_name: file_name,
+        file_size: file_size || 0,
       });
     }
 
-    const body = await request.json();
-    const { file_name, mime_type, file_url, file_size } = body;
+    if (action === 'save') {
+      // Step 2: after direct upload to R2, save the media record
+      if (!file_name || !file_url) {
+        return NextResponse.json({ error: 'file_name e file_url obrigatórios' }, { status: 400 });
+      }
 
-    if (!file_name || !file_url) {
-      return NextResponse.json({ error: 'file_name e file_url obrigatórios' }, { status: 400 });
+      const mediaType = getMediaType(mime_type);
+
+      const [mediaRecord] = await sql`
+        INSERT INTO media (organization_id, name, type, file_url, file_size, status)
+        VALUES (${session.organizationId}, ${file_name}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active')
+        RETURNING id
+      `;
+
+      await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'pending')`;
+
+      return NextResponse.json({ success: true, mediaId: mediaRecord.id });
     }
 
-    const mediaType = getMediaType(mime_type);
-
-    const [mediaRecord] = await sql`
-      INSERT INTO media (organization_id, name, type, file_url, file_size, status)
-      VALUES (${session.organizationId}, ${file_name}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active')
-      RETURNING id
-    `;
-
-    await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'pending')`;
-
-    return NextResponse.json({ success: true, mediaId: mediaRecord.id });
+    return NextResponse.json({ error: 'Ação inválida. Use "presign" ou "save".' }, { status: 400 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('POST /api/partner/media error:', msg);

@@ -54,18 +54,35 @@ export default function PartnerSlugPlaylistsPage() {
     setUploading(true); setError(null);
     for (const file of Array.from(files)) {
       try {
-        const ct = new FormData(); ct.append('file', file);
-        const presignRes = await fetch('/api/partner/media', { method: 'POST', body: ct });
-        if (!presignRes.ok) { const errData = await presignRes.json(); setError(errData.error || 'Erro ao gerar upload URL'); continue; }
+        // Step 1: get presigned URL (JSON only, no file upload through Vercel)
+        const presignRes = await fetch('/api/partner/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'presign',
+            file_name: file.name,
+            mime_type: file.type || 'application/octet-stream',
+            file_size: file.size,
+          }),
+        });
+        if (!presignRes.ok) { const errData = await presignRes.json().catch(() => ({})); setError(errData.error || 'Erro ao gerar upload URL'); continue; }
         const { upload_url, public_url, file_name, file_size, content_type } = await presignRes.json();
+        // Step 2: upload directly to R2 (bypasses Vercel body limit)
         const putRes = await fetch(upload_url, { method: 'PUT', body: file });
-        if (!putRes.ok) { setError('Erro ao enviar arquivo para storage'); continue; }
-        const saveRes = await fetch('/api/partner/media', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_name, mime_type: content_type, file_url: public_url, file_size }) });
+        if (!putRes.ok) { setError(`Erro ao enviar arquivo para storage (HTTP ${putRes.status})`); continue; }
+        // Step 3: save media record in DB
+        const saveRes = await fetch('/api/partner/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size, key }),
+        });
         const saveData = await saveRes.json();
         if (saveRes.ok && saveData.mediaId) {
           await fetch('/api/partner/playlists/modify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playlist_id: selectedSlot.playlist_id, action: 'add', media_id: saveData.mediaId, slot_id: selectedSlot.id }) });
         }
-      } catch { setError('Erro de conexão ao enviar arquivo'); }
+      } catch (e: any) {
+        setError(`Erro de conexão: ${e?.message || 'desconhecido'}`);
+      }
     }
     setUploading(false); loadSlotItems(selectedSlot);
   }
@@ -100,10 +117,7 @@ export default function PartnerSlugPlaylistsPage() {
           </div>
           <div className="flex gap-2">
             <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple onChange={e => handleUpload(e.target.files)} className="hidden" />
-            <button onClick={openMediaPicker} className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition-colors">+ Mídia</button>
-            <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors">
-              {uploading ? 'Enviando...' : '+ Upload'}
-            </button>
+            <button onClick={openMediaPicker} className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition-colors">Selecionar Mídia</button>
           </div>
         </div>
 

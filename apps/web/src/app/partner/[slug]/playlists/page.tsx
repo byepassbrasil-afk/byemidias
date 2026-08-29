@@ -74,7 +74,7 @@ export default function PartnerSlugPlaylistsPage() {
         const saveRes = await fetch('/api/partner/media', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size, key }),
+          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size }),
         });
         const saveData = await saveRes.json();
         if (saveRes.ok && saveData.mediaId) {

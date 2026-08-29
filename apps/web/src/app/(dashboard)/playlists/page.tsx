@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Playlist, PlaylistItem, Media } from '@/lib/types';
 
 interface PlaylistSlot {
@@ -30,6 +30,19 @@ type UnifiedItem = {
   partner_name: string;
   partner_username: string;
   duration_seconds: number;
+  // Media items nested inside this slot (uploaded by the partner)
+  media_items: UnifiedMediaItem[];
+};
+
+type UnifiedMediaItem = {
+  type: 'media';
+  id: string;
+  position: number;
+  media?: Media | null;
+  duration: number | null;
+  transition: string | null;
+  volume: number | null;
+  media_id: string;
 };
 
 export default function PlaylistsPage() {
@@ -145,16 +158,33 @@ export default function PlaylistsPage() {
     const partnerMap = new Map(partnerData.map((p) => [p.id, p]));
 
     // Build unified list
-    const mediaItems: UnifiedItem[] = (itemsJson.data ?? []).map((i: PlaylistItem & { slot_id?: string | null }) => ({
-      type: 'media' as const,
-      id: i.id,
-      position: i.position,
-      media: mediaMap.get(i.media_id) || null,
-      duration: i.duration,
-      transition: i.transition,
-      volume: i.volume,
-      media_id: i.media_id,
-    }));
+    // Separate media items into: regular (no slot_id) and slot-bound
+    const regularMediaItems: UnifiedMediaItem[] = [];
+    const slotMediaMap = new Map<string, UnifiedMediaItem[]>();
+
+    for (const i of (itemsJson.data ?? []) as Array<PlaylistItem & { slot_id?: string | null }>) {
+      const item: UnifiedMediaItem = {
+        type: 'media' as const,
+        id: i.id,
+        position: i.position,
+        media: mediaMap.get(i.media_id) || null,
+        duration: i.duration,
+        transition: i.transition,
+        volume: i.volume,
+        media_id: i.media_id,
+      };
+      if (i.slot_id) {
+        if (!slotMediaMap.has(i.slot_id)) slotMediaMap.set(i.slot_id, []);
+        slotMediaMap.get(i.slot_id)!.push(item);
+      } else {
+        regularMediaItems.push(item);
+      }
+    }
+
+    // Sort each slot's media by position
+    for (const arr of slotMediaMap.values()) {
+      arr.sort((a, b) => a.position - b.position);
+    }
 
     const slotItems: UnifiedItem[] = (slotsJson.data ?? []).map((s: PlaylistSlot) => {
       const partner = partnerMap.get(s.partner_access_id);
@@ -166,11 +196,15 @@ export default function PlaylistsPage() {
         partner_name: partner?.display_name ?? 'Desconhecido',
         partner_username: partner?.username ?? '—',
         duration_seconds: s.duration_seconds,
+        media_items: slotMediaMap.get(s.id) ?? [],
       };
     });
 
-    // Merge and sort by saved position
-    const merged = [...mediaItems, ...slotItems].sort((a, b) => a.position - b.position);
+    // Merge: regular media items + slot items, sorted by position
+    const merged: UnifiedItem[] = [
+      ...regularMediaItems.map(m => ({ ...m, media_items: [] as UnifiedMediaItem[] })),
+      ...slotItems,
+    ].sort((a, b) => a.position - b.position);
     setUnifiedItems(merged);
     setMedia(allMedia);
     setItemsLoading(false);
@@ -470,27 +504,105 @@ export default function PlaylistsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {unifiedItems.map((item, idx) => (
-                  <tr key={`${item.type}-${item.id}`} className={`hover:bg-gray-50 ${item.type === 'slot' ? 'bg-purple-50/50' : ''}`}>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-500 text-center">{idx + 1}</td>
-                    <td className="px-4 py-3">
-                      {item.type === 'slot' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700">
-                          🕐 Slot Parceiro
-                        </span>
-                      ) : (
+                {unifiedItems.map((item, idx) => {
+                  if (item.type === 'slot') {
+                    const subItems = item.media_items;
+                    const subCount = subItems.length;
+                    return (
+                      <React.Fragment key={`slot-${item.id}`}>
+                        {/* Slot header row */}
+                        <tr className="bg-purple-50/50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-500 text-center">{idx + 1}</td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700">
+                              🕐 Slot Parceiro
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="text-sm font-medium text-purple-900">{item.partner_name}</p>
+                              <p className="text-xs text-purple-500">@{item.partner_username}</p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <select value={item.duration_seconds} onChange={e => handleUpdateSlotDuration(item, Number(e.target.value))}
+                              className="rounded border border-purple-300 px-2 py-1 text-sm focus:border-purple-500 outline-none">
+                              <option value={15}>15s</option><option value={30}>30s</option><option value={45}>45s</option>
+                              <option value={60}>60s</option><option value={90}>90s</option><option value={120}>120s</option>
+                            </select>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs text-gray-500 italic">{subCount > 0 ? `Sequencial` : 'Reservado'}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => moveItem(idx, 'up')} disabled={idx === 0}
+                                className="rounded p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30" title="Subir">↑</button>
+                              <button onClick={() => moveItem(idx, 'down')} disabled={idx === unifiedItems.length - 1}
+                                className="rounded p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30" title="Descer">↓</button>
+                              <button onClick={() => handleRemoveItem(item)}
+                                className="rounded p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 ml-1" title="Remover">✕</button>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* Nested media items inside the slot */}
+                        {subItems.length > 0 && subItems.map((sub, subIdx) => (
+                          <tr key={`slot-${item.id}-media-${sub.id}`} className="bg-purple-50/20">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-400 text-center text-xs">{idx + 1}.{subIdx + 1}</td>
+                            <td className="px-4 py-3 pl-8">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                                {sub.media?.type === 'video' ? '🎬' : '🖼️'} Mídia
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded bg-gray-100 flex-shrink-0 overflow-hidden">
+                                  {sub.media?.type === 'image' || sub.media?.type === 'gif' ? (
+                                    <img src={sub.media?.file_url} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
+                                  )}
+                                </div>
+                                <span className="text-sm text-gray-900 truncate max-w-[200px]">{sub.media?.name ?? sub.media_id}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                <input type="number" value={sub.duration ?? 10} onChange={e => handleUpdateDuration(sub, Number(e.target.value))}
+                                  min={1} max={300} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none" />
+                                <span className="text-xs text-gray-400">s</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <select value={sub.transition ?? 'fade'} onChange={e => handleUpdateTransition(sub, e.target.value)}
+                                className="rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 outline-none">
+                                <option value="cut">Corte</option><option value="fade">Fade</option>
+                                <option value="slide_left">Deslizar E</option><option value="slide_right">Deslizar D</option>
+                                <option value="slide_up">Deslizar C</option><option value="slide_down">Deslizar B</option>
+                                <option value="zoom">Zoom</option><option value="dissolve">Dissolver</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button onClick={() => handleRemoveItem(sub)}
+                                  className="rounded p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 ml-1" title="Remover">✕</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  }
+                  // Regular media item (not inside a slot)
+                  return (
+                    <tr key={`media-${item.id}`} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-500 text-center">{idx + 1}</td>
+                      <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                           {item.media?.type === 'video' ? '🎬' : item.media?.type === 'gif' ? '🖼️' : '🖼️'} Mídia
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {item.type === 'slot' ? (
-                        <div>
-                          <p className="text-sm font-medium text-purple-900">{item.partner_name}</p>
-                          <p className="text-xs text-purple-500">@{item.partner_username}</p>
-                        </div>
-                      ) : (
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded bg-gray-100 flex-shrink-0 overflow-hidden">
                             {item.media?.type === 'image' || item.media?.type === 'gif' ? (
@@ -501,27 +613,15 @@ export default function PlaylistsPage() {
                           </div>
                           <span className="text-sm text-gray-900 truncate max-w-[200px]">{item.media?.name ?? item.media_id}</span>
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {item.type === 'slot' ? (
-                        <select value={item.duration_seconds} onChange={e => handleUpdateSlotDuration(item, Number(e.target.value))}
-                          className="rounded border border-purple-300 px-2 py-1 text-sm focus:border-purple-500 outline-none">
-                          <option value={15}>15s</option><option value={30}>30s</option><option value={45}>45s</option>
-                          <option value={60}>60s</option><option value={90}>90s</option><option value={120}>120s</option>
-                        </select>
-                      ) : (
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <input type="number" value={item.duration ?? 10} onChange={e => handleUpdateDuration(item, Number(e.target.value))}
                             min={1} max={300} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none" />
                           <span className="text-xs text-gray-400">s</span>
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {item.type === 'slot' ? (
-                        <span className="text-xs text-gray-400 italic">Reservado</span>
-                      ) : (
+                      </td>
+                      <td className="px-4 py-3">
                         <select value={item.transition ?? 'fade'} onChange={e => handleUpdateTransition(item, e.target.value)}
                           className="rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 outline-none">
                           <option value="cut">Corte</option><option value="fade">Fade</option>
@@ -529,20 +629,20 @@ export default function PlaylistsPage() {
                           <option value="slide_up">Deslizar C</option><option value="slide_down">Deslizar B</option>
                           <option value="zoom">Zoom</option><option value="dissolve">Dissolver</option>
                         </select>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => moveItem(idx, 'up')} disabled={idx === 0}
-                          className="rounded p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30" title="Subir">↑</button>
-                        <button onClick={() => moveItem(idx, 'down')} disabled={idx === unifiedItems.length - 1}
-                          className="rounded p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30" title="Descer">↓</button>
-                        <button onClick={() => handleRemoveItem(item)}
-                          className="rounded p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 ml-1" title="Remover">✕</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => moveItem(idx, 'up')} disabled={idx === 0}
+                            className="rounded p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30" title="Subir">↑</button>
+                          <button onClick={() => moveItem(idx, 'down')} disabled={idx === unifiedItems.length - 1}
+                            className="rounded p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30" title="Descer">↓</button>
+                          <button onClick={() => handleRemoveItem(item)}
+                            className="rounded p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 ml-1" title="Remover">✕</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

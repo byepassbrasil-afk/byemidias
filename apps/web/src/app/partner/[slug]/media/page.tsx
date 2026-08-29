@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import type { Media } from '@/lib/types';
 
 export default function PartnerSlugMediaPage() {
-  const [media, setMedia] = useState<Media[]>([]);
+  interface MediaWithStatus extends Media { upload_status?: string }
+  const [media, setMedia] = useState<MediaWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +16,7 @@ export default function PartnerSlugMediaPage() {
 
   async function loadMedia() {
     try {
-      const res = await fetch('/api/partner/media');
+      const res = await fetch('/api/partner/media?status=all');
       if (!res.ok) { setLoading(false); return; }
       const data = await res.json();
       setMedia(data.media ?? []);
@@ -131,6 +132,23 @@ export default function PartnerSlugMediaPage() {
                 )}
               </div>
               <div className="p-3">
+                <div className="flex items-center gap-1 mb-1">
+                  {item.upload_status === 'pending' && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-900/40 border border-yellow-700/50 px-1.5 py-0.5 text-[9px] font-medium text-yellow-300">
+                      ⏳ Pendente
+                    </span>
+                  )}
+                  {item.upload_status === 'approved' && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-900/40 border border-green-700/50 px-1.5 py-0.5 text-[9px] font-medium text-green-300">
+                      ✓ Aprovado
+                    </span>
+                  )}
+                  {item.upload_status === 'rejected' && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-900/40 border border-red-700/50 px-1.5 py-0.5 text-[9px] font-medium text-red-300">
+                      ✕ Rejeitado
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs font-medium text-white truncate">{item.name}</p>
                 <p className="text-[10px] text-gray-600">{item.type} · {formatSize(item.file_size)}</p>
               </div>

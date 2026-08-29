@@ -68,14 +68,23 @@ function getMediaType(mt: string) {
   return 'image';
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await getPartnerSession();
     if (!session) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const uploads = await sql`SELECT media_id FROM partner_media_uploads WHERE partner_access_id = ${session.partnerAccessId} AND status = 'approved'`;
+    // ?status=approved (default) returns only approved media.
+    // ?status=all returns all partner uploads (including pending/rejected) for the partner's own view.
+    const statusFilter = new URL(request.url).searchParams.get('status') ?? 'approved';
+
+    let uploads;
+    if (statusFilter === 'all') {
+      uploads = await sql`SELECT media_id, status FROM partner_media_uploads WHERE partner_access_id = ${session.partnerAccessId} ORDER BY created_at DESC`;
+    } else {
+      uploads = await sql`SELECT media_id, status FROM partner_media_uploads WHERE partner_access_id = ${session.partnerAccessId} AND status = ${statusFilter} ORDER BY created_at DESC`;
+    }
     const mediaIds = uploads.map((u) => u.media_id);
 
     if (mediaIds.length === 0) {
@@ -83,7 +92,13 @@ export async function GET() {
     }
 
     const media = await sql`SELECT * FROM media WHERE id = ANY(${mediaIds}) ORDER BY created_at DESC`;
-    return NextResponse.json({ media: media ?? [] });
+    // Attach upload_status to each media item
+    const statusMap = new Map(uploads.map((u: Record<string, unknown>) => [u.media_id as string, u.status as string]));
+    const mediaWithStatus = (media ?? []).map((m: Record<string, unknown>) => ({
+      ...m,
+      upload_status: statusMap.get(m.id as string) ?? 'unknown',
+    }));
+    return NextResponse.json({ media: mediaWithStatus });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('GET /api/partner/media error:', msg);

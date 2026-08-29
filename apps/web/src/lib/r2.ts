@@ -65,7 +65,7 @@ export async function listObjects(prefix: string, maxKeys: number = 1000): Promi
       lastModified: o.LastModified?.toISOString() ?? '',
       etag: (o.ETag ?? '').replace(/"/g, ''),
     }));
-  const folders: R2Folder[] = (res.CommonPrefixes ?? []map(p => ({
+  const folders: R2Folder[] = (res.CommonPrefixes ?? []).map(p => ({
     prefix: p.Prefix ?? '',
     name: (p.Prefix ?? '').replace(normalizedPrefix, '').replace(/\/$/, ''),
   }));

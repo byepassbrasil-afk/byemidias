@@ -47,6 +47,12 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.ByeMidias" />
 
+        <activity
+            android:name=".ui.qr.QrDeviceActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/Theme.ByeMidias" />
+
         <receiver
             android:name=".receivers.BootReceiver"
             android:exported="true"

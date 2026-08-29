@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Device } from '@/lib/types';
+import QrScannerModal from './QrScannerModal';
 
 interface Campaign { id: string; name: string; status: string; organization_id?: string; }
 interface LayoutTemplate { id: string; name: string; }
@@ -26,6 +27,7 @@ export default function DevicesPage() {
   const [saving, setSaving] = useState(false);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const [quickAssignDevice, setQuickAssignDevice] = useState<Device | null>(null);
+  const [showQrScanner, setShowQrScanner] = useState(false);
 
   // Form state
   const [name, setName] = useState('');
@@ -230,6 +232,11 @@ export default function DevicesPage() {
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors shadow-lg shadow-blue-600/20">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Novo Dispositivo
+          </button>
+          <button onClick={() => setShowQrScanner(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-cyan-500 transition-colors shadow-lg shadow-cyan-600/20">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m0 14v1m-7-9h1m14 0h1M5.6 5.6l.7.7m12.1-.7l-.7.7M5.6 18.4l.7-.7m12.1.7l-.7-.7" /></svg>
+            Ler QR Code
           </button>
         </div>
 
@@ -762,6 +769,22 @@ export default function DevicesPage() {
               </div>
             </div>
           </>
+        )}
+
+        {/* QR Scanner */}
+        {showQrScanner && (
+          <QrScannerModal
+            onClose={() => setShowQrScanner(false)}
+            onScanned={(deviceUuid) => {
+              setShowQrScanner(false);
+              const found = devices.find(d => d.device_uuid === deviceUuid || d.id === deviceUuid);
+              if (found) {
+                router.push(`/devices/${found.id}`);
+              } else {
+                alert(`Dispositivo com UUID "${deviceUuid}" não encontrado. Verifique se está cadastrado.`);
+              }
+            }}
+          />
         )}
       </div>
     </div>

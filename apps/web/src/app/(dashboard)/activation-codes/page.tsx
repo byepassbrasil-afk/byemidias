@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import QrScannerModal from '../devices/QrScannerModal';
 
 interface ActivationCode {
   id: string;
@@ -29,6 +30,7 @@ export default function ActivationCodesPage() {
   const [count, setCount] = useState(1);
   const [selectedOrg, setSelectedOrg] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showQrScanner, setShowQrScanner] = useState(false);
 
   useEffect(() => {
     loadCodes();
@@ -132,8 +134,23 @@ export default function ActivationCodesPage() {
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
             {generating ? 'Gerando...' : ' Gerar Códigos'}
           </button>
+          <button onClick={() => setShowQrScanner(true)}
+            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">
+            📱 Ler QR
+          </button>
         </div>
       </div>
+
+      {showQrScanner && (
+        <QrScannerModal
+          onClose={() => setShowQrScanner(false)}
+          onScanned={(text) => {
+            setShowQrScanner(false);
+            navigator.clipboard.writeText(text).catch(() => {});
+            alert(`UUID do dispositivo:\n${text}\n\nCopiado para a área de transferência.`);
+          }}
+        />
+      )}
 
       <div className="mb-4 rounded-lg bg-blue-50 border border-blue-200 p-4">
         <p className="text-sm text-blue-800">

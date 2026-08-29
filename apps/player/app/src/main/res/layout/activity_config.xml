@@ -194,6 +194,17 @@
             android:backgroundTint="#7C3AED"
             android:textAllCaps="false"
             android:textSize="15sp"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/showQrBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="📱 Mostrar QR Code do Dispositivo"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#0891B2"
+            android:textAllCaps="false"
+            android:textSize="15sp"
             android:layout_marginBottom="16dp" />
 
         <LinearLayout

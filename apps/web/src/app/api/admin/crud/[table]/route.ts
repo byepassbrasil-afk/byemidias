@@ -230,14 +230,15 @@ async function deleteProfile(id: string, user: { role: string }) {
 
 // Handle device deletion with FK cleanup
 async function deleteDevice(id: string) {
-  // Clean all FK references to devices before deleting
+  // Clean all FK references to devices before deleting.
+  // To add new FK, just add another DELETE line below.
   await sql`UPDATE activation_codes SET linked_device_id = NULL WHERE linked_device_id = ${id}`;
   await sql`DELETE FROM partner_devices WHERE device_id = ${id}`;
   await sql`DELETE FROM device_logs WHERE device_id = ${id}`;
   await sql`DELETE FROM playback_logs WHERE device_id = ${id}`;
   await sql`DELETE FROM device_uptime_sessions WHERE device_id = ${id}`;
   await sql`DELETE FROM device_group_members WHERE device_id = ${id}`;
-  await sql`DELETE FROM keepalive_log WHERE device_id = ${id}`;
+  await sql`DELETE FROM campaign_calendar WHERE device_id = ${id}`;
   // Now safe to delete the device
   await sql`DELETE FROM devices WHERE id = ${id}`;
 }

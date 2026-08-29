@@ -152,8 +152,8 @@ export default function PlaylistsPage() {
     const mediaJson = await mediaRes.json();
     const partnersJson = await partnersRes.json();
 
-    const allMedia = mediaJson.data ?? [];
-    const mediaMap = new Map(allMedia.map((m: Media) => [m.id, m]));
+    const allMedia = (mediaJson.data ?? []) as Media[];
+    const mediaMap = new Map<string, Media>(allMedia.map((m) => [m.id, m]));
     const partnerData = (partnersJson.data ?? []) as { id: string; username: string; display_name: string }[];
     const partnerMap = new Map(partnerData.map((p) => [p.id, p]));
 
@@ -167,7 +167,7 @@ export default function PlaylistsPage() {
         type: 'media' as const,
         id: i.id,
         position: i.position,
-        media: mediaMap.get(i.media_id) || null,
+        media: mediaMap.get(i.media_id) ?? null,
         duration: i.duration,
         transition: i.transition,
         volume: i.volume,

@@ -17,6 +17,7 @@ export default function AdminIndexPage() {
           { href: '/admin/users', label: 'Usuários', desc: 'Gerenciar usuários', icon: '👥' },
           { href: '/admin/devices', label: 'Dispositivos', desc: 'Todos os dispositivos', icon: '📺' },
           { href: '/admin/partners', label: 'Parceiros', desc: 'Acesso parceiro', icon: '🤝' },
+          { href: '/admin/storage', label: 'Storage (R2)', desc: 'Gerenciar arquivos do R2', icon: '🗂️' },
           { href: '/admin/reports', label: 'Relatórios', desc: 'Relatórios gerados', icon: '📈' },
           { href: '/admin/invoices', label: 'Faturas', desc: 'Faturas da plataforma', icon: '🧾' },
           { href: '/admin/settings', label: 'Configurações', desc: 'Ajustes globais', icon: '⚙️' },

@@ -22,6 +22,7 @@ const ADMIN_SECTIONS = [
       { name: 'Usuários', href: '/admin/users', icon: '👥' },
       { name: 'Dispositivos', href: '/admin/devices', icon: '📺' },
       { name: 'Parceiros', href: '/admin/partners', icon: '🤝' },
+      { name: 'Storage (R2)', href: '/admin/storage', icon: '🗂️' },
     ],
   },
   {

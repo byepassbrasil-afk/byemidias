@@ -56,10 +56,19 @@ function sanitizeName(name: string) {
     .substring(0, 100);
 }
 
-function makeKey(partnerId: string, sanitizedName: string) {
-  const timestamp = Date.now();
+function random4Digits() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+function makeKey(orgSlug: string, partnerUsername: string, sanitizedName: string) {
   const ext = sanitizedName.split('.').pop() || 'bin';
-  return `partner-uploads/${partnerId}/${timestamp}_${sanitizedName.replace(/\.[^.]+$/, '')}.${ext}`;
+  const rnd = random4Digits();
+  // Clean partner username to be filename-safe
+  const safeUsername = partnerUsername
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .substring(0, 40);
+  return `partner-uploads/${orgSlug}/${rnd}_${safeUsername}.${ext}`;
 }
 
 function getMediaType(mt: string) {
@@ -140,7 +149,7 @@ export async function POST(request: NextRequest) {
       }
 
       const sanitizedName = sanitizeName(file_name);
-      const key = makeKey(session.partnerAccessId, sanitizedName);
+      const key = makeKey(session.slug, session.username, sanitizedName);
       const host = `${R2_BUCKET}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
       const uploadUrl = generatePresignedUrl(key, host, R2_ACCESS_KEY, R2_SECRET_KEY);
       const publicUrl = `${R2_PUBLIC_URL}/${key}`;

@@ -200,12 +200,11 @@ export default function ActivationCodesPage() {
                         className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200">
                         {copiedId === code.id ? '✓ Copiado' : '📋 Copiar'}
                       </button>
-                      {code.status === 'pending' && (
-                        <button onClick={() => handleDelete(code.id)}
-                          className="rounded-lg bg-red-100 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-200">
-                          Excluir
-                        </button>
-                      )}
+                      <button onClick={() => handleDelete(code.id)}
+                        className="w-9 h-9 rounded-lg flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                        title="Excluir código">
+                        🗑️
+                      </button>
                     </div>
                   </td>
                 </tr>

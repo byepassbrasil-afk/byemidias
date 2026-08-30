@@ -39,6 +39,7 @@ import com.byemidias.player.service.PlayerService
 import com.byemidias.player.ui.config.ConfigActivity
 import kotlinx.coroutines.*
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileWriter
@@ -138,7 +139,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.56")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.57")
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -316,6 +317,35 @@ class PlayerActivity : ComponentActivity() {
             val activateBtn = findViewById<Button>(R.id.activateBtn) ?: return
             val errorText = findViewById<TextView>(R.id.errorText) ?: return
             val activateStatus = findViewById<TextView>(R.id.activateStatusText) ?: return
+            val qrImageView = findViewById<ImageView>(R.id.qrImageView) ?: return
+            val qrDeviceIdText = findViewById<TextView>(R.id.qrDeviceIdText) ?: return
+
+            // Show QR code with device_uuid (works even before activation)
+            val deviceUuid = getDeviceUuid()
+            qrDeviceIdText.text = deviceUuid
+            val apiUrlForQr = getApiUrl()
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("$apiUrlForQr/api/device/$deviceUuid/qr").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 15000
+                    conn.readTimeout = 15000
+                    val respCode = conn.responseCode
+                    if (respCode in 200..299) {
+                        val bmp = BufferedInputStream(conn.inputStream).use { BitmapFactory.decodeStream(it) }
+                        conn.disconnect()
+                        withContext(Dispatchers.Main) {
+                            if (bmp != null) qrImageView.setImageBitmap(bmp)
+                            else { qrDeviceIdText.text = "Erro ao decodificar imagem"; Log.e(tag, "QR bitmap null") }
+                        }
+                    } else {
+                        conn.disconnect()
+                        withContext(Dispatchers.Main) { qrDeviceIdText.text = "Erro HTTP $respCode" }
+                    }
+                } catch (e: Exception) {
+                    Log.e(tag, "QR fetch on activation: ${e.message}", e)
+                    withContext(Dispatchers.Main) { qrDeviceIdText.text = "Sem QR: ${e.message}" }
+                }
+            }
 
             activateBtn.setOnClickListener {
                 val code = codeInput.text.toString().trim()

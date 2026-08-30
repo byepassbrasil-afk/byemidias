@@ -32,19 +32,21 @@ export default function PartnerSlugMediaPage() {
     setUploading(true);
     setError(null);
 
-    // If "Manter para sempre" → require reason
+    // If "Manter para sempre" → require reason (use LOCAL var, not state)
+    let reason = '';
     if (ttlDays === 0) {
-      const reason = prompt(
+      const input = prompt(
         '⚠️ MANTER PARA SEMPRE\n\n' +
         'Este arquivo NÃO será deletado automaticamente.\n\n' +
         'JUSTIFIQUE POR QUE este arquivo deve ficar permanentemente (mínimo 10 caracteres):'
       );
-      if (reason === null || reason.trim().length < 10) {
+      if (input === null || input.trim().length < 10) {
         setError('É necessário justificar com pelo menos 10 caracteres para manter para sempre.');
         setUploading(false);
         return;
       }
-      setExpiresReason(reason.trim());
+      reason = input.trim();
+      setExpiresReason(reason);
     } else {
       setExpiresReason('');
     }
@@ -78,7 +80,7 @@ export default function PartnerSlugMediaPage() {
         const saveRes = await fetch('/api/partner/media', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size, ttl_days: ttlDays, expires_reason: ttlDays === 0 ? expiresReason : undefined }),
+          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size, ttl_days: ttlDays, expires_reason: ttlDays === 0 ? reason : undefined }),
         });
         if (!saveRes.ok) { const errData = await saveRes.json().catch(() => ({})); setError(errData.error || 'Erro ao salvar registro'); continue; }
       } catch (e: any) {

@@ -28,9 +28,27 @@ export default function MediaPage() {
   }
 
   async function loadOrgs() {
-    const res = await fetch('/api/admin/crud/organizations?order=name&asc=true');
-    const json = await res.json();
-    setOrgs((json.data ?? []) as { id: string; name: string }[]);
+    try {
+      // Load orgs and user profile in parallel
+      const [orgsRes, profileRes] = await Promise.all([
+        fetch('/api/admin/crud/organizations?order=name&asc=true'),
+        fetch('/api/auth/profile'),
+      ]);
+      const orgsJson = await orgsRes.json();
+      const profileJson = profileRes.json();
+      const orgsList = (orgsJson.data ?? []) as { id: string; name: string }[];
+      setOrgs(orgsList);
+
+      // Auto-select user's org (or first if super_admin)
+      const profile = await profileJson;
+      if (profile?.profile) {
+        const userOrg = profile.profile.organization_id;
+        const targetOrg = userOrg || (orgsList[0]?.id ?? '');
+        if (targetOrg) setOrganizationId(targetOrg);
+      }
+    } catch (e) {
+      console.error('loadOrgs failed:', e);
+    }
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -39,23 +57,26 @@ export default function MediaPage() {
     if (!organizationId) { alert('Selecione uma organização primeiro.'); return; }
 
     // If "Manter para sempre", require user to confirm and provide reason
+    // Use LOCAL variable, NOT state (state is async and would be empty when fetch fires)
+    let reason = '';
     if (ttlDays === 0) {
-      const reason = prompt(
+      const input = prompt(
         '⚠️ MANTER PARA SEMPRE\n\n' +
         'Este arquivo NÃO será deletado automaticamente.\n' +
         'Você é responsável por gerenciá-lo manualmente.\n\n' +
         'JUSTIFIQUE POR QUE este arquivo deve ficar permanentemente (mínimo 10 caracteres):'
       );
-      if (reason === null) {
+      if (input === null) {
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
-      if (reason.trim().length < 10) {
+      if (input.trim().length < 10) {
         alert('É necessário justificar com pelo menos 10 caracteres.');
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
-      setExpiresReason(reason.trim());
+      reason = input.trim();
+      setExpiresReason(reason);
     } else {
       setExpiresReason('');
     }
@@ -108,7 +129,7 @@ export default function MediaPage() {
           file_size: file.size,
           organization_id: organizationId,
           ttl_days: ttlDays,
-          expires_reason: ttlDays === 0 ? expiresReason : undefined,
+          expires_reason: ttlDays === 0 ? reason : undefined,
         }),
       });
 

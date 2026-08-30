@@ -13,8 +13,8 @@ android {
         applicationId = "com.byemidias.player"
         minSdk = 21
         targetSdk = 34
-        versionCode = 54
-        versionName = "1.0.54"
+        versionCode = 55
+        versionName = "1.0.55"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -94,7 +94,4 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
-
-    // ZXing for QR code generation/scanning
-    implementation("com.google.zxing:core:3.5.3")
 }

@@ -138,7 +138,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.54")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.55")
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -288,6 +288,29 @@ class PlayerActivity : ComponentActivity() {
     private fun showActivation() {
         try {
             setContentView(R.layout.activity_activation)
+            rootLayout = findViewById(android.R.id.content)
+            statusText = findViewById(R.id.activateStatusText)
+
+            // 6x tap on activation screen to open config (lets user change URL, etc.)
+            rootLayout?.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastTapTime > TAP_TIMEOUT) tapCount = 0
+                    tapCount++
+                    lastTapTime = now
+                    if (tapCount >= TAP_THRESHOLD) {
+                        tapCount = 0
+                        try {
+                            val intent = Intent(this, ConfigActivity::class.java)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e(tag, "ConfigActivity from activation failed: ${e.message}")
+                        }
+                    }
+                }
+                true
+            }
 
             val codeInput = findViewById<EditText>(R.id.codeInput) ?: return
             val activateBtn = findViewById<Button>(R.id.activateBtn) ?: return

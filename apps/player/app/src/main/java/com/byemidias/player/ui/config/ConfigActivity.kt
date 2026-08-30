@@ -12,7 +12,6 @@ import com.byemidias.player.BuildConfig
 import com.byemidias.player.R
 import com.byemidias.player.ui.logs.LogsActivity
 import com.byemidias.player.ui.player.PlayerActivity
-import com.byemidias.player.ui.qr.QrDeviceActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -185,18 +184,6 @@ class ConfigActivity : ComponentActivity() {
                 startActivity(intent)
             } catch (e: Exception) {
                 statusText.text = "Erro ao abrir logs: ${e.message}"
-                statusText.visibility = View.VISIBLE
-            }
-        }
-
-        // Show QR Code button
-        val showQrBtn = findViewById<Button>(R.id.showQrBtn)
-        showQrBtn.setOnClickListener {
-            try {
-                val intent = Intent(this, QrDeviceActivity::class.java)
-                startActivity(intent)
-            } catch (e: Exception) {
-                statusText.text = "Erro ao abrir QR: ${e.message}"
                 statusText.visibility = View.VISIBLE
             }
         }

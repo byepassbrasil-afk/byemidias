@@ -171,10 +171,17 @@ export async function POST(request: NextRequest) {
       }
 
       const mediaType = getMediaType(mime_type);
+      const ttlDays = body.ttl_days;
+
+      let expiresAt: Date | null = null;
+      if (ttlDays && Number(ttlDays) > 0) {
+        expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + Number(ttlDays));
+      }
 
       const [mediaRecord] = await sql`
-        INSERT INTO media (organization_id, name, type, file_url, file_size, status)
-        VALUES (${session.organizationId}, ${file_name}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active')
+        INSERT INTO media (organization_id, name, type, file_url, file_size, status, expires_at)
+        VALUES (${session.organizationId}, ${file_name}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active', ${expiresAt})
         RETURNING id
       `;
 

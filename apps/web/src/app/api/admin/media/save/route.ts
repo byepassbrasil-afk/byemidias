@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
 
     const body = await request.json();
-    const { file_name, file_url, file_size, organization_id } = body;
+    const { file_name, file_url, file_size, organization_id, ttl_days } = body;
 
     if (!file_url) return NextResponse.json({ error: 'file_url obrigatório' }, { status: 400 });
     if (!organization_id) return NextResponse.json({ error: 'organization_id obrigatório' }, { status: 400 });
@@ -30,10 +30,17 @@ export async function POST(request: NextRequest) {
 
     const mediaType = getMediaTypeFromExt(file_name || file_url);
 
+    // ttl_days: null/undefined/0 = forever, else = days until deletion
+    let expiresAt: Date | null = null;
+    if (ttl_days && Number(ttl_days) > 0) {
+      expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + Number(ttl_days));
+    }
+
     const [media] = await sql`
-      INSERT INTO media (organization_id, name, type, file_url, file_size, status)
-      VALUES (${organization_id}, ${sanitizedName}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active')
-      RETURNING id, name, type, file_url, file_size, status, created_at
+      INSERT INTO media (organization_id, name, type, file_url, file_size, status, expires_at)
+      VALUES (${organization_id}, ${sanitizedName}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active', ${expiresAt})
+      RETURNING id, name, type, file_url, file_size, status, expires_at, created_at
     `;
 
     bumpContentVersion(organization_id).catch(() => {});

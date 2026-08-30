@@ -775,13 +775,32 @@ export default function DevicesPage() {
         {showQrScanner && (
           <QrScannerModal
             onClose={() => setShowQrScanner(false)}
-            onScanned={(deviceUuid) => {
+            onScanned={async (deviceUuid) => {
               setShowQrScanner(false);
-              const found = devices.find(d => d.device_uuid === deviceUuid || d.id === deviceUuid);
-              if (found) {
-                router.push(`/devices/${found.id}`);
-              } else {
-                alert(`Dispositivo com UUID "${deviceUuid}" não encontrado. Verifique se está cadastrado.`);
+              try {
+                // Try to find existing device first
+                const found = devices.find(d => d.device_uuid === deviceUuid || d.id === deviceUuid);
+                if (found) {
+                  router.push(`/devices/${found.id}`);
+                  return;
+                }
+                // Not found — try to create via scan-or-create endpoint
+                const res = await fetch('/api/admin/devices/scan-or-create', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ device_uuid: deviceUuid }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                  alert(`Erro: ${data.error || 'desconhecido'}`);
+                  return;
+                }
+                if (data.created) {
+                  alert(`✅ Novo dispositivo criado! Vincule-o a uma campanha agora.`);
+                }
+                router.push(`/devices/${data.device.id}`);
+              } catch (e: any) {
+                alert(`Erro: ${e?.message || 'desconhecido'}`);
               }
             }}
           />

@@ -12,6 +12,7 @@ export default function MediaPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [detailMedia, setDetailMedia] = useState<Media | null>(null);
   const [editName, setEditName] = useState('');
+  const [ttlDays, setTtlDays] = useState<number>(0); // 0 = forever
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadMedia(); loadOrgs(); }, []);
@@ -74,10 +75,13 @@ export default function MediaPage() {
           file_url: presignData.public_url,
           file_size: file.size,
           organization_id: organizationId,
+          ttl_days: ttlDays || undefined,
         }),
       });
 
       if (saveRes.ok) {
+        const ttlLabel = ttlDays === 0 ? 'para sempre' : `por ${ttlDays} dias`;
+        alert(`Upload concluído! Arquivo será mantido ${ttlLabel}.`);
         loadMedia();
       } else {
         const err = await saveRes.json();
@@ -125,6 +129,15 @@ export default function MediaPage() {
           <select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
             <option value="">Organização...</option>
             {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+          <select value={ttlDays} onChange={(e) => setTtlDays(Number(e.target.value))}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none"
+            title="Manter arquivo por quanto tempo">
+            <option value={0}>Manter para sempre</option>
+            <option value={7}>1 semana</option>
+            <option value={21}>3 semanas</option>
+            <option value={30}>1 mês</option>
+            <option value={90}>3 meses</option>
           </select>
           <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" />
           <button onClick={() => fileInputRef.current?.click()} disabled={uploading || !organizationId} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">

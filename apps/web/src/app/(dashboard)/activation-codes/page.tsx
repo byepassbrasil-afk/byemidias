@@ -144,10 +144,27 @@ export default function ActivationCodesPage() {
       {showQrScanner && (
         <QrScannerModal
           onClose={() => setShowQrScanner(false)}
-          onScanned={(text) => {
+          onScanned={async (text) => {
             setShowQrScanner(false);
-            navigator.clipboard.writeText(text).catch(() => {});
-            alert(`UUID do dispositivo:\n${text}\n\nCopiado para a área de transferência.`);
+            try {
+              const res = await fetch('/api/admin/devices/scan-or-create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_uuid: text }),
+              });
+              const data = await res.json();
+              if (!res.ok) {
+                alert(`Erro: ${data.error || 'desconhecido'}`);
+                return;
+              }
+              if (data.created) {
+                alert(`✅ Novo dispositivo criado!\n\nUUID: ${text}\nVincule-o a uma campanha agora.`);
+              } else {
+                alert(`Dispositivo já existe.\n\nUUID: ${text}\nStatus: ${data.device.status}`);
+              }
+            } catch (e: any) {
+              alert(`Erro: ${e?.message || 'desconhecido'}`);
+            }
           }}
         />
       )}

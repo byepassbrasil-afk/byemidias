@@ -10,6 +10,7 @@ export default function PartnerSlugMediaPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [ttlDays, setTtlDays] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadMedia(); }, []);
@@ -51,7 +52,7 @@ export default function PartnerSlugMediaPage() {
         const saveRes = await fetch('/api/partner/media', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size }),
+          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size, ttl_days: ttlDays || undefined }),
         });
         if (!saveRes.ok) { const errData = await saveRes.json().catch(() => ({})); setError(errData.error || 'Erro ao salvar registro'); continue; }
       } catch (e: any) {
@@ -82,17 +83,28 @@ export default function PartnerSlugMediaPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Minha Mídia</h1>
           <p className="text-sm text-gray-500 mt-1">{media.length} arquivo{media.length !== 1 ? 's' : ''}</p>
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple onChange={e => handleUpload(e.target.files)} className="hidden" />
-        <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors shadow-lg shadow-blue-600/20">
+        <div className="flex items-center gap-2">
+          <select value={ttlDays} onChange={e => setTtlDays(Number(e.target.value))}
+            className="rounded-lg bg-gray-800 border border-gray-700 px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+            title="Manter arquivo por quanto tempo">
+            <option value={0}>Manter para sempre</option>
+            <option value={7}>1 semana</option>
+            <option value={21}>3 semanas</option>
+            <option value={30}>1 mês</option>
+            <option value={90}>3 meses</option>
+          </select>
+          <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple onChange={e => handleUpload(e.target.files)} className="hidden" />
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors shadow-lg shadow-blue-600/20">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           {uploading ? 'Enviando...' : 'Enviar'}
         </button>
+        </div>
       </div>
 
       {error && (

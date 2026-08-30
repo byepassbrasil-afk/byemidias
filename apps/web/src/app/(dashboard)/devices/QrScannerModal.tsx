@@ -9,35 +9,44 @@ interface QrScannerModalProps {
 
 export default function QrScannerModal({ onClose, onScanned }: QrScannerModalProps) {
   const scannerRef = useRef<any>(null);
-  const containerId = 'qr-scanner-container';
+  // Unique container ID per instance to avoid duplicate cameras when modal is opened twice
+  const containerId = useRef(`qr-scanner-${Math.random().toString(36).slice(2)}`).current;
   const [error, setError] = useState<string | null>(null);
   const [manualValue, setManualValue] = useState('');
-  const stoppedRef = useRef(false);
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    let mounted = true;
+    // Prevent double-mount
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    const scannerId = containerId;
+    let scanner: any = null;
 
     async function start() {
       try {
         const mod = await import('html5-qrcode');
-        if (!mounted) return;
         const { Html5Qrcode } = mod;
-        const scanner = new Html5Qrcode(containerId, { verbose: false });
+
+        // Wait for DOM element to exist
+        await new Promise(r => setTimeout(r, 100));
+
+        const el = document.getElementById(scannerId);
+        if (!el) return;
+
+        scanner = new Html5Qrcode(scannerId, { verbose: false });
         scannerRef.current = scanner;
 
         await scanner.start(
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 280, height: 280 } },
           (decodedText: string) => {
-            if (stoppedRef.current) return;
-            stoppedRef.current = true;
             try { scanner.stop().catch(() => {}); } catch {}
             onScanned(decodedText);
           },
           (_err: string) => { /* ignore scan failures */ },
         );
       } catch (e: any) {
-        if (!mounted) return;
         const msg = e?.message || String(e);
         if (msg.includes('NotAllowed') || msg.includes('Permission')) {
           setError('Permissão de câmera negada. Use o campo manual abaixo.');
@@ -52,14 +61,19 @@ export default function QrScannerModal({ onClose, onScanned }: QrScannerModalPro
     start();
 
     return () => {
-      mounted = false;
-      stoppedRef.current = true;
-      const scanner = scannerRef.current;
-      if (scanner) {
-        try { scanner.stop().catch(() => {}); } catch {}
+      // Always clean up
+      const s = scannerRef.current;
+      if (s) {
+        try { s.stop().catch(() => {}); } catch {}
       }
+      // Remove the video element that html5-qrcode adds
+      const el = document.getElementById(scannerId);
+      if (el) {
+        el.innerHTML = '';
+      }
+      scannerRef.current = null;
     };
-  }, [onScanned]);
+  }, [containerId, onScanned]);
 
   function submitManual() {
     const v = manualValue.trim();
@@ -83,7 +97,7 @@ export default function QrScannerModal({ onClose, onScanned }: QrScannerModalPro
           )}
 
           <div className="relative bg-black rounded-xl overflow-hidden mb-4" style={{ minHeight: '280px' }}>
-            <div id={containerId} className="w-full" />
+            <div id={containerId} className="w-full" key={containerId} />
           </div>
 
           <div className="text-center text-xs text-gray-500 mb-4">

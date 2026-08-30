@@ -26,6 +26,9 @@ export default function PartnerMediaApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterStatus>('pending');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
+  const [previewName, setPreviewName] = useState<string>('');
 
   const loadUploads = useCallback(async () => {
     setLoading(true);
@@ -70,6 +73,19 @@ export default function PartnerMediaApprovalsPage() {
       alert('Erro ao rejeitar');
     }
     setProcessingId(null);
+  }
+
+  function openPreview(u: PartnerMediaUpload) {
+    if (!u.file_url) return;
+    setPreviewUrl(u.file_url);
+    setPreviewName(u.media_name || u.file_name || 'preview');
+    setPreviewType(u.media_type === 'video' ? 'video' : 'image');
+  }
+
+  function closePreview() {
+    setPreviewUrl(null);
+    setPreviewType(null);
+    setPreviewName('');
   }
 
   function formatSize(bytes: number | null) {
@@ -138,23 +154,48 @@ export default function PartnerMediaApprovalsPage() {
                   <tr key={u.id} className="hover:bg-gray-50">
                     <td className="px-5 py-3">
                       {u.file_url ? (
-                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100">
+                        <button
+                          type="button"
+                          onClick={() => openPreview(u)}
+                          className="block w-20 h-20 rounded-lg overflow-hidden bg-gray-100 relative group cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                          title="Clique para visualizar em tamanho real"
+                        >
                           {u.media_type === 'image' || u.media_type === 'gif' ? (
-                            <img src={u.file_url} alt="" className="w-full h-full object-cover" />
+                            <img
+                              src={u.file_url}
+                              alt={u.media_name || u.file_name || 'preview'}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
                           ) : u.media_type === 'video' ? (
-                            <div className="w-full h-full flex items-center justify-center bg-purple-50 text-lg">🎬</div>
+                            <>
+                              <video
+                                src={u.file_url}
+                                className="w-full h-full object-cover"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/50 transition-colors">
+                                <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-gray-900 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M8 5v14l11-7z" />
+                                  </svg>
+                                </div>
+                              </div>
+                            </>
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-100 text-lg">📄</div>
+                            <div className="w-full h-full flex items-center justify-center bg-gray-100 text-2xl">📄</div>
                           )}
-                        </div>
+                        </button>
                       ) : (
-                        <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">?</div>
+                        <div className="w-20 h-20 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">?</div>
                       )}
                     </td>
                     <td className="px-5 py-3">
-                      <p className="font-medium text-gray-900 truncate max-w-[200px]">{u.media_name || u.file_name || '—'}</p>
+                      <p className="font-medium text-gray-900 truncate max-w-[260px]">{u.media_name || u.file_name || '—'}</p>
                       {u.file_name && u.file_name !== u.media_name && (
-                        <p className="text-xs text-gray-400 truncate max-w-[200px]">{u.file_name}</p>
+                        <p className="text-xs text-gray-400 truncate max-w-[260px]">{u.file_name}</p>
                       )}
                     </td>
                     <td className="px-5 py-3">
@@ -193,6 +234,52 @@ export default function PartnerMediaApprovalsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Preview lightbox */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
+          onClick={closePreview}
+        >
+          <button
+            type="button"
+            onClick={closePreview}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white text-2xl flex items-center justify-center"
+            aria-label="Fechar"
+          >
+            ✕
+          </button>
+          <div
+            className="max-w-[90vw] max-h-[90vh] flex flex-col items-center gap-3"
+            onClick={e => e.stopPropagation()}
+          >
+            {previewType === 'image' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewUrl}
+                alt={previewName}
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              />
+            ) : (
+              <video
+                src={previewUrl}
+                controls
+                autoPlay
+                className="max-w-full max-h-[80vh] rounded-lg shadow-2xl bg-black"
+              />
+            )}
+            <p className="text-white text-sm truncate max-w-[80vw]">{previewName}</p>
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-300 hover:text-blue-200 text-xs underline"
+            >
+              Abrir em nova aba
+            </a>
           </div>
         </div>
       )}

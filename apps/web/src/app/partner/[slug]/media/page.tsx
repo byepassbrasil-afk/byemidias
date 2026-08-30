@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import type { Media } from '@/lib/types';
+import { convertImageToWebP, formatBytes } from '@/lib/image-convert';
 
 export default function PartnerSlugMediaPage() {
   interface MediaWithStatus extends Media { upload_status?: string }
@@ -48,8 +49,15 @@ export default function PartnerSlugMediaPage() {
       setExpiresReason('');
     }
 
-    for (const file of Array.from(files)) {
+    for (const originalFile of Array.from(files)) {
       try {
+        // Convert images to WebP for smaller files (~30-50% reduction)
+        const file = await convertImageToWebP(originalFile, 0.85);
+        if (file !== originalFile) {
+          const reduction = Math.round((1 - file.size / originalFile.size) * 100);
+          console.log(`Convertido ${originalFile.name}: ${formatBytes(originalFile.size)} → ${formatBytes(file.size)} (-${reduction}%)`);
+        }
+
         // Step 1: get presigned URL (JSON only — no file body through Vercel)
         const presignRes = await fetch('/api/partner/media', {
           method: 'POST',

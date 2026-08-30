@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import type { Media } from '@/lib/types';
+import { convertImageToWebP, formatBytes } from '@/lib/image-convert';
 
 export default function MediaPage() {
   const [media, setMedia] = useState<Media[]>([]);
@@ -33,8 +34,8 @@ export default function MediaPage() {
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const originalFile = e.target.files?.[0];
+    if (!originalFile) return;
     if (!organizationId) { alert('Selecione uma organização primeiro.'); return; }
 
     // If "Manter para sempre", require user to confirm and provide reason
@@ -46,7 +47,6 @@ export default function MediaPage() {
         'JUSTIFIQUE POR QUE este arquivo deve ficar permanentemente (mínimo 10 caracteres):'
       );
       if (reason === null) {
-        // User cancelled
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
@@ -62,6 +62,13 @@ export default function MediaPage() {
 
     setUploading(true);
     try {
+      // Convert images (PNG/JPEG/etc) to WebP for ~30-50% smaller files
+      const file = await convertImageToWebP(originalFile, 0.85);
+      if (file !== originalFile) {
+        const reduction = Math.round((1 - file.size / originalFile.size) * 100);
+        console.log(`Convertido ${originalFile.name}: ${formatBytes(originalFile.size)} → ${formatBytes(file.size)} (-${reduction}%)`);
+      }
+
       const presignRes = await fetch('/api/admin/media/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -29,6 +29,8 @@ export default function PartnerMediaApprovalsPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
   const [previewName, setPreviewName] = useState<string>('');
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string>('');
 
   const loadUploads = useCallback(async () => {
     setLoading(true);
@@ -60,19 +62,41 @@ export default function PartnerMediaApprovalsPage() {
   }
 
   async function handleReject(id: string) {
-    if (!confirm('Rejeitar esta mídia?')) return;
+    if (!confirm('Rejeitar esta mídia? O arquivo será EXCLUÍDO do storage e o parceiro será notificado.')) return;
     setProcessingId(id);
+    setRejectingId(id);
+    setRejectionReason('');
     try {
-      await fetch('/api/admin/partner-media', {
+      // Reason dialog: just use prompt for simplicity
+      const reason = window.prompt(
+        '❌ REJEITAR MÍDIA\n\n' +
+        'O arquivo será EXCLUÍDO permanentemente do storage.\n' +
+        'O parceiro será notificado com este motivo.\n\n' +
+        'Descreva o motivo (mínimo 5 caracteres):'
+      );
+      if (!reason || reason.trim().length < 5) {
+        alert('É necessário informar um motivo com pelo menos 5 caracteres.');
+        setProcessingId(null);
+        setRejectingId(null);
+        return;
+      }
+      const res = await fetch('/api/admin/partner-media', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, status: 'rejected' }),
+        body: JSON.stringify({ id, status: 'rejected', rejection_reason: reason.trim() }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Erro: ' + (err.error || 'desconhecido'));
+      } else {
+        alert('Mídia rejeitada e excluída. O parceiro foi notificado.');
+      }
       loadUploads();
     } catch (e) {
       alert('Erro ao rejeitar');
     }
     setProcessingId(null);
+    setRejectingId(null);
   }
 
   function openPreview(u: PartnerMediaUpload) {

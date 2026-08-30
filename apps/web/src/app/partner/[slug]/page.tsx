@@ -1,24 +1,52 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import type { PartnerDeviceWithInfo } from '@/lib/types';
+
+interface PartnerNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  read: boolean;
+  created_at: string;
+}
 
 export default function PartnerSlugDashboardPage() {
   const params = useParams();
   const slug = params.slug as string;
   const [devices, setDevices] = useState<PartnerDeviceWithInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<PartnerNotification[]>([]);
 
-  useEffect(() => { loadDevices(); }, []);
-
-  async function loadDevices() {
+  const loadDevices = useCallback(async () => {
     try {
       const res = await fetch('/api/partner/devices');
       const data = await res.json();
       setDevices(data.devices ?? []);
     } catch { /* ignore */ }
     setLoading(false);
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const res = await fetch('/api/partner/notifications');
+      if (!res.ok) return;
+      const data = await res.json();
+      setNotifications(data.notifications ?? []);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { loadDevices(); loadNotifications(); }, [loadDevices, loadNotifications]);
+
+  async function markRead(ids: string[]) {
+    await fetch('/api/partner/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    loadNotifications();
   }
 
   function timeSince(date: string | null) {
@@ -60,6 +88,35 @@ export default function PartnerSlugDashboardPage() {
           <div className="text-xs text-gray-500 mt-1">Offline</div>
         </div>
       </div>
+
+      {/* Notifications */}
+      {notifications.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Notificações</h2>
+          <div className="space-y-2">
+            {notifications.slice(0, 5).map(n => (
+              <div key={n.id} className={`rounded-xl border p-4 ${n.read ? 'bg-gray-900/40 border-gray-800' : 'bg-blue-900/20 border-blue-700/50'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold ${n.read ? 'text-gray-400' : 'text-white'}`}>{n.title}</p>
+                    <p className={`text-sm mt-1 whitespace-pre-wrap ${n.read ? 'text-gray-500' : 'text-gray-300'}`}>{n.message}</p>
+                    <p className="text-xs text-gray-600 mt-1">{new Date(n.created_at).toLocaleString('pt-BR')}</p>
+                  </div>
+                  {!n.read && (
+                    <button
+                      type="button"
+                      onClick={() => markRead([n.id])}
+                      className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 shrink-0"
+                    >
+                      Marcar lida
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center gap-3 text-gray-500 py-12 justify-center">

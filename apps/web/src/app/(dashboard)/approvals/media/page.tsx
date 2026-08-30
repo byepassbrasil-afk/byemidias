@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 
 interface PartnerMediaUpload {
   id: string;
@@ -17,6 +17,9 @@ interface PartnerMediaUpload {
   media_name: string | null;
   media_type: string | null;
   file_url: string | null;
+  rejection_reason: string | null;
+  reviewed_at: string | null;
+  reviewer_name: string | null;
 }
 
 type FilterStatus = 'pending' | 'approved' | 'rejected';
@@ -175,86 +178,120 @@ export default function PartnerMediaApprovalsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {uploads.map(u => (
-                  <tr key={u.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3">
-                      {u.file_url ? (
-                        <button
-                          type="button"
-                          onClick={() => openPreview(u)}
-                          className="block w-20 h-20 rounded-lg overflow-hidden bg-gray-100 relative group cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
-                          title="Clique para visualizar em tamanho real"
-                        >
-                          {u.media_type === 'image' || u.media_type === 'gif' ? (
-                            <img
-                              src={u.file_url}
-                              alt={u.media_name || u.file_name || 'preview'}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : u.media_type === 'video' ? (
-                            <>
-                              <video
+                  <React.Fragment key={u.id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-5 py-3">
+                        {u.status === 'rejected' || !u.file_url ? (
+                          <div className="block w-20 h-20 rounded-lg bg-red-50 border-2 border-red-200 flex flex-col items-center justify-center text-red-600" title="Arquivo excluído do storage">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <span className="text-[9px] font-medium mt-0.5">Excluído</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openPreview(u)}
+                            className="block w-20 h-20 rounded-lg overflow-hidden bg-gray-100 relative group cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                            title="Clique para visualizar em tamanho real"
+                          >
+                            {u.media_type === 'image' || u.media_type === 'gif' ? (
+                              <img
                                 src={u.file_url}
+                                alt={u.media_name || u.file_name || 'preview'}
                                 className="w-full h-full object-cover"
-                                muted
-                                playsInline
-                                preload="metadata"
+                                loading="lazy"
                               />
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/50 transition-colors">
-                                <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
-                                  <svg className="w-5 h-5 text-gray-900 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M8 5v14l11-7z" />
-                                  </svg>
+                            ) : u.media_type === 'video' ? (
+                              <>
+                                <video
+                                  src={u.file_url}
+                                  className="w-full h-full object-cover"
+                                  muted
+                                  playsInline
+                                  preload="metadata"
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/50 transition-colors">
+                                  <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
+                                    <svg className="w-5 h-5 text-gray-900 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-gray-100 text-2xl">📄</div>
+                            )}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <p className="font-medium text-gray-900 truncate max-w-[260px]">{u.media_name || u.file_name || '—'}</p>
+                        {u.file_name && u.file_name !== u.media_name && (
+                          <p className="text-xs text-gray-400 truncate max-w-[260px]">{u.file_name}</p>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <p className="text-gray-900">{u.partner_name || '—'}</p>
+                        <p className="text-xs text-gray-400">@{u.partner_username || '—'}</p>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
+                          {u.media_type || u.file_type || '—'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-right text-gray-500">{formatSize(u.file_size)}</td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[u.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {statusLabels[u.status] || u.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-gray-500">
+                        {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                      </td>
+                      {filter === 'pending' && (
+                        <td className="px-5 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => handleApprove(u.id)} disabled={processingId === u.id}
+                              className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50">
+                              {processingId === u.id ? '...' : '✓ Aprovar'}
+                            </button>
+                            <button onClick={() => handleReject(u.id)} disabled={processingId === u.id}
+                              className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200 disabled:opacity-50">
+                              ✗ Rejeitar
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                    {/* Rejection log row */}
+                    {u.status === 'rejected' && (
+                      <tr className="bg-red-50/30">
+                        <td colSpan={filter === 'pending' ? 8 : 7} className="px-5 py-3">
+                          <div className="rounded-lg bg-white border border-red-200 p-4">
+                            <div className="flex items-start gap-3">
+                              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-1">Log de Rejeição</p>
+                                <p className="text-sm text-gray-900 font-medium mb-1">
+                                  <span className="text-red-600">Motivo:</span> {u.rejection_reason || 'Não especificado'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
+                                  {u.reviewer_name && (
+                                    <span>👤 Rejeitado por: <strong className="text-gray-800">{u.reviewer_name}</strong></span>
+                                  )}
+                                  {u.reviewed_at && (
+                                    <span>📅 {new Date(u.reviewed_at).toLocaleString('pt-BR')}</span>
+                                  )}
+                                  <span>🗑️ Arquivo excluído do storage</span>
                                 </div>
                               </div>
-                            </>
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-100 text-2xl">📄</div>
-                          )}
-                        </button>
-                      ) : (
-                        <div className="w-20 h-20 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">?</div>
-                      )}
-                    </td>
-                    <td className="px-5 py-3">
-                      <p className="font-medium text-gray-900 truncate max-w-[260px]">{u.media_name || u.file_name || '—'}</p>
-                      {u.file_name && u.file_name !== u.media_name && (
-                        <p className="text-xs text-gray-400 truncate max-w-[260px]">{u.file_name}</p>
-                      )}
-                    </td>
-                    <td className="px-5 py-3">
-                      <p className="text-gray-900">{u.partner_name || '—'}</p>
-                      <p className="text-xs text-gray-400">@{u.partner_username || '—'}</p>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
-                        {u.media_type || u.file_type || '—'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-right text-gray-500">{formatSize(u.file_size)}</td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[u.status] || 'bg-gray-100 text-gray-600'}`}>
-                        {statusLabels[u.status] || u.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-gray-500">
-                      {new Date(u.created_at).toLocaleDateString('pt-BR')}
-                    </td>
-                    {filter === 'pending' && (
-                      <td className="px-5 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => handleApprove(u.id)} disabled={processingId === u.id}
-                            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50">
-                            {processingId === u.id ? '...' : '✓ Aprovar'}
-                          </button>
-                          <button onClick={() => handleReject(u.id)} disabled={processingId === u.id}
-                            className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200 disabled:opacity-50">
-                            ✗ Rejeitar
-                          </button>
-                        </div>
-                      </td>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                  </tr>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

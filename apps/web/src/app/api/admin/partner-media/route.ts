@@ -15,20 +15,24 @@ export async function GET(request: NextRequest) {
     if (user.role === 'super_admin') {
       uploads = await sql`
         SELECT pmu.*, pa.username as partner_username, pa.display_name as partner_name,
-               m.name as media_name, m.type as media_type, m.file_url, m.file_size
+               m.name as media_name, m.type as media_type, m.file_url, m.file_size,
+               rev.full_name as reviewer_name
         FROM partner_media_uploads pmu
         LEFT JOIN partner_access pa ON pa.id = pmu.partner_access_id
         LEFT JOIN media m ON m.id = pmu.media_id
+        LEFT JOIN profiles rev ON rev.id = pmu.reviewed_by
         WHERE pmu.status = ${status}
         ORDER BY pmu.created_at DESC
       `;
     } else {
       uploads = await sql`
         SELECT pmu.*, pa.username as partner_username, pa.display_name as partner_name,
-               m.name as media_name, m.type as media_type, m.file_url, m.file_size
+               m.name as media_name, m.type as media_type, m.file_url, m.file_size,
+               rev.full_name as reviewer_name
         FROM partner_media_uploads pmu
         LEFT JOIN partner_access pa ON pa.id = pmu.partner_access_id
         LEFT JOIN media m ON m.id = pmu.media_id
+        LEFT JOIN profiles rev ON rev.id = pmu.reviewed_by
         WHERE pmu.organization_id = ${user.organization_id} AND pmu.status = ${status}
         ORDER BY pmu.created_at DESC
       `;

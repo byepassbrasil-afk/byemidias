@@ -5,12 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Intent
+import android.content.Intent;
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import com.byemidias.player.R
 import com.byemidias.player.ui.player.PlayerActivity
@@ -20,13 +18,10 @@ class PlayerService : Service() {
     private val tag = "PlayerService"
     private val channelId = "byemidias_player"
     private val notificationId = 1001
-    private val handler = Handler(Looper.getMainLooper())
-    private var restartCheckRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startAutoRestartCheck()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -38,59 +33,14 @@ class PlayerService : Service() {
                 startForeground(notificationId, notification)
             }
             Log.i(tag, "Foreground service started (API ${Build.VERSION.SDK_INT})")
-            START_STICKY
+            START_NOT_STICKY
         } catch (e: Exception) {
             Log.e(tag, "Failed to start foreground: ${e.message}", e)
-            try {
-                val notification = buildNotification()
-                startForeground(notificationId, notification)
-                START_STICKY
-            } catch (e2: Exception) {
-                Log.e(tag, "Fallback foreground also failed: ${e2.message}", e2)
-                START_NOT_STICKY
-            }
+            START_NOT_STICKY
         }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    /**
-     * Auto-restart: checks every 5 seconds if PlayerActivity is running.
-     * If not running (user closed it, crash, etc.), restarts it automatically.
-     * This ensures the player is always accessible.
-     */
-    private fun startAutoRestartCheck() {
-        restartCheckRunnable = object : Runnable {
-            override fun run() {
-                try {
-                    checkAndRestartPlayer()
-                } catch (_: Exception) {}
-                handler.postDelayed(this, 5000)
-            }
-        }
-        handler.postDelayed(restartCheckRunnable!!, 5000)
-    }
-
-    private fun checkAndRestartPlayer() {
-        try {
-            val activityManager = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
-            val runningTasks = activityManager.getRunningTasks(10)
-            val isPlayerRunning = runningTasks.any { task ->
-                task.topActivity?.className?.contains("PlayerActivity") == true
-            }
-
-            if (!isPlayerRunning) {
-                Log.i(tag, "PlayerActivity not running — restarting...")
-                val restartIntent = Intent(this, PlayerActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
-                startActivity(restartIntent)
-                Log.i(tag, "PlayerActivity restart triggered")
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "Auto-restart check failed: ${e.message}")
-        }
-    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -144,8 +94,6 @@ class PlayerService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        restartCheckRunnable?.let { handler.removeCallbacks(it) }
-        handler.removeCallbacksAndMessages(null)
         Log.i(tag, "Foreground service destroyed")
     }
 }

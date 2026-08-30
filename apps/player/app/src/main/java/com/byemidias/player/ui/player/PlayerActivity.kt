@@ -138,7 +138,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.53")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.54")
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -237,9 +237,6 @@ class PlayerActivity : ComponentActivity() {
                 sendHeartbeatOff()
             }
         } catch (_: Exception) {}
-        try {
-            ensureServiceRunning()
-        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {
@@ -255,9 +252,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
-            try { ensureServiceRunning() } catch (_: Exception) {}
-        }
+        // No-op: removed persistent service auto-restart (flagged as malware)
     }
 
     private fun applyRotationFromPrefs() {
@@ -285,19 +280,6 @@ class PlayerActivity : ComponentActivity() {
                 != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
             }
-        }
-    }
-
-    private fun ensureServiceRunning() {
-        try {
-            val serviceIntent = Intent(this, PlayerService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "Failed to start service: ${e.message}")
         }
     }
 
@@ -406,8 +388,6 @@ class PlayerActivity : ComponentActivity() {
                 }
                 true
             }
-
-            startForegroundService()
 
             // Delay syncAndPlay until view is fully laid out — avoids black screen on cold start
             window.decorView.post {
@@ -610,19 +590,6 @@ class PlayerActivity : ComponentActivity() {
             flog("I", "UI", "createMediaViewsForZone: videoView+imageViewA+imageViewB created for zone ${zone.name}")
         } catch (e: Exception) {
             flog("E", "UI", "createMediaViewsForZone error: ${e.message}")
-        }
-    }
-
-    private fun startForegroundService() {
-        try {
-            val serviceIntent = Intent(this, PlayerService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "startForegroundService failed: ${e.message}")
         }
     }
 
@@ -1420,4 +1387,4 @@ class PlayerActivity : ComponentActivity() {
             throw e
         }
     }
-}
+}

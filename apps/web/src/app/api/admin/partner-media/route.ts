@@ -103,10 +103,25 @@ export async function PUT(request: NextRequest) {
 
     // If REJECTED: delete file from R2, remove media record, notify partner
     if (status === 'rejected' && uploadMediaId) {
+      // 1. Send notification FIRST (while media_id is still valid for FK reference)
+      if (uploadPartnerId && uploadOrgId) {
+        const fileName = uploadMediaName || 'arquivo';
+        const reason = rejection_reason || 'Não especificado';
+        await sql`
+          INSERT INTO partner_notifications (partner_access_id, organization_id, type, title, message, related_media_id)
+          VALUES (
+            ${uploadPartnerId}, ${uploadOrgId}, 'media_rejected',
+            '❌ Mídia rejeitada',
+            ${`Sua mídia "${fileName}" foi rejeitada.\n\nMotivo: ${reason}`},
+            ${uploadMediaId}
+          )
+        `;
+      }
+
+      // 2. Delete file from R2
       try {
         const [mediaInfo] = await sql`SELECT file_url FROM media WHERE id = ${uploadMediaId}`;
         if (mediaInfo?.file_url) {
-          // Extract R2 key from public URL
           const match = mediaInfo.file_url.match(/\/(media|partner-uploads)\/.+/);
           if (match) {
             const key = match[0].replace(/^\//, '');
@@ -129,25 +144,15 @@ export async function PUT(request: NextRequest) {
             }
           }
         }
-        // Delete media record (cascade should remove from playlist_items too)
-        await sql`DELETE FROM media WHERE id = ${uploadMediaId}`;
       } catch (e) {
-        console.error('Cleanup on reject failed:', e);
+        console.error('R2 delete failed:', e);
       }
 
-      // Send notification to partner
-      if (uploadPartnerId && uploadOrgId) {
-        const fileName = uploadMediaName || 'arquivo';
-        const reason = rejection_reason || 'Não especificado';
-        await sql`
-          INSERT INTO partner_notifications (partner_access_id, organization_id, type, title, message, related_media_id)
-          VALUES (
-            ${uploadPartnerId}, ${uploadOrgId}, 'media_rejected',
-            '❌ Mídia rejeitada',
-            ${`Sua mídia "${fileName}" foi rejeitada.\n\nMotivo: ${reason}`},
-            ${uploadMediaId}
-          )
-        `;
+      // 3. Delete media record (FK on partner_notifications.related_media_id → ON DELETE SET NULL)
+      try {
+        await sql`DELETE FROM media WHERE id = ${uploadMediaId}`;
+      } catch (e) {
+        console.error('Media delete failed:', e);
       }
     }
 

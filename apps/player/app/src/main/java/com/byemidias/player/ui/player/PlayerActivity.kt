@@ -139,7 +139,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.58")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.59")
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -292,6 +292,9 @@ class PlayerActivity : ComponentActivity() {
             rootLayout = findViewById(android.R.id.content)
             statusText = findViewById(R.id.activateStatusText)
 
+            // Start polling for external activation (via admin QR scan)
+            startActivationPolling()
+
             // 6x tap on activation screen to open config (lets user change URL, etc.)
             rootLayout?.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_DOWN) {
@@ -412,6 +415,70 @@ class PlayerActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e(tag, "showActivation crash: ${e.message}", e)
         }
+    }
+
+    // ===================== ACTIVATION POLLING =====================
+
+    private var activationPollingRunning = false
+    private val activationPollingHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /**
+     * Polls /api/device/check-activation?device_uuid=... every 3s.
+     * If the device has been activated externally (e.g. via admin QR scan),
+     * saves the device_id locally and starts the player.
+     */
+    private fun startActivationPolling() {
+        if (activationPollingRunning) return
+        activationPollingRunning = true
+        val deviceUuid = getDeviceUuid()
+        val baseUrl = getApiUrl()
+        if (deviceUuid.isEmpty()) return
+
+        val pollRunnable = object : Runnable {
+            override fun run() {
+                if (!activationPollingRunning) return
+                val runnableRef = this
+                lifecycleScope.launch(Dispatchers.IO) {
+                    var activatedNow = false
+                    var deviceIdFound = ""
+                    try {
+                        val conn = URL("$baseUrl/api/device/check-activation?device_uuid=$deviceUuid").openConnection() as HttpURLConnection
+                        conn.connectTimeout = 10000
+                        conn.readTimeout = 10000
+                        if (conn.responseCode == 200) {
+                            val body = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                            val json = JSONObject(body)
+                            conn.disconnect()
+                            val activated = json.optBoolean("activated", false)
+                            val exists = json.optBoolean("exists", false)
+                            deviceIdFound = json.optString("device_id", "")
+                            if (activated && exists && deviceIdFound.isNotEmpty()) {
+                                activatedNow = true
+                            }
+                        } else {
+                            conn.disconnect()
+                        }
+                    } catch (_: Exception) {}
+
+                    withContext(Dispatchers.Main) {
+                        if (activatedNow) {
+                            activationPollingRunning = false
+                            prefs?.edit()?.putString("device_id", deviceIdFound)?.commit()
+                            flog("I", tag, "Activation detected via scan! device_id=$deviceIdFound")
+                            startPlayer()
+                        } else if (activationPollingRunning) {
+                            activationPollingHandler.postDelayed(runnableRef, 3000)
+                        }
+                    }
+                }
+            }
+        }
+        activationPollingHandler.postDelayed(pollRunnable, 3000)
+    }
+
+    private fun stopActivationPolling() {
+        activationPollingRunning = false
+        activationPollingHandler.removeCallbacksAndMessages(null)
     }
 
     // ===================== PLAYER =====================

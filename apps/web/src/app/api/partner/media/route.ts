@@ -171,17 +171,28 @@ export async function POST(request: NextRequest) {
       }
 
       const mediaType = getMediaType(mime_type);
-      const ttlDays = body.ttl_days;
+      // Default TTL = 7 days
+      const ttlDays = body.ttl_days !== undefined && body.ttl_days !== null ? Number(body.ttl_days) : 7;
+      const expiresReason = body.expires_reason;
+
+      // If "forever" (ttl === 0) → require a reason (minimum 10 chars)
+      if (ttlDays === 0) {
+        if (!expiresReason || String(expiresReason).trim().length < 10) {
+          return NextResponse.json({
+            error: 'Para manter para sempre é obrigatório justificar com pelo menos 10 caracteres no campo "Motivo".'
+          }, { status: 400 });
+        }
+      }
 
       let expiresAt: Date | null = null;
-      if (ttlDays && Number(ttlDays) > 0) {
+      if (ttlDays > 0) {
         expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + Number(ttlDays));
+        expiresAt.setDate(expiresAt.getDate() + ttlDays);
       }
 
       const [mediaRecord] = await sql`
-        INSERT INTO media (organization_id, name, type, file_url, file_size, status, expires_at)
-        VALUES (${session.organizationId}, ${file_name}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active', ${expiresAt})
+        INSERT INTO media (organization_id, name, type, file_url, file_size, status, expires_at, expires_reason)
+        VALUES (${session.organizationId}, ${file_name}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active', ${expiresAt}, ${ttlDays === 0 ? expiresReason : null})
         RETURNING id
       `;
 

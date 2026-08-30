@@ -10,7 +10,8 @@ export default function PartnerSlugMediaPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [ttlDays, setTtlDays] = useState<number>(0);
+  const [ttlDays, setTtlDays] = useState<number>(7);
+  const [expiresReason, setExpiresReason] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadMedia(); }, []);
@@ -29,6 +30,23 @@ export default function PartnerSlugMediaPage() {
     if (!files || files.length === 0) return;
     setUploading(true);
     setError(null);
+
+    // If "Manter para sempre" → require reason
+    if (ttlDays === 0) {
+      const reason = prompt(
+        '⚠️ MANTER PARA SEMPRE\n\n' +
+        'Este arquivo NÃO será deletado automaticamente.\n\n' +
+        'JUSTIFIQUE POR QUE este arquivo deve ficar permanentemente (mínimo 10 caracteres):'
+      );
+      if (reason === null || reason.trim().length < 10) {
+        setError('É necessário justificar com pelo menos 10 caracteres para manter para sempre.');
+        setUploading(false);
+        return;
+      }
+      setExpiresReason(reason.trim());
+    } else {
+      setExpiresReason('');
+    }
 
     for (const file of Array.from(files)) {
       try {
@@ -52,7 +70,7 @@ export default function PartnerSlugMediaPage() {
         const saveRes = await fetch('/api/partner/media', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size, ttl_days: ttlDays || undefined }),
+          body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size, ttl_days: ttlDays, expires_reason: ttlDays === 0 ? expiresReason : undefined }),
         });
         if (!saveRes.ok) { const errData = await saveRes.json().catch(() => ({})); setError(errData.error || 'Erro ao salvar registro'); continue; }
       } catch (e: any) {
@@ -91,12 +109,12 @@ export default function PartnerSlugMediaPage() {
         <div className="flex items-center gap-2">
           <select value={ttlDays} onChange={e => setTtlDays(Number(e.target.value))}
             className="rounded-lg bg-gray-800 border border-gray-700 px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
-            title="Manter arquivo por quanto tempo">
-            <option value={0}>Manter para sempre</option>
-            <option value={7}>1 semana</option>
+            title="Manter arquivo por quanto tempo (default: 1 semana)">
+            <option value={7}>1 semana (padrão)</option>
             <option value={21}>3 semanas</option>
             <option value={30}>1 mês</option>
             <option value={90}>3 meses</option>
+            <option value={0}>Manter para sempre ⚠️</option>
           </select>
           <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple onChange={e => handleUpload(e.target.files)} className="hidden" />
           <button onClick={() => fileInputRef.current?.click()} disabled={uploading}

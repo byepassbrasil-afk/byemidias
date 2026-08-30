@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.*
+import android.widget.SeekBar
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import com.byemidias.player.BuildConfig
@@ -77,6 +78,35 @@ class ConfigActivity : ComponentActivity() {
         val htmlRenders = listOf("Nativo", "WebView")
         htmlRenderSpinner.setSelection(prefs.getInt("html_render", 0).coerceIn(0, 1))
 
+        // Image fit mode spinner — values: fit, fill, centerCrop, center, fitCenter, fitXY
+        val imageFitSpinner = findViewById<Spinner>(R.id.imageFitSpinner)
+        val fitModes = listOf("fit", "fill", "centerCrop", "center", "fitCenter", "fitXY")
+        val savedFit = prefs.getString("image_fit_mode", "fit") ?: "fit"
+        imageFitSpinner.setSelection(fitModes.indexOf(savedFit).takeIf { it >= 0 } ?: 0)
+
+        // Image rotation lock spinner — values: 0, 90, 180, 270
+        val imageRotationSpinner = findViewById<Spinner>(R.id.imageRotationSpinner)
+        val rotations = listOf(0, 90, 180, 270)
+        val savedRot = prefs.getInt("image_rotation_lock", 0)
+        imageRotationSpinner.setSelection(rotations.indexOf(savedRot).takeIf { it >= 0 } ?: 0)
+
+        // Video volume seekbar
+        val videoVolumeSeek = findViewById<SeekBar>(R.id.videoVolumeSeek)
+        val videoVolumeLabel = findViewById<TextView>(R.id.videoVolumeLabel)
+        fun updateVolumeLabel(v: Int) {
+            videoVolumeLabel.text = "Volume: $v%"
+        }
+        val savedVolume = prefs.getInt("video_volume", 100)
+        videoVolumeSeek.progress = savedVolume.coerceIn(0, 100)
+        updateVolumeLabel(savedVolume)
+        videoVolumeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                updateVolumeLabel(progress)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
         // Load switches
         autoUpdateSwitch.isChecked = prefs.getBoolean("auto_update", true)
         lowMemRestartSwitch.isChecked = prefs.getBoolean("low_mem_restart", true)
@@ -102,6 +132,9 @@ class ConfigActivity : ComponentActivity() {
                 putBoolean("auto_update", autoUpdateSwitch.isChecked)
                 putBoolean("low_mem_restart", lowMemRestartSwitch.isChecked)
                 putInt("html_render", htmlRenderSpinner.selectedItemPosition)
+                putString("image_fit_mode", fitModes[imageFitSpinner.selectedItemPosition])
+                putInt("image_rotation_lock", rotations[imageRotationSpinner.selectedItemPosition])
+                putInt("video_volume", videoVolumeSeek.progress)
                 commit()
             }
 

@@ -139,7 +139,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.57")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.58")
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -997,6 +997,32 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    // ===================== RENDERING CONFIG =====================
+
+    private fun getImageScaleType(): ImageView.ScaleType {
+        val mode = prefs?.getString("image_fit_mode", "fit") ?: "fit"
+        return when (mode) {
+            "fill" -> ImageView.ScaleType.FIT_XY
+            "center" -> ImageView.ScaleType.CENTER
+            "centerCrop" -> ImageView.ScaleType.CENTER_CROP
+            "centerInside" -> ImageView.ScaleType.CENTER_INSIDE
+            "fitCenter" -> ImageView.ScaleType.FIT_CENTER
+            "fit" -> ImageView.ScaleType.FIT_XY    // Fills 100% (stretched) — fills always, may distort
+            else -> ImageView.ScaleType.FIT_CENTER   // letterbox/pillarbox, no distortion
+        }
+    }
+
+    private fun getImageRotation(): Float {
+        val rot = prefs?.getInt("image_rotation_lock", 0) ?: 0
+        return rot.toFloat()
+    }
+
+    private fun getVideoVolume(): Float {
+        // Default 1.0 (100%). Stored 0-100.
+        val vol = prefs?.getInt("video_volume", 100) ?: 100
+        return (vol.coerceIn(0, 100) / 100f)
+    }
+
     private fun crossfadeToImage(newBitmap: android.graphics.Bitmap) {
         val current = activeImageView ?: imageViewA ?: return
         val next = if (current == imageViewA) imageViewB else imageViewA ?: return
@@ -1005,7 +1031,8 @@ class PlayerActivity : ComponentActivity() {
             try {
                 videoView?.visibility = View.GONE
                 next?.setImageBitmap(newBitmap)
-                next?.scaleType = ImageView.ScaleType.CENTER_CROP
+                next?.scaleType = getImageScaleType()
+                next?.rotation = getImageRotation()
                 current.alpha = 1f
                 next?.alpha = 0f
                 next?.visibility = View.VISIBLE
@@ -1037,7 +1064,8 @@ class PlayerActivity : ComponentActivity() {
             try {
                 videoView?.visibility = View.GONE
                 iv.setImageBitmap(bitmap)
-                iv.scaleType = ImageView.ScaleType.CENTER_CROP
+                iv.scaleType = getImageScaleType()
+                iv.rotation = getImageRotation()
                 iv.visibility = View.VISIBLE
                 iv.alpha = 1f
                 activeImageView = iv
@@ -1066,7 +1094,7 @@ class PlayerActivity : ComponentActivity() {
                 imageViewA?.visibility = View.GONE
                 imageViewB?.visibility = View.GONE
                 vv.visibility = View.VISIBLE
-                vv.setOnPreparedListener { mp -> mp.isLooping = false; mp.start() }
+                vv.setOnPreparedListener { mp -> mp.isLooping = false; mp.setVolume(getVideoVolume(), getVideoVolume()); mp.start() }
                 vv.setOnCompletionListener { latch.countDown() }
                 vv.setOnErrorListener { mp: android.media.MediaPlayer, what: Int, extra: Int ->
                     flog("E", "Play", "playVideo MediaPlayer ERROR: what=$what, extra=$extra")

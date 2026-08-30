@@ -125,6 +125,68 @@
             android:entries="@array/html_renders"
             android:layout_marginBottom="12dp" />
 
+        <!-- Image Fit Mode (proporção) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📐 Proporção da Imagem/Vídeo (preencher 100% tela)"
+            android:textColor="#D1D5DB"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="4dp" />
+
+        <Spinner
+            android:id="@+id/imageFitSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#1F2937"
+            android:entries="@array/image_fit_modes"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔄 Rotação fixa da imagem (forçar sentido)"
+            android:textColor="#D1D5DB"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <Spinner
+            android:id="@+id/imageRotationSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#1F2937"
+            android:entries="@array/image_rotations"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Video Volume -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔊 Volume do Vídeo (0-100%)"
+            android:textColor="#D1D5DB"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <SeekBar
+            android:id="@+id/videoVolumeSeek"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:max="100"
+            android:progress="100"
+            android:progressTint="#3B82F6"
+            android:thumbTint="#3B82F6"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/videoVolumeLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#9CA3AF"
+            android:textSize="12sp"
+            android:layout_marginBottom="12dp" />
+
         <!-- Auto update -->
         <Switch
             android:id="@+id/autoUpdateSwitch"

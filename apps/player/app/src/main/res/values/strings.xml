@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ByeMidias</string>
+
+    <string-array name="image_fit_modes">
+        <item>Fit (preencher com letterbox/pillarbox, sem distorcer)</item>
+        <item>Fill (estica 100% da tela, pode distorcer)</item>
+        <item>CenterCrop (corta para preencher 100%, sem distorcer)</item>
+        <item>Center (centralizado sem cortar, com bandas)</item>
+        <item>FitCenter (cabe todo, centralizado)</item>
+        <item>FitXY (estica para preencher 100% X e Y)</item>
+    </string-array>
+
+    <string-array name="image_rotations">
+        <item>0° (Normal)</item>
+        <item>90° (Esquerda)</item>
+        <item>180° (Invertido)</item>
+        <item>270° (Direita)</item>
+    </string-array>
+
 </resources>

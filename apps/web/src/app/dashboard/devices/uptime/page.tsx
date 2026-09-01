@@ -26,6 +26,20 @@ interface PaymentSetting {
   monthly_rate: number;
 }
 
+function fmtDate(iso: string): string {
+  if (!iso) return '-';
+  try {
+    return new Date(iso).toLocaleDateString('pt-BR');
+  } catch { return iso; }
+}
+
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return '-';
+  try {
+    return `${new Date(iso).toLocaleDateString('pt-BR')} ${new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  } catch { return iso || '-'; }
+}
+
 export default function UptimePage() {
   const [sessions, setSessions] = useState<UptimeSession[]>([]);
   const [summaries, setSummaries] = useState<DeviceSummary[]>([]);
@@ -170,12 +184,8 @@ export default function UptimePage() {
                 return (
                   <tr key={s.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                     <td className="px-5 py-3 text-white">{deviceName}</td>
-                    <td className="px-5 py-3 text-gray-300">
-                      {new Date(s.started_at).toLocaleString('pt-BR')}
-                    </td>
-                    <td className="px-5 py-3 text-gray-300">
-                      {s.ended_at ? new Date(s.ended_at).toLocaleString('pt-BR') : '-'}
-                    </td>
+                    <td className="px-5 py-3 text-gray-300">{fmtDateTime(s.started_at)}</td>
+                    <td className="px-5 py-3 text-gray-300">{fmtDateTime(s.ended_at)}</td>
                     <td className="px-5 py-3 text-white font-medium">{duration}</td>
                     <td className="px-5 py-3">
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${

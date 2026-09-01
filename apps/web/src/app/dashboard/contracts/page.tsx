@@ -14,7 +14,7 @@ export default function AdminContractsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Link
-          href="/admin/contracts/templates"
+          href="/dashboard/contracts/templates"
           className="bg-gray-900 border border-gray-800 rounded-xl p-6 hover:border-gray-700 transition-colors group"
         >
           <div className="flex items-start justify-between mb-4">
@@ -32,7 +32,7 @@ export default function AdminContractsPage() {
         </Link>
 
         <Link
-          href="/admin/contracts/contracts"
+          href="/dashboard/contracts/contracts"
           className="bg-gray-900 border border-gray-800 rounded-xl p-6 hover:border-gray-700 transition-colors group"
         >
           <div className="flex items-start justify-between mb-4">

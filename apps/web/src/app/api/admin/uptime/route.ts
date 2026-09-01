@@ -60,12 +60,25 @@ export async function GET(request: Request) {
 
     for (const session of sessions || []) {
       const deviceName = session.device_name || session.device_id;
-      const endedAt = session.ended_at ? new Date(session.ended_at) : new Date();
-      const durationHours = (endedAt.getTime() - new Date(session.started_at).getTime()) / (1000 * 60 * 60);
-      const dateKey = new Date(session.started_at).toISOString().split('T')[0];
+      const start = new Date(session.started_at);
+      const end = session.ended_at ? new Date(session.ended_at) : new Date();
+      const dayMs = 24 * 60 * 60 * 1000;
 
-      if (!dailyUptime[deviceName]) dailyUptime[deviceName] = {};
-      dailyUptime[deviceName][dateKey] = (dailyUptime[deviceName][dateKey] || 0) + durationHours;
+      // Split session across days if it spans midnight
+      let cursor = new Date(start);
+      while (cursor < end) {
+        const dayStart = new Date(cursor);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart.getTime() + dayMs);
+        const segmentEnd = end < dayEnd ? end : dayEnd;
+        const segmentHours = (segmentEnd.getTime() - cursor.getTime()) / (1000 * 60 * 60);
+        const dateKey = dayStart.toISOString().split('T')[0];
+
+        if (!dailyUptime[deviceName]) dailyUptime[deviceName] = {};
+        dailyUptime[deviceName][dateKey] = (dailyUptime[deviceName][dateKey] || 0) + segmentHours;
+
+        cursor = new Date(segmentEnd);
+      }
     }
 
     const deviceSummaries = Object.entries(dailyUptime).map(([device, daysData]) => {

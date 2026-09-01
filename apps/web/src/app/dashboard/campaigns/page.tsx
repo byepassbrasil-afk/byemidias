@@ -384,7 +384,7 @@ function CampaignFormModal({
           body: JSON.stringify({ campaign_id: campId, playlist_id: form.playlist_ids[i], position: i + 1 }),
         });
       }
-      onSaved({ ...form, id: campId } as Campaign);
+      onSaved({ ...form, id: campId } as unknown as Campaign);
     };
 
     doSave()

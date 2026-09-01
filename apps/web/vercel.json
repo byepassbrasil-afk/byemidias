@@ -16,7 +16,7 @@
     },
     {
       "path": "/api/cron/cleanup-uptime",
-      "schedule": "0 * * * *"
+      "schedule": "0 4 * * *"
     }
   ]
 }

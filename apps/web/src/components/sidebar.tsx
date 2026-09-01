@@ -33,7 +33,7 @@ const sections: NavSection[] = [
   {
     title: 'Dashboard',
     icon: '📊',
-    items: [{ name: 'Visão Geral', href: '/dashboard', icon: '📊' }],
+    items: [{ name: 'Visão Geral', href: '/dashboard', icon: '🏠' }],
   },
   {
     title: 'Conteúdo',
@@ -42,9 +42,15 @@ const sections: NavSection[] = [
       { name: 'Mídia', href: '/dashboard/media', icon: '📁' },
       { name: 'Playlists', href: '/dashboard/playlists', icon: '📋' },
       { name: 'Campanhas', href: '/dashboard/campaigns', icon: '📢' },
-      { name: 'Aprovações', href: '/dashboard/approvals', icon: '✅' },
-      { name: 'Mídia Parceiro', href: '/dashboard/approvals/media', icon: '🖼️' },
       { name: 'Diagramação', href: '/dashboard/diagramacao', icon: '📐' },
+    ],
+  },
+  {
+    title: 'Aprovações',
+    icon: '✅',
+    items: [
+      { name: 'Cadastros Pendentes', href: '/dashboard/approvals', icon: '🆕' },
+      { name: 'Mídia de Parceiro', href: '/dashboard/approvals/media', icon: '🖼️' },
     ],
   },
   {
@@ -56,23 +62,24 @@ const sections: NavSection[] = [
     ],
   },
   {
-    title: 'Parceiros',
-    icon: '🤝',
+    title: 'Dispositivos (Avançado)',
+    icon: '🔧',
     items: [
-      { name: 'Parceiros', href: '/dashboard/partners', icon: '🤝' },
-      { name: 'Códigos de Ativação', href: '/dashboard/devices/activation-codes', icon: '🔑' },
-      { name: 'Uptime & Pagamento', href: '/dashboard/devices/uptime', icon: '💰' },
+      { name: 'Unidades', href: '/dashboard/units', icon: '📍' },
+      { name: 'Grupos', href: '/dashboard/device-groups', icon: '📦' },
+      { name: 'Agendamento', href: '/dashboard/schedules', icon: '📅' },
+      { name: 'Programação Semanal', href: '/dashboard/campaigns', icon: '🗓️' },
+      { name: 'Configurações', href: '/dashboard/settings', icon: '⚙️' },
     ],
   },
   {
-    title: 'Administração',
-    icon: '⚙️',
+    title: 'Parceiros & Contratos',
+    icon: '🤝',
     items: [
-      { name: 'Unidades', href: '/dashboard/units', icon: '📍' },
-      { name: 'Agendamento', href: '/dashboard/schedules', icon: '📅' },
-      { name: 'Programação Semanal', href: '/dashboard/campaigns', icon: '🗓️' },
-      { name: 'Grupos de Dispositivos', href: '/dashboard/device-groups', icon: '📦' },
-      { name: 'Configurações', href: '/dashboard/settings', icon: '⚙️' },
+      { name: 'Parceiros', href: '/dashboard/partners', icon: '👥' },
+      { name: 'Códigos de Ativação', href: '/dashboard/devices/activation-codes', icon: '🔑' },
+      { name: 'Uptime', href: '/dashboard/devices/uptime', icon: '⏱️' },
+      { name: 'Contratos', href: '/dashboard/contracts', icon: '📝' },
     ],
   },
   {
@@ -82,20 +89,13 @@ const sections: NavSection[] = [
       { name: 'Receitas', href: '/dashboard/financeiro/revenues', icon: '📈' },
       { name: 'Despesas', href: '/dashboard/financeiro/expenses', icon: '📉' },
       { name: 'Faturas', href: '/dashboard/invoices', icon: '🧾' },
-      { name: 'Tarifas', href: '/dashboard/partner-payments', icon: '💰' },
+      { name: 'Tarifas de Parceiro', href: '/dashboard/partner-payments', icon: '💵' },
     ],
   },
   {
     title: 'Relatórios',
     icon: '📈',
     items: [{ name: 'Relatórios', href: '/dashboard/reports', icon: '📊' }],
-  },
-  {
-    title: 'Contratos',
-    icon: '📝',
-    items: [
-      { name: 'Contratos', href: '/dashboard/contracts', icon: '📄' },
-    ],
   },
 ];
 
@@ -226,7 +226,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                     >
                       <span className="text-xs">{item.icon}</span>
                       {item.name}
-                      {item.href === '/pending-approvals' && pendingCount > 0 && (
+                      {item.href === '/dashboard/approvals' && pendingCount > 0 && (
                         <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
                           {pendingCount}
                         </span>
@@ -241,7 +241,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
       </nav>
 
       {profile && (
-        <Link href="/settings" onClick={handleLinkClick}
+        <Link href="/dashboard/settings" onClick={handleLinkClick}
           className="border-t border-gray-800 p-3 hover:bg-gray-800/50 transition-colors flex items-center gap-3">
           {profile.avatar_url ? (
             <img src={profile.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />

@@ -34,6 +34,7 @@ export default function PartnerContractsPage() {
   const [showForm, setShowForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterExpiring, setFilterExpiring] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,6 +49,17 @@ export default function PartnerContractsPage() {
       setLoading(false);
     }
   }, [filterStatus, filterExpiring]);
+
+  const filteredContracts = contracts.filter((c) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      c.partner_name?.toLowerCase().includes(q) ||
+      c.partner_username?.toLowerCase().includes(q) ||
+      c.organization_name?.toLowerCase().includes(q) ||
+      c.template_name?.toLowerCase().includes(q)
+    );
+  });
 
   const loadRefs = useCallback(async () => {
     try {
@@ -88,23 +100,35 @@ export default function PartnerContractsPage() {
         </button>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        <button onClick={() => { setFilterStatus(''); setFilterExpiring(false); }}
-          className={`px-3 py-1.5 rounded-lg text-xs ${filterStatus === '' && !filterExpiring ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-          Todos
-        </button>
-        <button onClick={() => { setFilterStatus('active'); setFilterExpiring(false); }}
-          className={`px-3 py-1.5 rounded-lg text-xs ${filterStatus === 'active' && !filterExpiring ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-          Ativos
-        </button>
-        <button onClick={() => { setFilterStatus('expired'); setFilterExpiring(false); }}
-          className={`px-3 py-1.5 rounded-lg text-xs ${filterStatus === 'expired' && !filterExpiring ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-          Expirados
-        </button>
-        <button onClick={() => { setFilterExpiring(!filterExpiring); setFilterStatus(''); }}
-          className={`px-3 py-1.5 rounded-lg text-xs ${filterExpiring ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-          ⚠ Expirando (30d)
-        </button>
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
+        <div className="relative flex-1 max-w-md">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar por parceiro, organização ou modelo…"
+            className="w-full rounded-lg bg-gray-900 border border-gray-800 pl-10 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => { setFilterStatus(''); setFilterExpiring(false); }}
+            className={`px-3 py-1.5 rounded-lg text-xs ${filterStatus === '' && !filterExpiring ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+            Todos
+          </button>
+          <button onClick={() => { setFilterStatus('active'); setFilterExpiring(false); }}
+            className={`px-3 py-1.5 rounded-lg text-xs ${filterStatus === 'active' && !filterExpiring ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+            Ativos
+          </button>
+          <button onClick={() => { setFilterStatus('expired'); setFilterExpiring(false); }}
+            className={`px-3 py-1.5 rounded-lg text-xs ${filterStatus === 'expired' && !filterExpiring ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+            Expirados
+          </button>
+          <button onClick={() => { setFilterExpiring(!filterExpiring); setFilterStatus(''); }}
+            className={`px-3 py-1.5 rounded-lg text-xs ${filterExpiring ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+            ⚠ Expirando (30d)
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -112,7 +136,7 @@ export default function PartnerContractsPage() {
           <div className="w-5 h-5 border-2 border-gray-600 border-t-blue-500 rounded-full animate-spin" />
           Carregando...
         </div>
-      ) : contracts.length === 0 ? (
+      ) : filteredContracts.length === 0 ? (
         <div className="rounded-xl bg-gray-900/50 border border-gray-800 p-16 text-center">
           <p className="text-gray-400 font-medium">Nenhum contrato encontrado</p>
         </div>
@@ -129,7 +153,7 @@ export default function PartnerContractsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
-              {contracts.map((c) => (
+              {filteredContracts.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-800/30">
                   <td className="px-5 py-3">
                     <p className="font-medium text-white">{c.partner_name}</p>

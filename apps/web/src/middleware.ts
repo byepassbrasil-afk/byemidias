@@ -7,7 +7,10 @@ const PARTNER_SECRET = new TextEncoder().encode(
 
 const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password', '/api/auth/login', '/api/auth/signup', '/api/auth/logout', '/api/auth/forgot-password', '/api/auth/reset-password', '/manifest.json', '/sw.js', '/offline.html'];
 
-const PUBLIC_API_PREFIXES = ['/api/device/', '/api/keepalive', '/api/auth/'];
+const PUBLIC_API_PREFIXES = ['/api/device/', '/api/keepalive', '/api/auth/', '/api/contract-view/', '/api/geocode/', '/api/map/', '/api/lp/'];
+
+// Public page route prefixes (no auth required, e.g. landing pages, public maps, contract views)
+const PUBLIC_PAGE_PREFIXES = ['/contract-view/', '/map/', '/lp/'];
 
 function isAdminRoute(pathname: string) {
   if (pathname.startsWith('/api/')) {
@@ -17,6 +20,9 @@ function isAdminRoute(pathname: string) {
   // Exclude all partner routes (old and slug-based)
   if (pathname === '/partner' || pathname.startsWith('/partner/')) return false;
   if (pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password') || pathname.startsWith('/reset-password')) return false;
+  // Public pages (contract view, public map, landing pages)
+  if (PUBLIC_PAGE_PREFIXES.some((p) => pathname.startsWith(p))) return false;
+  if (pathname === '/lp' || pathname === '/map') return false;
   return pathname.startsWith('/') && !pathname.startsWith('/_next') && !pathname.startsWith('/icons');
 }
 

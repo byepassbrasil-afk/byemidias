@@ -47,6 +47,15 @@ export default function ContractTemplatesPage() {
     load();
   }
 
+  async function handleRestore(id: string) {
+    await fetch(`/api/admin/contract-templates/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'active' }),
+    });
+    load();
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -104,12 +113,29 @@ export default function ContractTemplatesPage() {
                     </span>
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <button
-                      onClick={() => handleDelete(t.id)}
-                      className="rounded-lg bg-red-900/30 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/50"
-                    >
-                      Arquivar
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => { setEditing(t); setShowForm(true); }}
+                        className="rounded-lg bg-blue-900/30 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-900/50"
+                      >
+                        Editar
+                      </button>
+                      {t.status === 'active' ? (
+                        <button
+                          onClick={() => handleDelete(t.id)}
+                          className="rounded-lg bg-red-900/30 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/50"
+                        >
+                          Arquivar
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleRestore(t.id)}
+                          className="rounded-lg bg-green-900/30 px-3 py-1.5 text-xs font-medium text-green-300 hover:bg-green-900/50"
+                        >
+                          Restaurar
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

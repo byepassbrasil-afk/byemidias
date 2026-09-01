@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import type { Campaign, CampaignStatus } from '@/lib/types';
 
 interface CampaignInfo {
   id: string;
@@ -16,6 +17,14 @@ interface CampaignInfo {
   organization_id: string;
 }
 
+interface CampaignPlaylistLink {
+  id: string;
+  campaign_id: string;
+  playlist_id: string;
+  position: number;
+  playlists?: { id: string; name: string } | null;
+}
+
 interface TimeSlot {
   id: string;
   day_of_week: number;
@@ -27,15 +36,17 @@ interface TimeSlot {
   playlists?: { id: string; name: string } | null;
 }
 
+interface Playlist {
+  id: string;
+  name: string;
+  organization_id?: string;
+}
+
 const DAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleDateString('pt-BR');
-  } catch {
-    return iso;
-  }
+  try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return iso; }
 }
 
 function fmtTimeOnly(iso: string | null | undefined): string {
@@ -46,24 +57,37 @@ function fmtTimeOnly(iso: string | null | undefined): string {
 export default function CampaignDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = params.id as string;
   const [campaign, setCampaign] = useState<CampaignInfo | null>(null);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
-  const [playlists, setPlaylists] = useState<{ id: string; name: string }[]>([]);
+  const [campaignLinks, setCampaignLinks] = useState<CampaignPlaylistLink[]>([]);
+  const [allPlaylists, setAllPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingSlot, setEditingSlot] = useState<Partial<TimeSlot> | null>(null);
   const [addingNew, setAddingNew] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const res = await fetch(`/api/admin/crud/campaigns?id=${id}`);
       const json = await res.json();
       if (json.data?.[0]) setCampaign(json.data[0]);
-      const slotsRes = await fetch(`/api/admin/crud/campaign_time_slots?campaign_id=${id}`);
+      const [slotsRes, linksRes, plRes] = await Promise.all([
+        fetch(`/api/admin/crud/campaign_time_slots?campaign_id=${id}`),
+        fetch(`/api/admin/crud/campaign_playlists?campaign_id=${id}`),
+        fetch('/api/admin/crud/playlists?order=name'),
+      ]);
       const slotsJson = await slotsRes.json();
       setTimeSlots((slotsJson.data ?? []).map((s: TimeSlot) => s));
+      const linksJson = await linksRes.json();
+      setCampaignLinks((linksJson.data ?? []) as CampaignPlaylistLink[]);
+      const plJson = await plRes.json();
+      setAllPlaylists((plJson.data ?? []) as Playlist[]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -71,13 +95,30 @@ export default function CampaignDetailPage() {
     }
   }, [id]);
 
-  const loadPlaylists = useCallback(async () => {
-    const r = await fetch('/api/admin/crud/playlists?order=name');
-    const j = await r.json();
-    setPlaylists(j.data ?? []);
-  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  useEffect(() => { load(); loadPlaylists(); }, [load, loadPlaylists]);
+  // Auto-redirect to list page when ?edit=1, opening the modal via parent state
+  // (we handle modal in list page now)
+
+  async function changeStatus(newStatus: CampaignStatus) {
+    setErrorMsg(null);
+    try {
+      const res = await fetch('/api/admin/crud/campaigns', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: newStatus, updated_at: new Date().toISOString() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err && (err.error || JSON.stringify(err))) || `HTTP ${res.status}`);
+      }
+      setSuccessMsg(`Status alterado para ${newStatus}`);
+      setTimeout(() => setSuccessMsg(null), 2000);
+      load();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Erro ao alterar status');
+    }
+  }
 
   async function startEditSlot(slot: TimeSlot | null, day: number) {
     if (slot) {
@@ -98,6 +139,7 @@ export default function CampaignDetailPage() {
   async function saveSlot() {
     if (!editingSlot || !campaign) return;
     setSaving(true);
+    setErrorMsg(null);
     try {
       const payload = {
         campaign_id: campaign.id,
@@ -108,27 +150,29 @@ export default function CampaignDetailPage() {
         status: editingSlot.status ?? 'active',
         playlist_id: editingSlot.playlist_id || null,
       };
-      let result;
+      let res: Response;
       if (editingSlot.id && !addingNew) {
-        result = await fetch('/api/admin/crud/campaign_time_slots', {
+        res = await fetch('/api/admin/crud/campaign_time_slots', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: editingSlot.id, ...payload }),
         });
       } else {
-        result = await fetch('/api/admin/crud/campaign_time_slots', {
+        res = await fetch('/api/admin/crud/campaign_time_slots', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       }
-      const json = await result.json();
+      const json = await res.json();
       if (json.error) throw new Error(json.error);
       setEditingSlot(null);
       setAddingNew(null);
+      setSuccessMsg('Horário salvo');
+      setTimeout(() => setSuccessMsg(null), 2000);
       load();
     } catch (e: any) {
-      alert(`Erro: ${e?.message || 'desconhecido'}`);
+      setErrorMsg(e?.message || 'Erro ao salvar');
     } finally {
       setSaving(false);
     }
@@ -140,7 +184,7 @@ export default function CampaignDetailPage() {
       await fetch(`/api/admin/crud/campaign_time_slots?id=${id}`, { method: 'DELETE' });
       load();
     } catch (e: any) {
-      alert(`Erro: ${e?.message}`);
+      setErrorMsg(e?.message);
     }
   }
 
@@ -154,7 +198,7 @@ export default function CampaignDetailPage() {
       });
       load();
     } catch (e: any) {
-      alert(`Erro: ${e?.message}`);
+      setErrorMsg(e?.message);
     }
   }
 
@@ -185,22 +229,90 @@ export default function CampaignDetailPage() {
     );
   }
 
+  const statusLabel = {
+    draft: '📝 Rascunho',
+    active: '🟢 Ativa',
+    paused: '⏸ Pausada',
+    ended: '🔴 Finalizada',
+    archived: '📦 Arquivada',
+  }[campaign.status] || campaign.status;
+
   return (
     <div className="space-y-6">
+      {errorMsg && (
+        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">Erro: {errorMsg}</div>
+      )}
+      {successMsg && (
+        <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">{successMsg}</div>
+      )}
+
       <div className="flex items-start justify-between">
         <div>
           <button onClick={() => router.push('/dashboard/campaigns')} className="text-sm text-blue-600 hover:text-blue-800 mb-2">← Campanhas</button>
           <h1 className="text-3xl font-bold text-gray-900">{campaign.name}</h1>
           {campaign.description && <p className="text-gray-500 mt-1">{campaign.description}</p>}
         </div>
-        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium border ${
+        <span className="inline-flex rounded-full px-3 py-1 text-xs font-bold border ${
           campaign.status === 'active' ? 'bg-green-100 text-green-800 border-green-300' :
           campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
           campaign.status === 'ended' ? 'bg-red-100 text-red-800 border-red-300' :
+          campaign.status === 'archived' ? 'bg-gray-200 text-gray-700 border-gray-300' :
           'bg-gray-100 text-gray-800 border-gray-300'
-        }`}>
-          {campaign.status}
+        }">
+          {statusLabel}
         </span>
+      </div>
+
+      {/* Status action buttons */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div className="flex flex-wrap gap-2">
+          {campaign.status !== 'active' && campaign.status !== 'archived' && campaign.status !== 'ended' && (
+            <button
+              onClick={() => changeStatus('active')}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-800 hover:bg-green-200"
+            >
+              ▶ Ativar
+            </button>
+          )}
+          {campaign.status === 'active' && (
+            <button
+              onClick={() => changeStatus('paused')}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+            >
+              ⏸ Pausar
+            </button>
+          )}
+          {campaign.status === 'paused' && (
+            <button
+              onClick={() => changeStatus('active')}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-800 hover:bg-green-200"
+            >
+              ▶ Retomar
+            </button>
+          )}
+          {campaign.status === 'active' && (
+            <button
+              onClick={() => changeStatus('ended')}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-red-100 text-red-800 hover:bg-red-200"
+            >
+              ⏹ Finalizar
+            </button>
+          )}
+          {campaign.status !== 'archived' && (
+            <button
+              onClick={() => changeStatus('archived')}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+            >
+              📦 Arquivar
+            </button>
+          )}
+          <button
+            onClick={() => router.push('/dashboard/campaigns')}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-50 text-gray-700 hover:bg-gray-100"
+          >
+            ← Voltar à lista
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -224,6 +336,26 @@ export default function CampaignDetailPage() {
         </div>
       </div>
 
+      {/* Playlists vinculadas */}
+      <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">📋 Playlists Vinculadas</h2>
+        {campaignLinks.length === 0 ? (
+          <p className="text-sm text-gray-500">Nenhuma playlist vinculada. Edite a campanha para vincular.</p>
+        ) : (
+          <div className="space-y-2">
+            {campaignLinks.sort((a, b) => a.position - b.position).map((l, i) => (
+              <div key={l.id} className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-gray-400 w-8">#{i + 1}</span>
+                  <span className="text-sm">{l.playlists?.name || `Playlist ${l.playlist_id.slice(0, 8)}`}</span>
+                </div>
+                <span className="text-xs text-gray-500">Pos: {l.position}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Weekly Schedule */}
       <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
         <div className="flex items-center justify-between mb-4">
@@ -231,12 +363,6 @@ export default function CampaignDetailPage() {
             <h2 className="text-lg font-semibold text-gray-900">🗓️ Programação Semanal</h2>
             <p className="text-xs text-gray-500">Defina em quais dias e horários cada playlist é exibida.</p>
           </div>
-          <button
-            onClick={() => router.push('/dashboard/campaigns')}
-            className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
-          >
-            ← Voltar
-          </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-7 gap-3">
@@ -344,7 +470,7 @@ export default function CampaignDetailPage() {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
                   <option value="">Sem playlist</option>
-                  {playlists.map((p) => (
+                  {allPlaylists.map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>

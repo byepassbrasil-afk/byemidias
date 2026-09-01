@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Device } from '@/lib/types';
 import QrScannerModal from './QrScannerModal';
@@ -225,8 +226,15 @@ export default function DevicesPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">Dispositivos</h1>
+            <div className="flex items-center gap-3 mb-1">
+              <h1 className="text-2xl sm:text-3xl font-bold text-white">Dispositivos</h1>
+            </div>
             <p className="text-sm text-gray-500 mt-1">{devices.length} registrado{devices.length !== 1 ? 's' : ''}</p>
+            <div className="flex gap-2 mt-2 text-xs">
+              <Link href="/dashboard/devices" className="px-3 py-1.5 rounded-md bg-blue-900/30 text-blue-300 border border-blue-700/50">� Dispositivos</Link>
+              <Link href="/dashboard/devices/activation-codes" className="px-3 py-1.5 rounded-md bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700">🔑 Códigos</Link>
+              <Link href="/dashboard/devices/uptime" className="px-3 py-1.5 rounded-md bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700">� Uptime</Link>
+            </div>
           </div>
           <button onClick={() => { resetForm(); setShowForm(true); }}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors shadow-lg shadow-blue-600/20">

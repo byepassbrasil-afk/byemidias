@@ -9,7 +9,7 @@ export async function sendPushToOrg(
   organizationId: string,
   title: string,
   body: string,
-  url: string = '/monitoring'
+  url: string = '/dashboard/monitoring'
 ) {
   try {
     const subscriptions = await sql`
@@ -51,7 +51,7 @@ export async function sendPushToOrg(
 /**
  * Send push to super_admin users (org_id = null)
  */
-export async function sendPushToSuperAdmins(title: string, body: string, url: string = '/monitoring') {
+export async function sendPushToSuperAdmins(title: string, body: string, url: string = '/dashboard/monitoring') {
   try {
     const subscriptions = await sql`
       SELECT endpoint, p256dh_key, auth_key

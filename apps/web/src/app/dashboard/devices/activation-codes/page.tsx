@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import QrScannerModal from '../devices/QrScannerModal';
+import QrScannerModal from '../QrScannerModal';
 
 interface ActivationCode {
   id: string;

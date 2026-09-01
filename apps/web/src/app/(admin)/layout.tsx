@@ -22,6 +22,7 @@ const ADMIN_SECTIONS = [
       { name: 'Usuários', href: '/admin/users', icon: '👥' },
       { name: 'Dispositivos', href: '/admin/devices', icon: '📺' },
       { name: 'Parceiros', href: '/admin/partners', icon: '🤝' },
+      { name: 'Contratos', href: '/admin/contracts', icon: '📝' },
       { name: 'Storage (R2)', href: '/admin/storage', icon: '🗂️' },
     ],
   },
@@ -46,7 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     fetch('/api/auth/profile')
       .then(r => r.json())
       .then(d => {
-        if (!d.profile || d.profile.role !== 'super_admin') {
+        if (!d.profile || !['super_admin', 'admin', 'manager'].includes(d.profile.role)) {
           router.replace('/login');
           return;
         }
@@ -87,7 +88,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{user?.full_name || 'Admin'}</div>
-              <div className="text-xs text-purple-400">Super Admin</div>
+              <div className="text-xs text-purple-400">{user?.role === 'super_admin' ? 'Super Admin' : user?.role === 'admin' ? 'Admin' : 'Gerente'}</div>
             </div>
           </div>
         </div>

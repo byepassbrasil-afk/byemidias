@@ -42,7 +42,6 @@ const sections: NavSection[] = [
       { name: 'Mídia', href: '/dashboard/media', icon: '📁' },
       { name: 'Playlists', href: '/dashboard/playlists', icon: '📋' },
       { name: 'Campanhas', href: '/dashboard/campaigns', icon: '📢' },
-      { name: 'Diagramação', href: '/dashboard/diagramacao', icon: '📐' },
     ],
   },
   {
@@ -54,31 +53,20 @@ const sections: NavSection[] = [
     ],
   },
   {
-    title: 'Monitoramento',
+    title: 'Terminais',
     icon: '📡',
     items: [
       { name: 'Dispositivos', href: '/dashboard/devices', icon: '📺' },
       { name: 'Monitoramento', href: '/dashboard/monitoring', icon: '📡' },
+      { name: 'Diagramação', href: '/dashboard/diagramacao', icon: '📐' },
+      { name: 'Uptime', href: '/dashboard/devices/uptime', icon: '⏱️' },
     ],
   },
   {
-    title: 'Dispositivos (Avançado)',
-    icon: '🔧',
-    items: [
-      { name: 'Unidades', href: '/dashboard/units', icon: '📍' },
-      { name: 'Grupos', href: '/dashboard/device-groups', icon: '📦' },
-      { name: 'Agendamento', href: '/dashboard/schedules', icon: '📅' },
-      { name: 'Programação Semanal', href: '/dashboard/campaigns', icon: '🗓️' },
-      { name: 'Configurações', href: '/dashboard/settings', icon: '⚙️' },
-    ],
-  },
-  {
-    title: 'Parceiros & Contratos',
+    title: 'Parceiros',
     icon: '🤝',
     items: [
       { name: 'Parceiros', href: '/dashboard/partners', icon: '👥' },
-      { name: 'Códigos de Ativação', href: '/dashboard/devices/activation-codes', icon: '🔑' },
-      { name: 'Uptime', href: '/dashboard/devices/uptime', icon: '⏱️' },
       { name: 'Contratos', href: '/dashboard/contracts', icon: '📝' },
     ],
   },
@@ -96,6 +84,17 @@ const sections: NavSection[] = [
     title: 'Relatórios',
     icon: '📈',
     items: [{ name: 'Relatórios', href: '/dashboard/reports', icon: '📊' }],
+  },
+  {
+    title: 'Administração',
+    icon: '🔧',
+    items: [
+      { name: 'Unidades', href: '/dashboard/units', icon: '📍' },
+      { name: 'Grupos', href: '/dashboard/device-groups', icon: '📦' },
+      { name: 'Agendamento', href: '/dashboard/schedules', icon: '📅' },
+      { name: 'Programação Semanal', href: '/dashboard/campaigns', icon: '🗓️' },
+      { name: 'Configurações', href: '/dashboard/settings', icon: '⚙️' },
+    ],
   },
 ];
 
@@ -160,6 +159,12 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
     }),
   }));
 
+  // Move "Administração" section to the end (rodapé)
+  const orderedSections = [
+    ...filteredSections.filter(s => s.title !== 'Administração'),
+    ...(filteredSections.find(s => s.title === 'Administração') ? [filteredSections.find(s => s.title === 'Administração')!] : []),
+  ];
+
   const sidebarContent = (
     <div className="flex flex-col h-full">
       <div className="flex h-14 items-center px-4 border-b border-gray-800">
@@ -190,7 +195,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
       )}
 
       <nav className="flex-1 py-2 overflow-y-auto">
-        {filteredSections.map((section) => {
+        {orderedSections.map((section) => {
           const isOpen = openSections.has(section.title);
           const isActive = section.items.some(item => pathname.startsWith(item.href));
 

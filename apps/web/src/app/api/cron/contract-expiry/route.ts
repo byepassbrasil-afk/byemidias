@@ -24,7 +24,8 @@ export async function GET(request: Request) {
     `;
 
     // Notify admin for each expired contract
-    for (const c of (expiredResult ?? []) as Array<{ id: string; organization_id: string; partner_id: string }>) {
+    const expiredRows = (expiredResult ?? []) as unknown as Array<{ id: string; organization_id: string; partner_id: string }>;
+    for (const c of expiredRows) {
       await sql`
         INSERT INTO notifications (organization_id, type, title, message)
         VALUES (

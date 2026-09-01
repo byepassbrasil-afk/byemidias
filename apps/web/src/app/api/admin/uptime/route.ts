@@ -17,11 +17,27 @@ export async function GET(request: Request) {
     const isSuperAdmin = user.role === 'super_admin';
     const orgId = user.organization_id;
 
+    // Close stale open sessions (no heartbeat in 10 minutes) — use last_heartbeat from devices table
+    await sql.unsafe(`
+      UPDATE device_uptime_sessions SET ended_at = d.last_heartbeat
+      FROM devices d
+      WHERE device_uptime_sessions.device_id = d.id
+        AND device_uptime_sessions.ended_at IS NULL
+        AND d.last_heartbeat IS NOT NULL
+        AND d.last_heartbeat < NOW() - INTERVAL '10 minutes'
+    `);
+    // Close any remaining open sessions where last_heartbeat is null
+    await sql.unsafe(`
+      UPDATE device_uptime_sessions SET ended_at = NOW()
+      WHERE ended_at IS NULL
+        AND started_at < NOW() - INTERVAL '10 minutes'
+    `);
+
     let sessions;
     if (deviceId) {
       if (isSuperAdmin) {
         sessions = await sql.unsafe(`
-          SELECT dus.*, d.name as device_name, d.model as device_model
+          SELECT dus.*, d.name as device_name, d.model as device_model, d.last_heartbeat as device_last_heartbeat
           FROM device_uptime_sessions dus
           LEFT JOIN devices d ON d.id = dus.device_id
           WHERE dus.started_at >= $1 AND dus.device_id = $2
@@ -29,7 +45,7 @@ export async function GET(request: Request) {
         `, [startDate.toISOString(), deviceId]);
       } else {
         sessions = await sql.unsafe(`
-          SELECT dus.*, d.name as device_name, d.model as device_model
+          SELECT dus.*, d.name as device_name, d.model as device_model, d.last_heartbeat as device_last_heartbeat
           FROM device_uptime_sessions dus
           LEFT JOIN devices d ON d.id = dus.device_id
           WHERE dus.started_at >= $1 AND dus.device_id = $2 AND dus.organization_id = $3
@@ -39,7 +55,7 @@ export async function GET(request: Request) {
     } else {
       if (isSuperAdmin) {
         sessions = await sql.unsafe(`
-          SELECT dus.*, d.name as device_name, d.model as device_model
+          SELECT dus.*, d.name as device_name, d.model as device_model, d.last_heartbeat as device_last_heartbeat
           FROM device_uptime_sessions dus
           LEFT JOIN devices d ON d.id = dus.device_id
           WHERE dus.started_at >= $1
@@ -47,7 +63,7 @@ export async function GET(request: Request) {
         `, [startDate.toISOString()]);
       } else {
         sessions = await sql.unsafe(`
-          SELECT dus.*, d.name as device_name, d.model as device_model
+          SELECT dus.*, d.name as device_name, d.model as device_model, d.last_heartbeat as device_last_heartbeat
           FROM device_uptime_sessions dus
           LEFT JOIN devices d ON d.id = dus.device_id
           WHERE dus.started_at >= $1 AND dus.organization_id = $2
@@ -56,16 +72,26 @@ export async function GET(request: Request) {
       }
     }
 
+    // Build per-day per-device uptime map (split across days at midnight)
     const dailyUptime: Record<string, Record<string, number>> = {};
 
     for (const session of sessions || []) {
       const deviceName = session.device_name || session.device_id;
+      // Cap end time at NOW (not last_heartbeat, since the calc must reflect "active" time)
       const start = new Date(session.started_at);
-      const end = session.ended_at ? new Date(session.ended_at) : new Date();
-      const dayMs = 24 * 60 * 60 * 1000;
+      let end = session.ended_at ? new Date(session.ended_at) : new Date();
+      // If session has no ended_at (was open at calc time), assume it ended at the device's last heartbeat
+      if (!session.ended_at && session.device_last_heartbeat) {
+        end = new Date(session.device_last_heartbeat);
+      }
+      // Cap end at NOW — never count future
+      const now = new Date();
+      if (end > now) end = now;
+      if (end <= start) continue; // zero-duration session, skip
 
-      // Split session across days if it spans midnight
+      const dayMs = 24 * 60 * 60 * 1000;
       let cursor = new Date(start);
+
       while (cursor < end) {
         const dayStart = new Date(cursor);
         dayStart.setHours(0, 0, 0, 0);

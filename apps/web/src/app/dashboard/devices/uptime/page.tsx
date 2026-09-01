@@ -8,6 +8,7 @@ interface UptimeSession {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
+  device_last_heartbeat?: string | null;
   devices: { name: string; model: string } | null;
 }
 
@@ -16,6 +17,7 @@ interface DeviceSummary {
   total_hours: number;
   days_online: number;
   daily: Record<string, number>;
+  last_heartbeat?: string;
 }
 
 interface PaymentSetting {
@@ -40,13 +42,17 @@ function fmtDateTime(iso: string | null): string {
   } catch { return iso || '-'; }
 }
 
+function isDeviceOnline(heartbeat: string | null | undefined): boolean {
+  if (!heartbeat) return false;
+  return Date.now() - new Date(heartbeat).getTime() < 5 * 60 * 1000;
+}
+
 export default function UptimePage() {
   const [sessions, setSessions] = useState<UptimeSession[]>([]);
   const [summaries, setSummaries] = useState<DeviceSummary[]>([]);
   const [payments, setPayments] = useState<PaymentSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
-  const [editingPayment, setEditingPayment] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -97,15 +103,27 @@ export default function UptimePage() {
             ? s.total_hours * (payment?.hourly_rate || 0)
             : (payment?.monthly_rate || 0) * Math.ceil(days / 30);
 
+          const online = isDeviceOnline(s.last_heartbeat);
+
           return (
-            <div key={s.device} className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+            <div key={s.device} className={`rounded-xl border p-5 ${online ? 'bg-green-950/30 border-green-700/50' : 'bg-gray-900 border-gray-800'}`}>
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-lg">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${online ? 'bg-green-600' : 'bg-gray-700'}`}>
                   📺
                 </div>
                 <div>
-                  <h3 className="font-semibold text-white">{s.device}</h3>
-                  <p className="text-xs text-gray-400">{s.days_online} dias ativos</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-white">{s.device}</h3>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${online ? 'bg-green-900/50 text-green-300' : 'bg-red-900/30 text-red-300'}`}>
+                      ● {online ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    {s.days_online} dias ativos
+                    {s.last_heartbeat && (
+                      <span className="ml-2">· último heartbeat: {fmtDateTime(s.last_heartbeat)}</span>
+                    )}
+                  </p>
                 </div>
               </div>
 
@@ -179,7 +197,9 @@ export default function UptimePage() {
                 const duration = s.duration_seconds
                   ? formatHours(s.duration_seconds / 3600)
                   : 'Em andamento';
-                const isActive = !s.ended_at;
+                const sessionActive = !s.ended_at;
+                const deviceOnline = isDeviceOnline(s.device_last_heartbeat);
+                const isActive = sessionActive && deviceOnline;
 
                 return (
                   <tr key={s.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">

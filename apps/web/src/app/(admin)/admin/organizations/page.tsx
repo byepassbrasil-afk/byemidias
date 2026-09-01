@@ -1,7 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { Organization } from '@/lib/types';
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('pt-BR');
+  } catch {
+    return iso;
+  }
+}
 
 export default function OrganizationsPage() {
   const [orgs, setOrgs] = useState<Organization[]>([]);
@@ -12,13 +21,26 @@ export default function OrganizationsPage() {
   const [slug, setSlug] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => { loadOrgs(); }, []);
 
   async function loadOrgs() {
-    const res = await fetch('/api/admin/crud/organizations?order=created_at&asc=false');
-    const json = await res.json();
-    setOrgs(json.data ?? []);
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch('/api/admin/crud/organizations?order=created_at&asc=false');
+      const json = await res.json();
+      if (json.error) {
+        setErrorMsg(typeof json.error === 'string' ? json.error : JSON.stringify(json.error));
+        setOrgs([]);
+      } else {
+        setOrgs(Array.isArray(json.data) ? json.data : []);
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Erro de conexão');
+      setOrgs([]);
+    }
     setLoading(false);
   }
 
@@ -27,39 +49,65 @@ export default function OrganizationsPage() {
   }
 
   function startEdit(org: Organization) {
-    setEditing(org); setName(org.name); setSlug(org.slug); setShowForm(true);
+    setEditing(org);
+    setName(org.name || '');
+    setSlug(org.slug || '');
+    setShowForm(true);
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    if (editing) {
-      await fetch('/api/admin/crud/organizations', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editing.id, name, slug, updated_at: new Date().toISOString() }),
-      });
-    } else {
-      await fetch('/api/admin/crud/organizations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, slug }),
-      });
+    try {
+      const body = editing
+        ? { id: editing.id, name, slug, updated_at: new Date().toISOString() }
+        : { name, slug };
+      const res = editing
+        ? await fetch('/api/admin/crud/organizations', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+        : await fetch('/api/admin/crud/organizations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err && (err.error || JSON.stringify(err))) || `HTTP ${res.status}`);
+      }
+      resetForm();
+      loadOrgs();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Erro ao salvar');
     }
-    resetForm();
     setSaving(false);
-    loadOrgs();
   }
 
   async function handleDelete() {
     if (!deleteId) return;
-    await fetch(`/api/admin/crud/organizations?id=${deleteId}`, { method: 'DELETE' });
-    setDeleteId(null);
-    loadOrgs();
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/admin/crud/organizations?id=${deleteId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err && (err.error || JSON.stringify(err))) || `HTTP ${res.status}`);
+      }
+      setDeleteId(null);
+      loadOrgs();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Erro ao excluir');
+    }
   }
 
   return (
     <div>
+      {errorMsg && (
+        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+          Erro: {errorMsg}
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Organizações</h1>
         <button onClick={() => { resetForm(); setShowForm(true); }} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
@@ -81,7 +129,7 @@ export default function OrganizationsPage() {
             </div>
           </div>
           <div className="flex gap-3">
-            <button type="submit" disabled={saving} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
+            <button type="submit" disabled={saving} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
               {saving ? 'Salvando...' : 'Salvar'}
             </button>
             <button type="button" onClick={resetForm} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Cancelar</button>
@@ -120,14 +168,14 @@ export default function OrganizationsPage() {
             <tbody className="divide-y divide-gray-200">
               {orgs.map((org) => (
                 <tr key={org.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{org.name}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{org.slug}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{org.name || '—'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{org.slug || '—'}</td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${org.status === 'active' ? 'bg-green-100 text-green-800' : org.status === 'suspended' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
-                      {org.status}
+                      {org.status || '—'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{new Date(org.created_at).toLocaleDateString('pt-BR')}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{formatDate(org.created_at)}</td>
                   <td className="px-6 py-4 text-right">
                     <button onClick={() => startEdit(org)} className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-3">Editar</button>
                     <button onClick={() => setDeleteId(org.id)} className="text-red-600 hover:text-red-800 text-sm font-medium">Excluir</button>

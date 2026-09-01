@@ -89,7 +89,7 @@ export default function OrganizationsPage() {
     if (!deleteId) return;
     setErrorMsg(null);
     try {
-      const res = await fetch(`/api/admin/crud/organizations?id=${deleteId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/organizations/${deleteId}`, { method: 'DELETE' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err && (err.error || JSON.stringify(err))) || `HTTP ${res.status}`);

@@ -60,6 +60,11 @@ export interface Device {
   last_heartbeat: string | null;
   last_sync: string | null;
   ip_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
   storage_total: number | null;
   storage_used: number | null;
   activation_code: string | null;

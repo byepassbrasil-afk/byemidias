@@ -28,6 +28,12 @@ export default function DeviceDetailPage() {
   const [campaignId, setCampaignId] = useState('');
   const [layoutId, setLayoutId] = useState('');
   const [unitId, setUnitId] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
 
   const loadData = useCallback(async () => {
     const [devRes, logRes, layRes] = await Promise.all([
@@ -47,6 +53,11 @@ export default function DeviceDetailPage() {
       setCampaignId(d.campaign_id || '');
       setLayoutId(d.layout_template_id || '');
       setUnitId(d.unit_id || '');
+      setAddress(d.address || '');
+      setCity(d.city || '');
+      setState(d.state || '');
+      setLatitude(d.latitude != null ? Number(d.latitude) : null);
+      setLongitude(d.longitude != null ? Number(d.longitude) : null);
 
       // Load campaigns for this organization
       const campRes = await fetch(`/api/admin/crud/campaigns?organization_id=${d.organization_id}`);
@@ -102,6 +113,49 @@ export default function DeviceDetailPage() {
     loadData();
   }
 
+  async function geocodeAddress() {
+    if (!address.trim()) return;
+    setGeocoding(true);
+    try {
+      const r = await fetch(`/api/geocode?q=${encodeURIComponent(`${address}, ${city}, ${state}, Brasil`)}`);
+      const d = await r.json();
+      if (d.error) {
+        alert('Endereço não encontrado. Verifique ou preencha lat/lng manualmente.');
+      } else {
+        setLatitude(d.latitude);
+        setLongitude(d.longitude);
+        if (d.display_name) {
+          // Try to extract city/state from display_name
+          const parts = d.display_name.split(',').map((s: string) => s.trim());
+          if (parts.length >= 2 && !city) setCity(parts[parts.length - 3] || '');
+          if (parts.length >= 1 && !state) setState(parts[parts.length - 2] || '');
+        }
+      }
+    } catch {
+      alert('Erro no geocoding');
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
+  async function saveLocation() {
+    setSaving(true);
+    try {
+      await fetch(`/api/admin/devices/${deviceId}/location`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latitude, longitude,
+          address: address || null,
+          city: city || null,
+          state: state || null,
+        }),
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveAll() {
     setSaving(true);
     await fetch('/api/admin/crud/devices', {
@@ -114,6 +168,18 @@ export default function DeviceDetailPage() {
         updated_at: new Date().toISOString(),
       }),
     });
+    if (latitude != null && longitude != null) {
+      await fetch(`/api/admin/devices/${deviceId}/location`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latitude, longitude,
+          address: address || null,
+          city: city || null,
+          state: state || null,
+        }),
+      });
+    }
     await fetch('/api/admin/rpc/bump_device_content_version', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -211,6 +277,59 @@ export default function DeviceDetailPage() {
               <span className="text-xs text-gray-500">UUID</span>
               <p className="text-sm text-white font-mono">{device.device_uuid}</p>
             </div>
+          </div>
+
+          {/* Localização / Mapa */}
+          <div className="pt-4 border-t border-gray-800">
+            <h3 className="text-sm font-semibold text-white mb-3">📍 Localização (para o mapa de terminais)</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-xs text-gray-500 mb-1">Endereço</label>
+                <div className="flex gap-2">
+                  <input
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    onBlur={() => address.trim() && latitude == null && geocodeAddress()}
+                    placeholder="Ex: Av. Paulista 1000"
+                    className="flex-1 rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={geocodeAddress}
+                    disabled={geocoding || !address.trim()}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+                  >
+                    {geocoding ? '...' : '🔍 Buscar'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Cidade</label>
+                <input value={city} onChange={(e) => setCity(e.target.value)}
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Estado</label>
+                <input value={state} onChange={(e) => setState(e.target.value)}
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Latitude</label>
+                <input type="number" step="0.000001" value={latitude ?? ''}
+                  onChange={(e) => setLatitude(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white font-mono" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Longitude</label>
+                <input type="number" step="0.000001" value={longitude ?? ''}
+                  onChange={(e) => setLongitude(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white font-mono" />
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Digite endereço e clique em "Buscar" para preencher lat/lng automaticamente (Nominatim OSM).
+              Se já tiver coordenadas, é só digitar manualmente.
+            </p>
           </div>
 
           <button onClick={saveAll} disabled={saving}

@@ -67,6 +67,17 @@
             android:layout_height="48dp"
             android:background="#1F2937"
             android:entries="@array/orientations"
+            android:layout_marginBottom="4dp" />
+
+        <Button
+            android:id="@+id/rotateNowBtn"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="🔄 Rotacionar Tela Agora (preview)"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#0EA5E9"
+            android:textAllCaps="false"
+            android:textSize="14sp"
             android:layout_marginBottom="12dp" />
 
         <!-- Mirror H -->
@@ -207,6 +218,29 @@
             android:textColor="#D1D5DB"
             android:thumbTint="#3B82F6"
             android:trackTint="#374151"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Kiosk PIN -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PIN de Saída do Kiosk"
+            android:textColor="#D1D5DB"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/kioskPinInput"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#1F2937"
+            android:textColor="#FFFFFF"
+            android:hint="4 dígitos (padrão: 1234)"
+            android:textColorHint="#6B7280"
+            android:padding="12dp"
+            android:inputType="numberPassword"
+            android:maxLength="4"
+            android:singleLine="true"
             android:layout_marginBottom="24dp" />
 
         <!-- Action buttons -->

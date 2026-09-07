@@ -99,7 +99,18 @@
             android:fontFamily="monospace"
             android:textAlignment="center"
             android:layout_marginTop="8dp"
-            android:layout_marginBottom="16dp" />
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/openConfigBtn"
+            android:layout_width="200dp"
+            android:layout_height="40dp"
+            android:text="ABRIR CONFIGURACOES"
+            android:textColor="#9CA3AF"
+            android:textSize="11sp"
+            android:background="#1F2937"
+            android:textAllCaps="false"
+            android:layout_marginBottom="8dp" />
 
     </LinearLayout>
 

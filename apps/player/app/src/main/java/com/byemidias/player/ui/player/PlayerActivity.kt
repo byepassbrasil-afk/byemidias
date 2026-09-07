@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -26,12 +27,16 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.VideoView
 import android.widget.LinearLayout
 import androidx.activity.ComponentActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.MediaItem as ExoMediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.byemidias.player.ByeMidiasApp
 import com.byemidias.player.BuildConfig
 import com.byemidias.player.R
@@ -69,7 +74,8 @@ class PlayerActivity : ComponentActivity() {
     private var syncIntervalSeconds = 30
     private var syncHandler: Handler? = null
 
-    private var videoView: VideoView? = null
+    private var exoPlayer: ExoPlayer? = null
+    private var exoPlayerView: PlayerView? = null
     private var imageView: ImageView? = null
     private var activeZoneViews = mutableListOf<View>()
     private var clockTextViews = mutableListOf<TextView>()
@@ -81,12 +87,13 @@ class PlayerActivity : ComponentActivity() {
     private var lastAppliedMirrorV = false
     private var tapCount = 0
     private var lastTapTime = 0L
-    private val TAP_THRESHOLD = 6
+    private val TAP_THRESHOLD = 10
     private val TAP_TIMEOUT = 2000L
 
     data class MediaItem(
         val id: String,
         val name: String,
+        val displayName: String? = null,
         val type: String,
         val fileUrl: String,
         val duration: Int,
@@ -95,7 +102,8 @@ class PlayerActivity : ComponentActivity() {
         val isSlot: Boolean = false,
         val slotDurationSeconds: Int = 0,
         val slotHasContent: Boolean = true,
-        val slotContentDuration: Int = 0
+        val slotContentDuration: Int = 0,
+        val defaultOrientation: String = "auto"  // "auto" | "portrait" | "landscape"
     ) {
         companion object {
             private val IMAGE_EXTS = setOf("png", "jpg", "jpeg", "avif", "webp", "gif")
@@ -139,7 +147,29 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.59")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.81")
+
+            // CRITICAL: Apply orientation BEFORE setContentView so layout inflates with correct dimensions
+            prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
+            try {
+                applyRotationFromPrefs()
+            } catch (e: Exception) {
+                Log.e(tag, "applyRotation failed: ${e.message}")
+            }
+
+            // Detect and log screen dimensions BEFORE setContentView
+            try {
+                val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display else windowManager.defaultDisplay
+                @Suppress("DEPRECATION")
+                val w = display?.width ?: 0
+                @Suppress("DEPRECATION")
+                val h = display?.height ?: 0
+                @Suppress("DEPRECATION")
+                val rotation = display?.rotation ?: 0
+                flog("I", tag, "Display BEFORE setContentView: w=$w h=$h rotation=$rotation")
+            } catch (e: Exception) {
+                flog("W", tag, "Could not log display: ${e.message}")
+            }
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -164,6 +194,14 @@ class PlayerActivity : ComponentActivity() {
                 Log.e(tag, "Immersive mode failed: ${e.message}")
             }
 
+            // KIOSK MODE: Start lock task to prevent leaving the app
+            try {
+                startLockTask()
+                Log.i(tag, "Lock task started")
+            } catch (e: Exception) {
+                Log.w(tag, "startLockTask failed (device may not be owner): ${e.message}")
+            }
+
             try {
                 @Suppress("DEPRECATION")
                 onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
@@ -175,20 +213,13 @@ class PlayerActivity : ComponentActivity() {
                 Log.e(tag, "Back press callback failed: ${e.message}")
             }
 
-            prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
-            fileLogger = FileLogger(filesDir.path)
-
-            try {
-                applyRotationFromPrefs()
-            } catch (e: Exception) {
-                Log.e(tag, "applyRotation failed: ${e.message}")
-            }
-
             try {
                 requestNotificationPermission()
             } catch (e: Exception) {
                 Log.e(tag, "requestNotificationPermission failed: ${e.message}")
             }
+
+            fileLogger = FileLogger(filesDir.path)
 
             val deviceId = prefs?.getString("device_id", null)
             Log.i(tag, "deviceId=${deviceId?.take(12) ?: "null"}")
@@ -242,6 +273,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try { exoPlayer?.release(); exoPlayer = null } catch (_: Exception) {}
         try { clockHandler?.removeCallbacksAndMessages(null) } catch (_: Exception) {}
         try { syncHandler?.removeCallbacksAndMessages(null) } catch (_: Exception) {}
         try {
@@ -256,13 +288,24 @@ class PlayerActivity : ComponentActivity() {
         // No-op: removed persistent service auto-restart (flagged as malware)
     }
 
+    /**
+     * Apply rotation by calling setRequestedOrientation BEFORE setContentView.
+     * This forces Android to re-create the activity with the correct orientation
+     * and layout dimensions from the start.
+     *
+     * Also tries the View-based fallback (rootLayout rotation) for devices where
+     * setRequestedOrientation is ignored (some Android TV boxes).
+     */
     private fun applyRotationFromPrefs() {
         val p = prefs ?: return
         val rotation = p.getInt("screen_rotation", 0)
         val mirrorH = p.getBoolean("mirror_horizontal", false)
         val mirrorV = p.getBoolean("mirror_vertical", false)
-        val rl = rootLayout ?: return
-        runOnUiThread {
+
+        flog("I", tag, "applyRotationFromPrefs: rotation=$rotation, mirrorH=$mirrorH, mirrorV=$mirrorV")
+
+        // Step 1: Try to set activity orientation (works on standard Android, ignored on Google TV)
+        try {
             when (rotation) {
                 90 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 270 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
@@ -270,8 +313,63 @@ class PlayerActivity : ComponentActivity() {
                 0 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 -1 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
             }
+        } catch (_: Exception) {}
+
+        // Step 2: Force physical display rotation via reflection (works on some Chinese TV boxes)
+        forceDisplayRotation(rotation)
+
+        // Step 3: Apply mirror to rootLayout (visual mirror only, no rotation)
+        val rl = rootLayout ?: return
+        runOnUiThread {
             rl.scaleX = if (mirrorH) -1f else 1f
             rl.scaleY = if (mirrorV) -1f else 1f
+        }
+    }
+
+    /**
+     * Force physical display rotation. This bypasses the activity-level orientation
+     * request and actually rotates the display hardware, which is required for
+     * Chinese Android TV boxes (Mecool, X96, T95, etc.) that ignore setRequestedOrientation.
+     */
+    private fun forceDisplayRotation(rotation: Int) {
+        try {
+            val surfaceRotation = when (rotation) {
+                0 -> android.view.Surface.ROTATION_0
+                90 -> android.view.Surface.ROTATION_90
+                180 -> android.view.Surface.ROTATION_180
+                270 -> android.view.Surface.ROTATION_270
+                else -> android.view.Surface.ROTATION_0
+            }
+
+            // Try Display.rotate() via reflection (private API, works on some boxes but throws on others)
+            // Catch all exceptions silently — fallback to setRequestedOrientation in applyRotationFromPrefs
+            try {
+                val displayClass = Class.forName("android.view.Display")
+                val rotateMethod = displayClass.getMethod("rotate", Int::class.javaPrimitiveType)
+                val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    display
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay
+                }
+                rotateMethod.invoke(display, surfaceRotation)
+                flog("I", tag, "Display rotated via Display.rotate() to surface=$surfaceRotation")
+            } catch (_: Throwable) {
+                // Silently ignore - not all devices support this API
+            }
+        } catch (_: Throwable) {
+            // Silently ignore - not critical
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        flog("I", tag, "onConfigurationChanged: orientation=${newConfig.orientation}")
+        // Re-apply rotation when system configuration changes
+        try {
+            applyRotationFromPrefs()
+        } catch (e: Exception) {
+            Log.e(tag, "onConfigurationChanged apply failed: ${e.message}")
         }
     }
 
@@ -295,7 +393,7 @@ class PlayerActivity : ComponentActivity() {
             // Start polling for external activation (via admin QR scan)
             startActivationPolling()
 
-            // 6x tap on activation screen to open config (lets user change URL, etc.)
+            // 10x tap on activation screen to open config (lets user change URL, etc.)
             rootLayout?.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_DOWN) {
                     val now = System.currentTimeMillis()
@@ -316,12 +414,54 @@ class PlayerActivity : ComponentActivity() {
                 true
             }
 
+            // TV remote support on activation screen
+            rootLayout?.setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    (keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                     keyCode == KeyEvent.KEYCODE_ENTER ||
+                     keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                     keyCode == KeyEvent.KEYCODE_BUTTON_A)) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastTapTime > TAP_TIMEOUT) tapCount = 0
+                    tapCount++
+                    lastTapTime = now
+                    if (tapCount >= TAP_THRESHOLD) {
+                        tapCount = 0
+                        try {
+                            val intent = Intent(this, ConfigActivity::class.java)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e(tag, "ConfigActivity from activation D-pad failed: ${e.message}")
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            rootLayout?.isFocusable = true
+            rootLayout?.isFocusableInTouchMode = true
+            rootLayout?.requestFocus()
+
             val codeInput = findViewById<EditText>(R.id.codeInput) ?: return
             val activateBtn = findViewById<Button>(R.id.activateBtn) ?: return
             val errorText = findViewById<TextView>(R.id.errorText) ?: return
             val activateStatus = findViewById<TextView>(R.id.activateStatusText) ?: return
             val qrImageView = findViewById<ImageView>(R.id.qrImageView) ?: return
             val qrDeviceIdText = findViewById<TextView>(R.id.qrDeviceIdText) ?: return
+            val openConfigBtn = findViewById<Button>(R.id.openConfigBtn)
+
+            // "Abrir Configuracoes" button — alternative to 10x tap
+            openConfigBtn?.setOnClickListener {
+                try {
+                    val intent = Intent(this, ConfigActivity::class.java)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e(tag, "ConfigActivity from button failed: ${e.message}")
+                }
+            }
 
             // Show QR code with device_uuid (works even before activation)
             val deviceUuid = getDeviceUuid()
@@ -488,6 +628,63 @@ class PlayerActivity : ComponentActivity() {
             setContentView(R.layout.activity_player)
             rootLayout = findViewById(R.id.root)
             statusText = findViewById(R.id.statusText)
+            exoPlayerView = findViewById(R.id.exoPlayerView)
+            // CRITICAL: Hide ExoPlayer controls overlay (back/play/pause/forward buttons)
+            exoPlayerView?.useController = false
+            exoPlayerView?.controllerAutoShow = false
+            exoPlayerView?.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
+
+            // CRITICAL: Keep screen bright and prevent sleep/dimming
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            try {
+                val params = window.attributes
+                params.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+                window.attributes = params
+            } catch (_: Exception) {}
+
+            // Re-apply rotation AFTER setContentView so rootLayout is available
+            // for the visual fallback rotation
+            try {
+                applyRotationFromPrefs()
+            } catch (e: Exception) {
+                Log.e(tag, "applyRotation after setContentView failed: ${e.message}")
+            }
+
+            // Log actual rootLayout dimensions after layout
+            rootLayout?.post {
+                try {
+                    flog("I", tag, "rootLayout AFTER setContentView: w=${rootLayout?.width} h=${rootLayout?.height}")
+                    val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display else windowManager.defaultDisplay
+                    @Suppress("DEPRECATION")
+                    val dw = display?.width ?: 0
+                    @Suppress("DEPRECATION")
+                    val dh = display?.height ?: 0
+                    flog("I", tag, "Display AFTER setContentView: w=$dw h=$dh")
+
+                    // FORCE rootLayout to fill the display
+                    // This fixes issues where match_parent doesn't work due to wrong activity orientation
+                    if (rootLayout != null && dw > 0 && dh > 0) {
+                        val params = rootLayout?.layoutParams
+                        if (params != null) {
+                            val rotation = prefs?.getInt("screen_rotation", 0) ?: 0
+                            // For portrait mode, use the display's portrait dimensions (h > w)
+                            if (rotation == 0 || rotation == 180) {
+                                params.width = if (dw < dh) dw else dh
+                                params.height = if (dw < dh) dh else dw
+                            } else {
+                                // For landscape, use landscape dimensions
+                                params.width = if (dw > dh) dw else dh
+                                params.height = if (dw > dh) dh else dw
+                            }
+                            rootLayout?.layoutParams = params
+                            rootLayout?.requestLayout()
+                            flog("I", tag, "FORCED rootLayout to display size: w=${params.width} h=${params.height}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    flog("W", tag, "Could not log layout dimensions: ${e.message}")
+                }
+            }
 
             rootLayout?.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_DOWN) {
@@ -508,6 +705,39 @@ class PlayerActivity : ComponentActivity() {
                 }
                 true
             }
+
+            // TV remote support: D-pad OK / Center / Enter should also count as taps
+            // KeyEvent.KEYCODE_DPAD_CENTER (23), KEYCODE_ENTER (66), KEYCODE_NUMPAD_ENTER (160)
+            rootLayout?.setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    (keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                     keyCode == KeyEvent.KEYCODE_ENTER ||
+                     keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                     keyCode == KeyEvent.KEYCODE_BUTTON_A)) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastTapTime > TAP_TIMEOUT) tapCount = 0
+                    tapCount++
+                    lastTapTime = now
+                    flog("I", tag, "D-pad/Enter tap detected: count=$tapCount")
+                    if (tapCount >= TAP_THRESHOLD) {
+                        tapCount = 0
+                        try {
+                            val intent = Intent(this, ConfigActivity::class.java)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e(tag, "ConfigActivity from D-pad failed: ${e.message}")
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            // Make root focusable to receive key events
+            rootLayout?.isFocusable = true
+            rootLayout?.isFocusableInTouchMode = true
+            rootLayout?.requestFocus()
 
             // Delay syncAndPlay until view is fully laid out — avoids black screen on cold start
             window.decorView.post {
@@ -653,7 +883,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun clearZoneViews() {
-        try { videoView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
+        try { exoPlayer?.release(); exoPlayer = null } catch (_: Exception) {}
+        try { exoPlayerView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
         try { imageViewA?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
         try { imageViewB?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
         try { imageView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
@@ -661,7 +892,7 @@ class PlayerActivity : ComponentActivity() {
         for (v in clockTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
         for (v in weatherTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
         for (v in widgetTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
-        videoView = null; imageView = null; imageViewA = null; imageViewB = null; activeImageView = null
+        exoPlayerView = null; imageView = null; imageViewA = null; imageViewB = null; activeImageView = null
         lastBitmap = null
         activeZoneViews.clear(); clockTextViews.clear(); weatherTextViews.clear(); widgetTextViews.clear()
     }
@@ -669,7 +900,7 @@ class PlayerActivity : ComponentActivity() {
     private fun createMediaViewsForZone(zone: ZoneData) {
         try {
             val rl = rootLayout ?: return
-            videoView?.let { rl.removeView(it) }
+            exoPlayerView?.let { rl.removeView(it) }
             imageViewA?.let { rl.removeView(it) }
             imageViewB?.let { rl.removeView(it) }
 
@@ -680,12 +911,14 @@ class PlayerActivity : ComponentActivity() {
             val zoneX = (zone.x / 100f * screenW).toInt()
             val zoneY = (zone.y / 100f * screenH).toInt()
 
-            val vv = VideoView(this)
-            vv.visibility = View.GONE
-            val lpV = FrameLayout.LayoutParams(zoneW, zoneH)
-            lpV.leftMargin = zoneX; lpV.topMargin = zoneY
-            rl.addView(vv, lpV)
-            videoView = vv
+            val epv = exoPlayerView ?: findViewById(R.id.exoPlayerView)
+            epv?.let {
+                it.visibility = View.GONE
+                val lpE = FrameLayout.LayoutParams(zoneW, zoneH)
+                lpE.leftMargin = zoneX; lpE.topMargin = zoneY
+                rl.addView(it, lpE)
+                exoPlayerView = it
+            }
 
             val ivA = ImageView(this)
             ivA.visibility = View.GONE
@@ -707,7 +940,7 @@ class PlayerActivity : ComponentActivity() {
 
             activeImageView = ivA
             imageView = ivA
-            flog("I", "UI", "createMediaViewsForZone: videoView+imageViewA+imageViewB created for zone ${zone.name}")
+            flog("I", "UI", "createMediaViewsForZone: exoPlayerView+imageViewA+imageViewB created for zone ${zone.name}")
         } catch (e: Exception) {
             flog("E", "UI", "createMediaViewsForZone error: ${e.message}")
         }
@@ -760,6 +993,7 @@ class PlayerActivity : ComponentActivity() {
         rl.addView(ivB, lpB)
         imageViewB = ivB
         activeImageView = ivA
+        exoPlayerView = findViewById(R.id.exoPlayerView)
     }
 
     private suspend fun syncAndPlay() {
@@ -789,7 +1023,7 @@ class PlayerActivity : ComponentActivity() {
                                 val campaignZone = layoutZones.firstOrNull { it.type == "campaign" }
                                 if (campaignZone != null) createMediaViewsForZone(campaignZone)
                             } else {
-                                videoView = findViewById(R.id.videoView)
+                                exoPlayerView = findViewById(R.id.exoPlayerView)
                                 imageView = findViewById(R.id.imageView)
                                 ensureDualImageViews()
                             }
@@ -818,7 +1052,7 @@ class PlayerActivity : ComponentActivity() {
                     val campaignZone = layoutZones.firstOrNull { it.type == "campaign" }
                     if (campaignZone != null) createMediaViewsForZone(campaignZone)
                 } else {
-                    videoView = findViewById(R.id.videoView)
+                    exoPlayerView = findViewById(R.id.exoPlayerView)
                     imageView = findViewById(R.id.imageView)
                     ensureDualImageViews()
                 }
@@ -842,7 +1076,7 @@ class PlayerActivity : ComponentActivity() {
                             val campaignZone = layoutZones.firstOrNull { it.type == "campaign" }
                             if (campaignZone != null) createMediaViewsForZone(campaignZone)
                         } else {
-                            videoView = findViewById(R.id.videoView)
+                            exoPlayerView = findViewById(R.id.exoPlayerView)
                             imageView = findViewById(R.id.imageView)
                             ensureDualImageViews()
                         }
@@ -901,6 +1135,13 @@ class PlayerActivity : ComponentActivity() {
 
         if (json.optBoolean("screenshot_requested", false)) sendScreenshot()
 
+        // Apply device-level orientation settings from sync response
+        val deviceOrientation = json.optString("device_orientation", "")
+        val serverRotation = json.optInt("screen_rotation", -999)
+        if (deviceOrientation.isNotEmpty() || serverRotation != -999) {
+            applyDeviceOrientation(deviceOrientation, serverRotation)
+        }
+
         val mediaMap = mutableMapOf<String, JSONObject>()
         for (i in 0 until mediaArray.length()) {
             val m = mediaArray.getJSONObject(i)
@@ -931,11 +1172,22 @@ class PlayerActivity : ComponentActivity() {
                 if (media == null) { flog("E", "Fetch", "fetchMedia: item[$j] mediaId=$mediaId NOT in mediaMap, skip — MEDIA NOT FOUND"); continue }
                 val duration = item.optInt("duration", 0).coerceAtLeast(media.optInt("duration", 0)).coerceAtLeast(5)
                 val fileUrl = media.optString("file_url", "")
-                val mediaItem = MediaItem(mediaId, media.optString("name", ""), media.optString("type", "image"),
-                    fileUrl, duration, respCampaignId, playlistId)
+                val orientation = media.optString("default_orientation", "auto")
+                val displayName = media.optString("display_name", "").ifEmpty { null }
+                val mediaItem = MediaItem(
+                    id = mediaId,
+                    name = media.optString("name", ""),
+                    displayName = displayName,
+                    type = media.optString("type", "image"),
+                    fileUrl = fileUrl,
+                    duration = duration,
+                    campaignId = respCampaignId,
+                    playlistId = playlistId,
+                    defaultOrientation = orientation
+                )
                 val pos = item.optInt("position", j)
                 val slotId = item.optString("slot_id", "")
-                flog("I", "Fetch", "fetchMedia: item[$j] name=${mediaItem.name}, pos=$pos, slotId='$slotId'")
+                flog("I", "Fetch", "fetchMedia: item[$j] name=${mediaItem.name}, pos=$pos, slotId='$slotId', orientation=${mediaItem.defaultOrientation}")
                 allItems.add(ItemPos(pos, slotId, mediaItem))
             }
             flog("I", "Fetch", "fetchMedia: parsed ${allItems.size} items")
@@ -999,6 +1251,10 @@ class PlayerActivity : ComponentActivity() {
             val resolvedType = item.resolvedType()
             flog("I", "Play", "playLoop: index=$currentIndex/${mediaList.size}, item=${item.name}, dbType=${item.type}, resolvedType=$resolvedType, duration=${item.duration}s, url=${item.fileUrl.take(80)}")
             try {
+                // NOTE: We do NOT call applyMediaOrientation here anymore.
+                // The rotation is set ONCE at startup (from device prefs/setup)
+                // and never re-applied during playback — this prevents the
+                // "horizontal flash" between media items.
                 when (resolvedType) {
                     "video" -> playVideo(item)
                     "image" -> playImage(item)
@@ -1013,6 +1269,53 @@ class PlayerActivity : ComponentActivity() {
         }
         flog("I", "Play", "playLoop: END")
     }
+
+    /**
+     * Apply orientation ONCE at startup, not per-media.
+     */
+    private fun applyStartupOrientation() {
+        val p = prefs ?: return
+        val rotation = p.getInt("screen_rotation", 0)
+        val deviceOrientation = p.getString("device_orientation", "landscape") ?: "landscape"
+
+        flog("I", tag, "applyStartupOrientation: rotation=$rotation, deviceOrientation=$deviceOrientation")
+
+        // Only set activity orientation ONCE if changed
+        if (lastAppliedRotation != rotation) {
+            lastAppliedRotation = rotation
+            runOnUiThread {
+                when (rotation) {
+                    90 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    270 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                    180 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                    -1 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                    else -> requestedOrientation = if (deviceOrientation == "portrait") {
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Apply orientation for the current media item (DEPRECATED - kept for compatibility).
+     * Orientation is now applied once at startup, not per-media.
+     */
+    @Deprecated("Use applyRotationFromPrefs instead")
+    private fun applyMediaOrientation(mediaOrientation: String) {
+        // No-op - orientation is set once at startup
+    }
+
+    /**
+     * Apply device-level orientation pushed from the dashboard (DEPRECATED - kept for compatibility).
+     */
+    @Deprecated("Use applyRotationFromPrefs instead")
+    private fun applyDeviceOrientation(deviceOrientation: String, serverRotation: Int) {
+        // No-op - orientation is set once at startup
+    }
+
 
     private var imageViewA: ImageView? = null
     private var imageViewB: ImageView? = null
@@ -1067,15 +1370,15 @@ class PlayerActivity : ComponentActivity() {
     // ===================== RENDERING CONFIG =====================
 
     private fun getImageScaleType(): ImageView.ScaleType {
-        val mode = prefs?.getString("image_fit_mode", "fit") ?: "fit"
+        val mode = prefs?.getString("image_fit_mode", "centerCrop") ?: "centerCrop"
         return when (mode) {
-            "fill" -> ImageView.ScaleType.FIT_XY
-            "center" -> ImageView.ScaleType.CENTER
-            "centerCrop" -> ImageView.ScaleType.CENTER_CROP
+            "fill" -> ImageView.ScaleType.FIT_XY          // Fill 100% (stretched)
+            "center" -> ImageView.ScaleType.CENTER         // Centered, no scale
+            "centerCrop" -> ImageView.ScaleType.CENTER_CROP    // Fill 100% (cropped) - DEFAULT for DOOH
             "centerInside" -> ImageView.ScaleType.CENTER_INSIDE
-            "fitCenter" -> ImageView.ScaleType.FIT_CENTER
-            "fit" -> ImageView.ScaleType.FIT_XY    // Fills 100% (stretched) — fills always, may distort
-            else -> ImageView.ScaleType.FIT_CENTER   // letterbox/pillarbox, no distortion
+            "fitCenter" -> ImageView.ScaleType.FIT_CENTER  // Letterbox (preserves aspect)
+            "fit" -> ImageView.ScaleType.FIT_XY           // Fill 100% (stretched)
+            else -> ImageView.ScaleType.CENTER_CROP       // Default: fill 100% cropped
         }
     }
 
@@ -1096,7 +1399,7 @@ class PlayerActivity : ComponentActivity() {
 
         runOnUiThread {
             try {
-                videoView?.visibility = View.GONE
+                exoPlayerView?.visibility = View.GONE
                 next?.setImageBitmap(newBitmap)
                 next?.scaleType = getImageScaleType()
                 next?.rotation = getImageRotation()
@@ -1129,7 +1432,7 @@ class PlayerActivity : ComponentActivity() {
         }
         runOnUiThread {
             try {
-                videoView?.visibility = View.GONE
+                exoPlayerView?.visibility = View.GONE
                 iv.setImageBitmap(bitmap)
                 iv.scaleType = getImageScaleType()
                 iv.rotation = getImageRotation()
@@ -1145,37 +1448,135 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private suspend fun playVideo(item: MediaItem) {
-        // ===== DEFENSIVE: redirect ALL non-video to playImage =====
         if (!item.isVideo()) {
             flog("W", "Play", "REDIRECT: ${item.name} (ext=${item.fileUrl.substringAfterLast(".")}) → playImage")
             playImage(item)
             return
         }
 
-        flog("I", "Play", "playVideo REAL: ${item.name}")
-        val vv = videoView ?: run { delay(item.duration * 1000L); return }
-        flog("I", "Play", "playVideo: starting ${item.name}, url=${item.fileUrl.take(80)}")
+        flog("I", "Play", "playVideo REAL: ${item.name}, configured duration=${item.duration}s")
         val latch = java.util.concurrent.CountDownLatch(1)
+        var videoEndedNaturally = false
+        var playerError: String? = null
+
         withContext(Dispatchers.Main) {
             try {
                 imageViewA?.visibility = View.GONE
                 imageViewB?.visibility = View.GONE
-                vv.visibility = View.VISIBLE
-                vv.setOnPreparedListener { mp -> mp.isLooping = false; mp.setVolume(getVideoVolume(), getVideoVolume()); mp.start() }
-                vv.setOnCompletionListener { latch.countDown() }
-                vv.setOnErrorListener { mp: android.media.MediaPlayer, what: Int, extra: Int ->
-                    flog("E", "Play", "playVideo MediaPlayer ERROR: what=$what, extra=$extra")
-                    latch.countDown()
-                    true
-                }
-                vv.setVideoURI(Uri.parse(item.fileUrl))
+
+                // Show ExoPlayerView, hide ImageView
+                exoPlayerView?.visibility = View.VISIBLE
+
+                // Release any previous ExoPlayer
+                try { exoPlayer?.release() } catch (_: Exception) {}
+
+                // Create fresh ExoPlayer instance
+                val player = ExoPlayer.Builder(this@PlayerActivity)
+                    .setHandleAudioBecomingNoisy(true)
+                    .build()
+                exoPlayer = player
+
+                // Bind to player view
+                exoPlayerView?.player = player
+
+                val volume = getVideoVolume()
+                player.volume = volume
+
+                player.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        when (state) {
+                            Player.STATE_READY -> {
+                                flog("I", "Play", "ExoPlayer READY: ${item.name}, videoDuration=${player.duration}ms, configured=${item.duration}s")
+                                player.play()
+                            }
+                            Player.STATE_ENDED -> {
+                                flog("I", "Play", "ExoPlayer ENDED naturally: ${item.name}")
+                                videoEndedNaturally = true
+                                latch.countDown()
+                            }
+                            Player.STATE_BUFFERING -> {
+                                flog("I", "Play", "ExoPlayer BUFFERING: ${item.name}")
+                            }
+                        }
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        flog("E", "Play", "ExoPlayer ERROR: ${item.name} — ${error.errorCodeName}: ${error.message}")
+                        playerError = "${error.errorCodeName}: ${error.message}"
+                        latch.countDown()
+                    }
+                })
+
+                val mediaItem = ExoMediaItem.fromUri(item.fileUrl)
+                player.setMediaItem(mediaItem)
+                player.prepare()
+
+                flog("I", "Play", "ExoPlayer started: ${item.name}")
             } catch (e: Exception) {
-                flog("E", "Play", "playVideo setVideoURI EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+                flog("E", "Play", "playVideo ExoPlayer EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+                playerError = "${e.javaClass.simpleName}: ${e.message}"
                 latch.countDown()
             }
         }
-        withContext(Dispatchers.IO) { latch.await(item.duration.toLong() + 30, java.util.concurrent.TimeUnit.SECONDS) }
-        flog("I", "Play", "playVideo: finished ${item.name}")
+
+        // Wait for either: video ends naturally, error, or configured duration + 5s buffer
+        withContext(Dispatchers.IO) { latch.await(item.duration.toLong() + 5, java.util.concurrent.TimeUnit.SECONDS) }
+
+        // Force stop at exactly the configured duration
+        withContext(Dispatchers.Main) {
+            val player = exoPlayer
+            if (player != null && !videoEndedNaturally && playerError == null) {
+                flog("I", "Play", "Duration cut: stopping ${item.name} at ${item.duration}s (configured cut-off)")
+                player.stop()
+            }
+        }
+
+        // Report errors to server (notification + device_logs)
+        if (playerError != null) {
+            reportMediaError(item, playerError!!)
+        }
+
+        // Release player after video ends
+        try { exoPlayer?.release(); exoPlayer = null } catch (_: Exception) {}
+        exoPlayerView?.player = null
+        exoPlayerView?.visibility = View.GONE
+        flog("I", "Play", "playVideo: finished ${item.name}, endedNaturally=$videoEndedNaturally, error=${playerError ?: "none"}")
+    }
+
+    private fun reportMediaError(item: MediaItem, errorMsg: String) {
+        try {
+            val deviceId = prefs?.getString("device_id", "") ?: ""
+            if (deviceId.isEmpty()) return
+            val apiUrl = getApiUrl()
+            val body = JSONObject().apply {
+                put("device_id", deviceId)
+                put("event_type", "media_error")
+                put("severity", "error")
+                put("message", "Falha ao reproduzir: ${item.name}")
+                put("details", errorMsg)
+                put("media_id", item.id)
+                put("media_url", item.fileUrl)
+                item.campaignId?.let { put("campaign_id", it) }
+                item.playlistId?.let { put("playlist_id", it) }
+            }
+            // Fire and forget — don't block playback loop
+            Thread {
+                try {
+                    val conn = URL("$apiUrl/api/device/log-error").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    conn.outputStream.use { os ->
+                        os.write(body.toString().toByteArray(Charsets.UTF_8))
+                        os.flush()
+                    }
+                    conn.responseCode
+                    conn.disconnect()
+                } catch (_: Exception) {}
+            }.start()
+        } catch (_: Exception) {}
     }
 
     private suspend fun playImage(item: MediaItem) {
@@ -1267,19 +1668,16 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
 
-            val rotation = json.optInt("screen_rotation", 0)
+            // NOTE: We do NOT re-apply rotation here anymore to avoid flicker
+            // between media items. Rotation is set ONCE at startup and on
+            // explicit user action (config screen button).
             val mirrorH = json.optBoolean("mirror_horizontal", false)
             val mirrorV = json.optBoolean("mirror_vertical", false)
 
-            if (rotation != lastAppliedRotation || mirrorH != lastAppliedMirrorH || mirrorV != lastAppliedMirrorV) {
-                lastAppliedRotation = rotation; lastAppliedMirrorH = mirrorH; lastAppliedMirrorV = mirrorV
+            if (mirrorH != lastAppliedMirrorH || mirrorV != lastAppliedMirrorV) {
+                lastAppliedMirrorH = mirrorH
+                lastAppliedMirrorV = mirrorV
                 runOnUiThread {
-                    when (rotation) {
-                        90 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                        270 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                        180 -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                        else -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                    }
                     rootLayout?.scaleX = if (mirrorH) -1f else 1f
                     rootLayout?.scaleY = if (mirrorV) -1f else 1f
                 }
@@ -1374,13 +1772,14 @@ class PlayerActivity : ComponentActivity() {
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
                 items.add(MediaItem(
-                    obj.optString("id", ""),
-                    obj.optString("name", ""),
-                    obj.optString("type", "image"),
-                    obj.optString("fileUrl", ""),
-                    obj.optInt("duration", 10),
-                    obj.optString("campaignId", "").ifEmpty { null },
-                    obj.optString("playlistId", "").ifEmpty { null }
+                    id = obj.optString("id", ""),
+                    name = obj.optString("name", ""),
+                    type = obj.optString("type", "image"),
+                    fileUrl = obj.optString("fileUrl", ""),
+                    duration = obj.optInt("duration", 10),
+                    campaignId = obj.optString("campaignId", "").ifEmpty { null },
+                    playlistId = obj.optString("playlistId", "").ifEmpty { null },
+                    defaultOrientation = obj.optString("defaultOrientation", "auto")
                 ))
             }
             val cacheTime = p.getLong("cache_time", 0)

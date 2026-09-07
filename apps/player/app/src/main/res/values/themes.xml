@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.ByeMidias" parent="android:Theme.Material.NoActionBar">
-        <item name="android:colorPrimary">#3B82F6</item>
-        <item name="android:colorPrimaryDark">#1E40AF</item>
-        <item name="android:colorAccent">#60A5FA</item>
-        <item name="android:windowBackground">#111827</item>
+        <item name="android:colorPrimary">#000000</item>
+        <item name="android:colorPrimaryDark">#000000</item>
+        <item name="android:colorAccent">#F77B1A</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorBackground">#000000</item>
     </style>
 
     <style name="Theme.ByeMidias.Fullscreen" parent="Theme.ByeMidias">
@@ -12,5 +13,7 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorBackground">#000000</item>
     </style>
 </resources>

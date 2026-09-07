@@ -4,10 +4,21 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Hexagon outline (white) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M54,16 L83,32 L83,76 L54,92 L25,76 L25,32 Z" />
+
+    <!-- B letter (white, left side) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M38,34h32v40h-32z"/>
+        android:pathData="M40,42 L40,70 L51,70 Q57,70 57,64 Q57,60 53,58 Q56,57 56,53 Q56,46 51,46 L40,46 Z M44,50 L49,50 Q50,50 50,52 Q50,54 49,54 L44,54 Z M44,58 L49,58 Q51,58 51,61 Q51,64 49,64 L44,64 Z" />
+
+    <!-- M letter (white, right side) -->
     <path
-        android:fillColor="#00BCD4"
-        android:pathData="M44,42h20v4h-20zM44,50h20v4h-20zM44,58h12v4h-12z"/>
+        android:fillColor="#FFFFFF"
+        android:pathData="M58,46 L63,46 L65,57 L67,46 L72,46 L72,70 L68,70 L68,53 L66,65 L64,65 L62,53 L62,70 L58,70 Z" />
 </vector>

@@ -1,14 +1,17 @@
 package com.byemidias.player.ui.config
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.text.InputType
 import android.util.Log
 import android.view.View
 import android.widget.*
 import android.widget.SeekBar
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
+import com.byemidias.player.ByeMidiasApp
 import com.byemidias.player.BuildConfig
 import com.byemidias.player.R
 import com.byemidias.player.ui.logs.LogsActivity
@@ -30,10 +33,19 @@ class ConfigActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
+        // Apply rotation BEFORE setContentView so the layout inflates correctly
+        try {
+            applyRotation(prefs.getInt("screen_rotation", 0))
+        } catch (_: Exception) {}
         setContentView(R.layout.activity_config)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
+        val rootView = findViewById<android.view.View>(android.R.id.content)
+        try {
+            val rotation = prefs.getInt("screen_rotation", 0)
+            applyVisualRotationToContent(rootView, rotation)
+        } catch (_: Exception) {}
 
         val urlInput = findViewById<EditText>(R.id.urlInput)
         val saveBtn = findViewById<Button>(R.id.saveBtn)
@@ -47,6 +59,7 @@ class ConfigActivity : ComponentActivity() {
         val deviceInfoText = findViewById<TextView>(R.id.deviceInfoText)
 
         val orientationSpinner = findViewById<Spinner>(R.id.orientationSpinner)
+        val kioskPinInput = findViewById<EditText>(R.id.kioskPinInput)
         val mirrorHSwitch = findViewById<Switch>(R.id.mirrorHSwitch)
         val mirrorVSwitch = findViewById<Switch>(R.id.mirrorVSwitch)
         val videoPlayerSpinner = findViewById<Spinner>(R.id.videoPlayerSpinner)
@@ -57,6 +70,10 @@ class ConfigActivity : ComponentActivity() {
         // Load current URL
         val currentUrl = prefs.getString("api_base_url", null) ?: BuildConfig.API_BASE_URL
         urlInput.setText(currentUrl)
+
+        // Load kiosk PIN
+        val savedPin = prefs.getString("kiosk_pin", "1234") ?: "1234"
+        kioskPinInput.setText(savedPin)
 
         // Load device info
         val deviceId = prefs.getString("device_id", "")
@@ -123,6 +140,7 @@ class ConfigActivity : ComponentActivity() {
             }
 
             val rotation = orientationValues[orientationSpinner.selectedItemPosition]
+            val pin = kioskPinInput.text.toString().trim().ifEmpty { "1234" }
             prefs.edit().apply {
                 putString("api_base_url", url)
                 putInt("screen_rotation", rotation)
@@ -135,6 +153,7 @@ class ConfigActivity : ComponentActivity() {
                 putString("image_fit_mode", fitModes[imageFitSpinner.selectedItemPosition])
                 putInt("image_rotation_lock", rotations[imageRotationSpinner.selectedItemPosition])
                 putInt("video_volume", videoVolumeSeek.progress)
+                putString("kiosk_pin", pin)
                 commit()
             }
 
@@ -222,10 +241,40 @@ class ConfigActivity : ComponentActivity() {
             }
         }
 
-        // Exit button
+        // Exit button — requires PIN
         exitBtn.setOnClickListener {
-            finishAffinity()
-            System.exit(0)
+            showExitPinDialog()
+        }
+
+        // Rotate now button — manually cycle orientation (useful when device sensor fails)
+        val rotateNowBtn = findViewById<Button>(R.id.rotateNowBtn)
+        rotateNowBtn?.setOnClickListener {
+            val current = prefs.getInt("screen_rotation", 0)
+            // Cycle: 0 → 90 → 270 → 180 → 0
+            val next = when (current) {
+                0 -> 90
+                90 -> 270
+                270 -> 180
+                180 -> 0
+                else -> 0
+            }
+            prefs.edit().putInt("screen_rotation", next).commit()
+            val labels = listOf("Retrato", "Paisagem", "Paisagem Invertida", "Retrato Invertido", "Automático")
+            val label = when (next) {
+                0 -> labels[0]
+                90 -> labels[1]
+                270 -> labels[2]
+                180 -> labels[3]
+                else -> labels[4]
+            }
+            applyRotation(next)
+            val rootView = findViewById<android.view.View>(android.R.id.content)
+            applyVisualRotationToContent(rootView, next)
+            statusText.text = "Rotação: $label"
+            statusText.visibility = View.VISIBLE
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                statusText.visibility = View.GONE
+            }, 1500)
         }
 
         // Show QR Code button (server-generated)
@@ -251,6 +300,59 @@ class ConfigActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Apply visual rotation to the config screen.
+     *
+     * SIMPLEST APPROACH: just use setRequestedOrientation.
+     * On most Android devices this works. On Google TV it's ignored,
+     * but the config screen is just settings — readable in landscape too.
+     *
+     * The user can still navigate config with D-pad in landscape mode.
+     */
+    private fun applyVisualRotationToContent(view: android.view.View, rotation: Int) {
+        try {
+            val r = if (rotation == -1) 0 else rotation
+            // Just apply the orientation — no view rotation needed
+            // The activity itself will re-create and re-layout with the correct orientation
+            when (r) {
+                90 -> {
+                    if (requestedOrientation != android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    }
+                }
+                270 -> {
+                    if (requestedOrientation != android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE) {
+                        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                    }
+                }
+                180 -> {
+                    if (requestedOrientation != android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT) {
+                        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                    }
+                }
+                0 -> {
+                    if (requestedOrientation != android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
+                }
+            }
+            android.util.Log.i(tag, "Config rotation set to $r via setRequestedOrientation")
+        } catch (e: Exception) {
+            android.util.Log.e(tag, "applyVisualRotationToContent: ${e.message}", e)
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Re-apply rotation on config change
+        try {
+            val r = prefs.getInt("screen_rotation", 0)
+            applyRotation(r)
+            val rootView = findViewById<android.view.View>(android.R.id.content)
+            applyVisualRotationToContent(rootView, r)
+        } catch (_: Exception) {}
+    }
+
     private fun httpPost(urlStr: String, jsonBody: String): String {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
@@ -273,5 +375,32 @@ class ConfigActivity : ComponentActivity() {
         }
         conn.disconnect()
         return body
+    }
+
+    private fun showExitPinDialog() {
+        val storedPin = prefs.getString("kiosk_pin", "1234")
+        val input = android.widget.EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Digite o PIN"
+            setPadding(48, 32, 48, 32)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Sair do Kiosk")
+            .setMessage("Digite o PIN para sair.")
+            .setView(input)
+            .setPositiveButton("Confirmar") { _, _ ->
+                if (input.text.toString() == storedPin) {
+                    ByeMidiasApp.instance.kioskExitRequested = true
+                    try {
+                        stopLockTask()
+                    } catch (_: Exception) {}
+                    finishAffinity()
+                    System.exit(0)
+                } else {
+                    Toast.makeText(this, "PIN incorreto", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 }

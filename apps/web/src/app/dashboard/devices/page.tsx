@@ -97,9 +97,9 @@ export default function DevicesPage() {
         fetch(devQuery, { credentials: 'include' }),
         fetch(orgQuery, { credentials: 'include' }),
         fetch(unitQuery, { credentials: 'include' }),
-        fetch('/api/admin/crud/campaigns?status=active', { credentials: 'include' }).then(r => r.json()).catch(() => ({ data: [] })),
-        fetch('/api/admin/layouts', { credentials: 'include' }).then(r => r.json()).catch(() => ({ templates: [] })),
-        fetch('/api/dashboard/categories', { credentials: 'include' }).then(r => r.json()).catch(() => ({ categories: [] })),
+        fetch('/api/admin/crud/campaigns?status=active', { credentials: 'include' }).then(r => r.clone().json()).catch(() => ({ data: [] })),
+        fetch('/api/admin/layouts', { credentials: 'include' }).then(r => r.clone().json()).catch(() => ({ templates: [] })),
+        fetch('/api/dashboard/categories', { credentials: 'include' }).then(r => r.clone().json()).catch(() => ({ categories: [] })),
       ]);
 
       if (!devRes || typeof devRes.ok !== 'boolean') {
@@ -122,11 +122,11 @@ export default function DevicesPage() {
       const devJson = await devRes.json();
       const orgJson = await orgRes.json();
       const unitJson = await unitRes.json();
-      const catJson = await catRes.json();
+      // catRes, campRes, layRes already parsed via .then(r => r.clone().json())
       const devicesList = devJson.data ?? [];
       setDevices(devicesList);
       setOrgs((orgJson.data ?? []) as { id: string; name: string }[]);
-      setCategories((catJson.categories ?? []) as { id: string; name: string; icon: string; color: string; is_global: boolean }[]);
+      setCategories((catRes.categories ?? []) as { id: string; name: string; icon: string; color: string; is_global: boolean }[]);
 
       // Carrega categorias atribuídas aos devices
       if (devicesList.length > 0) {
@@ -141,15 +141,23 @@ export default function DevicesPage() {
       }
       setUnits((unitJson.data ?? []) as { id: string; name: string }[]);
 
-      const [draftRes, pausedRes] = await Promise.all([
-        fetch('/api/admin/crud/campaigns?status=draft', { credentials: 'include' }),
-        fetch('/api/admin/crud/campaigns?status=paused', { credentials: 'include' }),
-      ]);
-      const draftJson = await draftRes.json();
-      const pausedJson = await pausedRes.json();
-      const allCampaigns = [...(campRes.data ?? []), ...(draftJson.data ?? []), ...(pausedJson.data ?? [])];
+      let allCampaigns: Campaign[] = campRes.data ?? [];
+      try {
+        const [draftRes, pausedRes] = await Promise.all([
+          fetch('/api/admin/crud/campaigns?status=draft', { credentials: 'include' }),
+          fetch('/api/admin/crud/campaigns?status=paused', { credentials: 'include' }),
+        ]);
+        if (draftRes && typeof draftRes.json === 'function') {
+          const draftJson = await draftRes.json();
+          allCampaigns = [...allCampaigns, ...(draftJson.data ?? [])];
+        }
+        if (pausedRes && typeof pausedRes.json === 'function') {
+          const pausedJson = await pausedRes.json();
+          allCampaigns = [...allCampaigns, ...(pausedJson.data ?? [])];
+        }
+      } catch {}
       setCampaigns(Array.from(new Map(allCampaigns.map((c: Campaign) => [c.id, c])).values()));
-      setLayouts((layRes.templates ?? []) as LayoutTemplate[]);
+      setLayouts((layRes && layRes.templates ? layRes.templates : []) as LayoutTemplate[]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Erro desconhecido ao carregar dados.';
       setLoadError(msg);

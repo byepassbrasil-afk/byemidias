@@ -367,7 +367,7 @@ export default function MediaPage() {
         alert('Erro: ' + (json.error || 'desconhecido'));
         return;
       }
-      const updated = { ...detailMedia, expires_at: json.expires_at, status: 'active' };
+      const updated = { ...detailMedia, expires_at: json.expires_at, status: 'active' as const };
       setDetailMedia(updated);
       loadMedia();
       alert(`✅ Mídia reativada! Nova validade: ${formatDate(json.expires_at)}`);

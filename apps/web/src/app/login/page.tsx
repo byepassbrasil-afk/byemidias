@@ -38,8 +38,7 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      router.push('/dashboard');
-      router.refresh();
+      window.location.href = '/dashboard';
     } catch {
       setError('Erro de conexão');
       setLoading(false);
@@ -76,8 +75,7 @@ export default function LoginPage() {
       }
       setSuccess('Senha alterada com sucesso! Redirecionando...');
       setTimeout(() => {
-        router.push('/dashboard');
-        router.refresh();
+        window.location.href = '/dashboard';
       }, 1500);
     } catch {
       setError('Erro de conexão');

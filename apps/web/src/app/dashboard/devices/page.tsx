@@ -11,8 +11,19 @@ interface LayoutTemplate { id: string; name: string; }
 
 type ViewMode = 'grid' | 'list';
 
+interface SessionProfile {
+  id: string;
+  email: string;
+  role: string;
+  organization_id: string | null;
+  org_name: string | null;
+}
+
 export default function DevicesPage() {
   const router = useRouter();
+  const [profile, setProfile] = useState<SessionProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [layouts, setLayouts] = useState<LayoutTemplate[]>([]);
@@ -22,55 +33,144 @@ export default function DevicesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'online' | 'offline'>('all');
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Device | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string>('');
+  const [categories, setCategories] = useState<{ id: string; name: string; icon: string; color: string; is_global: boolean }[]>([]);
+  const [deviceCategories, setDeviceCategories] = useState<Record<string, { category_id: string; is_blocked: boolean }[]>>({});
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const [quickAssignDevice, setQuickAssignDevice] = useState<Device | null>(null);
   const [showQrScanner, setShowQrScanner] = useState(false);
 
-  // Form state
-  const [name, setName] = useState('');
-  const [model, setModel] = useState('');
-  const [deviceUuid, setDeviceUuid] = useState('');
-  const [organizationId, setOrganizationId] = useState('');
-  const [unitId, setUnitId] = useState('');
-  const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
-  const [campaignId, setCampaignId] = useState('');
-  const [layoutId, setLayoutId] = useState('');
+  // Load session profile first — we need organization_id to scope the device query.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/profile', { credentials: 'include' });
+        if (!res.ok) {
+          if (!cancelled) {
+            setProfileLoading(false);
+            setLoading(false);
+            setLoadError('Sessão expirada. Faça login novamente.');
+          }
+          return;
+        }
+        const json = await res.json();
+        if (!cancelled) {
+          setProfile(json.profile ?? null);
+          setProfileLoading(false);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setProfileLoading(false);
+          setLoading(false);
+          setLoadError('Não foi possível carregar seu perfil. Tente recarregar a página.');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const loadAll = useCallback(async () => {
+    // Refuse to load if we don't yet know the user's scope.
+    if (!profile) return;
+    setLoadError(null);
     try {
-      const [devRes, orgRes, unitRes, campRes, layRes] = await Promise.all([
-        fetch('/api/admin/crud/devices?order=created_at&asc=false'),
-        fetch('/api/admin/crud/organizations?order=name&asc=true'),
-        fetch('/api/admin/crud/units?order=name&asc=true'),
-        fetch('/api/admin/crud/campaigns?status=active').then(r => r.json()).catch(() => ({ data: [] })),
-        fetch('/api/admin/layouts').then(r => r.json()).catch(() => ({ templates: [] })),
+      // Build device query with explicit org filter for defense-in-depth.
+      // The API already filters non-super_admin by their organization_id, but
+      // passing it explicitly avoids relying solely on the cookie-derived user.
+      const isSuperAdmin = profile.role === 'super_admin';
+      const orgId = profile.organization_id || '';
+      const devQuery = isSuperAdmin
+        ? '/api/admin/crud/devices?order=created_at&asc=false'
+        : orgId
+          ? `/api/admin/crud/devices?order=created_at&asc=false&organization_id=${encodeURIComponent(orgId)}`
+          : '/api/admin/crud/devices?order=created_at&asc=false';
+
+      const orgQuery = isSuperAdmin
+        ? '/api/admin/crud/organizations?order=name&asc=true'
+        : '/api/admin/crud/organizations?order=name&asc=true'; // API auto-filters to own org for non-super_admin
+      const unitQuery = orgQuery.replace('organizations', 'units');
+
+      console.log('[devices] org_id:', profile.organization_id, 'query:', devQuery);
+      const [devRes, orgRes, unitRes, campRes, layRes, catRes] = await Promise.all([
+        fetch(devQuery, { credentials: 'include' }),
+        fetch(orgQuery, { credentials: 'include' }),
+        fetch(unitQuery, { credentials: 'include' }),
+        fetch('/api/admin/crud/campaigns?status=active', { credentials: 'include' }).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch('/api/admin/layouts', { credentials: 'include' }).then(r => r.json()).catch(() => ({ templates: [] })),
+        fetch('/api/dashboard/categories', { credentials: 'include' }).then(r => r.json()).catch(() => ({ categories: [] })),
       ]);
+
+      if (!devRes || typeof devRes.ok !== 'boolean') {
+        setLoadError('Erro de comunicação com o servidor. Recarregue a página.');
+        setDevices([]);
+        setLoading(false);
+        return;
+      }
+      if (!devRes.ok) {
+        let msg = `Erro ${devRes.status} ao buscar dispositivos`;
+        try {
+          const errBody = await devRes.json();
+          if (errBody?.error) msg = errBody.error;
+        } catch {}
+        setLoadError(msg);
+        setDevices([]);
+        setLoading(false);
+        return;
+      }
       const devJson = await devRes.json();
       const orgJson = await orgRes.json();
       const unitJson = await unitRes.json();
-      setDevices(devJson.data ?? []);
+      const catJson = await catRes.json();
+      const devicesList = devJson.data ?? [];
+      setDevices(devicesList);
       setOrgs((orgJson.data ?? []) as { id: string; name: string }[]);
+      setCategories((catJson.categories ?? []) as { id: string; name: string; icon: string; color: string; is_global: boolean }[]);
+
+      // Carrega categorias atribuídas aos devices
+      if (devicesList.length > 0) {
+        try {
+          const deviceIds = devicesList.map((d: { id: string }) => d.id);
+          const dcRes = await fetch('/api/dashboard/devices/all-categories?ids=' + deviceIds.join(','), { credentials: 'include' });
+          if (dcRes.ok) {
+            const dcJson = await dcRes.json();
+            setDeviceCategories(dcJson.assignments ?? {});
+          }
+        } catch {}
+      }
       setUnits((unitJson.data ?? []) as { id: string; name: string }[]);
 
       const [draftRes, pausedRes] = await Promise.all([
-        fetch('/api/admin/crud/campaigns?status=draft'),
-        fetch('/api/admin/crud/campaigns?status=paused'),
+        fetch('/api/admin/crud/campaigns?status=draft', { credentials: 'include' }),
+        fetch('/api/admin/crud/campaigns?status=paused', { credentials: 'include' }),
       ]);
       const draftJson = await draftRes.json();
       const pausedJson = await pausedRes.json();
       const allCampaigns = [...(campRes.data ?? []), ...(draftJson.data ?? []), ...(pausedJson.data ?? [])];
       setCampaigns(Array.from(new Map(allCampaigns.map((c: Campaign) => [c.id, c])).values()));
       setLayouts((layRes.templates ?? []) as LayoutTemplate[]);
-    } catch { /* ignore */ }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Erro desconhecido ao carregar dados.';
+      setLoadError(msg);
+      setDevices([]);
+    }
     setLoading(false);
-  }, []);
+  }, [profile]);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
-  useEffect(() => { const i = setInterval(loadAll, 15000); return () => clearInterval(i); }, [loadAll]);
+  useEffect(() => {
+    if (!profile) return;
+    loadAll();
+  }, [profile, loadAll]);
+  useEffect(() => {
+    if (!profile) return;
+    const i = setInterval(loadAll, 15000);
+    return () => clearInterval(i);
+  }, [profile, loadAll]);
+
+  // Org-less non-super-admin: explain why nothing shows instead of an empty list.
+  const needsOrg = profile && profile.role !== 'super_admin' && !profile.organization_id;
+  const showProfileGate = !profileLoading && (needsOrg || !profile);
 
   function isOnline(d: Device): boolean {
     if (!d.last_heartbeat) return false;
@@ -97,46 +197,18 @@ export default function DevicesPage() {
     const matchStatus = filterStatus === 'all' ||
       (filterStatus === 'online' && isOnline(d)) ||
       (filterStatus === 'offline' && !isOnline(d));
-    return matchSearch && matchStatus;
+    const matchCategory = !filterCategory ||
+      (deviceCategories[d.id] || []).some(c => c.category_id === filterCategory);
+    return matchSearch && matchStatus && matchCategory;
   });
 
-  function resetForm() {
-    setName(''); setModel(''); setDeviceUuid(''); setOrganizationId(''); setUnitId('');
-    setOrientation('landscape'); setCampaignId(''); setLayoutId(''); setEditing(null); setShowForm(false);
-  }
-
   function startEdit(d: Device) {
-    setEditing(d);
-    setName(d.name); setModel(d.model || ''); setDeviceUuid(d.device_uuid || '');
-    setOrganizationId(d.organization_id); setUnitId(d.unit_id || '');
-    setOrientation(d.orientation || 'landscape');
-    setCampaignId(d.campaign_id || '');
-    setLayoutId(d.layout_template_id || '');
-    setShowForm(true);
+    router.push(`/dashboard/devices/${d.id}`);
     setActionMenuId(null);
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    const payload: Record<string, unknown> = {
-      name, model: model || null, device_uuid: deviceUuid,
-      organization_id: organizationId, unit_id: unitId || null,
-      orientation, updated_at: new Date().toISOString(),
-      campaign_id: campaignId || null, layout_template_id: layoutId || null,
-      screen_rotation: editing?.screen_rotation || 0,
-      mirror_horizontal: editing?.mirror_horizontal || false,
-      mirror_vertical: editing?.mirror_vertical || false,
-      support_type: editing?.support_type || 'anydesk',
-      support_id: editing?.support_id || null,
-    };
-    if (editing) {
-      await fetch('/api/admin/crud/devices', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editing.id, ...payload }) });
-      await fetch('/api/admin/rpc/bump_device_content_version', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_device_id: editing.id }) }).catch(() => {});
-    } else {
-      await fetch('/api/admin/crud/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, status: 'inactive', is_activated: false }) });
-    }
-    resetForm(); setSaving(false); loadAll();
+  function startCreate() {
+    setShowQrScanner(true);
   }
 
   async function handleDelete() {
@@ -162,13 +234,76 @@ export default function DevicesPage() {
 
   async function forceSyncDevice(id: string) {
     setActionMenuId(null);
-    await fetch('/api/admin/rpc/bump_device_content_version', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_device_id: id }) });
-    loadAll();
+    try {
+      const res = await fetch('/api/admin/rpc/bump_device_content_version', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_device_id: id }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Erro ao sincronizar: ${err.error || res.statusText}`);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      // Log the sync action
+      await fetch('/api/admin/device-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: id, event_type: 'sync', message: 'Sync forçado pelo dashboard' }),
+      }).catch(() => {});
+      alert(`Sincronização forçada com sucesso!`);
+      loadAll();
+    } catch (e: any) {
+      alert(`Erro ao sincronizar: ${e?.message || 'desconhecido'}`);
+    }
   }
 
   async function restartDevice(id: string) {
     setActionMenuId(null);
-    await fetch('/api/admin/crud/devices', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, restart_requested: true }) });
+    try {
+      const res = await fetch('/api/admin/crud/devices', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, restart_requested: true }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Erro ao reiniciar: ${err.error || res.statusText}`);
+        return;
+      }
+      await fetch('/api/admin/device-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: id, event_type: 'info', message: 'Reinício solicitado pelo dashboard' }),
+      }).catch(() => {});
+      alert(`Reinício solicitado!`);
+    } catch (e: any) {
+      alert(`Erro ao reiniciar: ${e?.message || 'desconhecido'}`);
+    }
+  }
+
+  // Profile gate: explain when the user is not bound to an organization.
+  if (showProfileGate) {
+    return (
+      <div className="min-h-screen bg-gray-950 p-4 sm:p-6 lg:p-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="rounded-2xl bg-gray-900 border border-gray-800 p-10 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-amber-900/30 flex items-center justify-center">
+              <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-white mb-1">Você não está vinculado a uma organização</h2>
+            <p className="text-sm text-gray-400 max-w-md mx-auto">
+              {needsOrg
+                ? 'Sua conta ainda não foi associada a uma organização. Peça ao administrador para concluir o cadastro ou entre em contato com o suporte.'
+                : 'Não foi possível identificar sua conta. Tente fazer login novamente.'}
+            </p>
+            <div className="mt-6 flex justify-center gap-2">
+              <button onClick={() => router.push('/dashboard')} className="rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-700">
+                Ir para o início
+              </button>
+              <button onClick={() => { setProfileLoading(true); setLoadError(null); router.refresh(); }} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
+                Tentar novamente
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Quick assign view
@@ -223,6 +358,22 @@ export default function DevicesPage() {
   return (
     <div className="min-h-screen bg-gray-950 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
+        {/* Error banner — surfaces fetch/permission errors instead of swallowing them */}
+        {loadError && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-700/50 bg-red-900/20 p-4">
+            <svg className="w-5 h-5 text-red-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-red-200">Não foi possível carregar os dispositivos</p>
+              <p className="text-xs text-red-300/80 mt-0.5 break-words">{loadError}</p>
+            </div>
+            <button onClick={() => loadAll()} className="rounded-lg bg-red-600/30 border border-red-600/50 px-3 py-1.5 text-xs font-medium text-red-100 hover:bg-red-600/50">
+              Tentar de novo
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
@@ -236,8 +387,8 @@ export default function DevicesPage() {
               <Link href="/dashboard/devices/uptime" className="px-3 py-1.5 rounded-md bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700">� Uptime</Link>
             </div>
           </div>
-          <button onClick={() => { resetForm(); setShowForm(true); }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors shadow-lg shadow-blue-600/20">
+          <button onClick={() => startCreate()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-500 transition-colors shadow-lg shadow-orange-600/20">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Novo Dispositivo
           </button>
@@ -277,13 +428,28 @@ export default function DevicesPage() {
           </div>
         </div>
 
-        {/* Search + View Toggle */}
+        {/* Search + View Toggle + Category Filter */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome, UUID ou modelo..."
               className="w-full rounded-xl bg-gray-900 border border-gray-800 pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors" />
           </div>
+          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+            className="rounded-xl bg-gray-900 border border-gray-800 px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors min-w-[180px]">
+            <option value="">🏷️ Todas categorias</option>
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.is_global ? '🌍 ' : ''}{c.icon} {c.name}
+              </option>
+            ))}
+          </select>
+          {filterCategory && (
+            <button onClick={() => setFilterCategory('')}
+              className="rounded-xl bg-gray-800 border border-gray-700 px-3 py-2.5 text-sm text-gray-400 hover:text-white">
+              ✕ Limpar
+            </button>
+          )}
           <div className="flex gap-2">
             <button onClick={() => setViewMode('grid')}
               className={`flex items-center justify-center w-10 h-10 rounded-xl border transition-colors ${viewMode === 'grid' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-500 hover:text-white'}`}>
@@ -360,7 +526,7 @@ export default function DevicesPage() {
                               <button onClick={() => restartDevice(device.id)} className="w-full px-4 py-2.5 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
                                 <span className="text-orange-400">🔄</span> Reiniciar APK
                               </button>
-                              <button onClick={() => router.push(`/devices/${device.id}`)} className="w-full px-4 py-2.5 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
+                              <button onClick={() => router.push(`/dashboard/devices/${device.id}`)} className="w-full px-4 py-2.5 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
                                 <span className="text-green-400">📊</span> Detalhes
                               </button>
                               <div className="mx-3 my-1 border-t border-gray-700" />
@@ -485,7 +651,7 @@ export default function DevicesPage() {
                             <button onClick={() => restartDevice(device.id)} className="w-8 h-8 rounded-lg flex items-center justify-center text-orange-400 hover:bg-orange-900/20 transition-colors" title="Reiniciar">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                             </button>
-                            <button onClick={() => router.push(`/devices/${device.id}`)} className="w-8 h-8 rounded-lg flex items-center justify-center text-green-400 hover:bg-green-900/20 transition-colors" title="Detalhes">
+                            <button onClick={() => router.push(`/dashboard/devices/${device.id}`)} className="w-8 h-8 rounded-lg flex items-center justify-center text-green-400 hover:bg-green-900/20 transition-colors" title="Detalhes">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                             </button>
                             <button onClick={() => setQuickAssignDevice(device)} className="w-8 h-8 rounded-lg flex items-center justify-center text-purple-400 hover:bg-purple-900/20 transition-colors" title="Campanha">
@@ -559,7 +725,7 @@ export default function DevicesPage() {
                               className="w-full px-4 py-3 text-left text-sm text-gray-300 hover:bg-gray-800 rounded-xl flex items-center gap-3">
                               <span className="text-orange-400 text-lg">🔄</span> Reiniciar APK
                             </button>
-                            <button onClick={() => { router.push(`/devices/${device.id}`); setActionMenuId(null); }}
+                            <button onClick={() => { router.push(`/dashboard/devices/${device.id}`); setActionMenuId(null); }}
                               className="w-full px-4 py-3 text-left text-sm text-gray-300 hover:bg-gray-800 rounded-xl flex items-center gap-3">
                               <span className="text-green-400 text-lg">📊</span> Detalhes
                             </button>
@@ -579,179 +745,6 @@ export default function DevicesPage() {
           </div>
         )}
 
-        {/* Form Modal - Desktop sidebar / Mobile bottom sheet */}
-        {showForm && (
-          <>
-            <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={resetForm} />
-            <div className="fixed inset-x-0 bottom-0 z-50 sm:inset-0 sm:flex sm:items-center sm:justify-center">
-              <div className="sm:bg-transparent sm:p-0 w-full sm:max-w-2xl">
-                <form onSubmit={handleSave}
-                  className="bg-gray-900 border border-gray-800 sm:rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto rounded-t-2xl">
-                  {/* Form header */}
-                  <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between z-10">
-                    <div>
-                      <h3 className="text-lg font-semibold text-white">{editing ? 'Editar Dispositivo' : 'Novo Dispositivo'}</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">{editing ? 'Atualize as informações do dispositivo' : 'Preencha os dados para registrar um novo dispositivo'}</p>
-                    </div>
-                    <button type="button" onClick={resetForm} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-800 transition-colors">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </div>
-
-                  <div className="px-6 py-5 space-y-5">
-                    {/* Basic info */}
-                    <div>
-                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Informações Básicas</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1.5">Nome *</label>
-                          <input value={name} onChange={e => setName(e.target.value)} required
-                            className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors" placeholder="Ex: TV Sala" />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1.5">UUID *</label>
-                          <input value={deviceUuid} onChange={e => setDeviceUuid(e.target.value)} required
-                            className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors" placeholder="ID do dispositivo" />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1.5">Modelo</label>
-                          <input value={model} onChange={e => setModel(e.target.value)}
-                            className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors" placeholder="Ex: Samsung SM-X510" />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1.5">Orientação</label>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setOrientation('landscape')}
-                              className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${orientation === 'landscape' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
-                              ↔ Horizontal
-                            </button>
-                            <button type="button" onClick={() => setOrientation('portrait')}
-                              className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${orientation === 'portrait' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
-                              ↕ Vertical
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Organization */}
-                    <div>
-                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Organização & Unidade</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1.5">Organização *</label>
-                          <select value={organizationId} onChange={e => setOrganizationId(e.target.value)} required
-                            className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors">
-                            <option value="">Selecione...</option>
-                            {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1.5">Unidade</label>
-                          <select value={unitId} onChange={e => setUnitId(e.target.value)}
-                            className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors">
-                            <option value="">Nenhuma</option>
-                            {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Campaign & Layout */}
-                    <div>
-                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Campanha & Layout</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1.5">Campanha</label>
-                          <select value={campaignId} onChange={e => setCampaignId(e.target.value)}
-                            className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors">
-                            <option value="">Nenhuma (standby)</option>
-                            {campaigns.filter(c => !organizationId || c.organization_id === organizationId).map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-1.5">Layout (Diagramação)</label>
-                          <select value={layoutId} onChange={e => setLayoutId(e.target.value)}
-                            className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors">
-                            <option value="">Padrão (tela cheia)</option>
-                            {layouts.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Screen settings */}
-                    {editing && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Configurações de Tela</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm text-gray-400 mb-1.5">Rotação</label>
-                            <select value={editing.screen_rotation || 0}
-                              onChange={e => setEditing({ ...editing, screen_rotation: +e.target.value })}
-                              className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors">
-                              <option value={0}>0° (Normal)</option>
-                              <option value={90}>90° (Esquerda)</option>
-                              <option value={180}>180° (De cabeça)</option>
-                              <option value={270}>270° (Direita)</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm text-gray-400 mb-1.5">Espelhamento</label>
-                            <div className="flex gap-2">
-                              <button type="button" onClick={() => setEditing({ ...editing, mirror_horizontal: !editing.mirror_horizontal })}
-                                className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${editing.mirror_horizontal ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
-                                ↔ H
-                              </button>
-                              <button type="button" onClick={() => setEditing({ ...editing, mirror_vertical: !editing.mirror_vertical })}
-                                className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${editing.mirror_vertical ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
-                                ↕ V
-                              </button>
-                            </div>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="block text-sm text-gray-400 mb-1.5">Suporte Remoto</label>
-                            <div className="flex gap-2">
-                              <select value={editing.support_type || 'anydesk'}
-                                onChange={e => setEditing({ ...editing, support_type: e.target.value })}
-                                className="w-28 rounded-xl bg-gray-800 border border-gray-700 px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors">
-                                <option value="anydesk">AnyDesk</option>
-                                <option value="teamviewer">TeamViewer</option>
-                                <option value="scrcpy">ScrCPy</option>
-                              </select>
-                              <input value={editing.support_id || ''} placeholder="ID do dispositivo"
-                                onChange={e => setEditing({ ...editing, support_id: e.target.value })}
-                                className="flex-1 rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors" />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Form footer */}
-                  <div className="sticky bottom-0 bg-gray-900 border-t border-gray-800 px-6 py-4 flex items-center justify-end gap-3">
-                    <button type="button" onClick={resetForm}
-                      className="rounded-xl bg-gray-800 border border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-750 hover:text-white transition-colors">
-                      Cancelar
-                    </button>
-                    <button type="submit" disabled={saving}
-                      className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors shadow-lg shadow-blue-600/20">
-                      {saving ? (
-                        <span className="flex items-center gap-2">
-                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Salvando...
-                        </span>
-                      ) : editing ? 'Salvar Alterações' : 'Criar Dispositivo'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </>
-        )}
 
         {/* Delete Confirmation */}
         {deleteId && (
@@ -789,7 +782,7 @@ export default function DevicesPage() {
                 // Try to find existing device first
                 const found = devices.find(d => d.device_uuid === deviceUuid || d.id === deviceUuid);
                 if (found) {
-                  router.push(`/devices/${found.id}`);
+                  router.push(`/dashboard/devices/${found.id}`);
                   return;
                 }
                 // Not found — try to create via scan-or-create endpoint
@@ -806,7 +799,7 @@ export default function DevicesPage() {
                 if (data.created) {
                   alert(`✅ Novo dispositivo criado! Vincule-o a uma campanha agora.`);
                 }
-                router.push(`/devices/${data.device.id}`);
+                router.push(`/dashboard/devices/${data.device.id}`);
               } catch (e: any) {
                 alert(`Erro: ${e?.message || 'desconhecido'}`);
               }

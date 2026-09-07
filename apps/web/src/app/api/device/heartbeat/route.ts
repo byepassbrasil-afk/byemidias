@@ -119,12 +119,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Erro desconhecido';
-    console.error('POST /api/device/heartbeat error:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
-}
 
 // GET /api/device/heartbeat?device_id=X
 export async function GET(request: Request) {

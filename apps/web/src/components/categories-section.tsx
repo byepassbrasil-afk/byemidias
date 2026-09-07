@@ -179,7 +179,7 @@ export default function CategoriesSection({ deviceId }: CategoriesSectionProps) 
 }
 
 function CategoryChip({ c, variant, onRemove, onAllow, onBlock }: {
-  c: { id: string; name: string; icon: string; color: string; is_global: boolean };
+  c: { category_id?: string; id?: string; name: string; icon: string; color: string; is_global: boolean };
   variant: 'allowed' | 'blocked';
   onRemove: () => void;
   onAllow?: () => void;

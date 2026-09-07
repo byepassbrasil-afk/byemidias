@@ -190,7 +190,7 @@ export default function AdvertiserDetailPage() {
       const contractedJson = await contractedRes.json();
       const orgJson = await orgRes.json();
       setContractedDevices(contractedJson.devices || []);
-      setOrgDevices(orgJson.data?.records || []);
+      setOrgDevices(Array.isArray(orgJson.data) ? orgJson.data : (orgJson.data?.records || []));
     } catch (e) { console.error(e); }
   }, [advertiser, id]);
 

@@ -159,7 +159,7 @@ export default function AdvertiserDetailPage() {
       const res = await fetch(`/api/dashboard/crud/media?organization_id=${advertiser.organization_id}&limit=100`);
       const json = await res.json();
       console.log('[mediaPicker] org_id:', advertiser.organization_id, 'response:', json);
-      setLibraryMedia(json.data?.records || []);
+      setLibraryMedia(Array.isArray(json.data) ? json.data : (json.data?.records || []));
     } catch (e) { console.error(e); }
   }, [advertiser]);
 
@@ -168,7 +168,7 @@ export default function AdvertiserDetailPage() {
     try {
       const res = await fetch(`/api/dashboard/crud/campaigns?organization_id=${advertiser.organization_id}`);
       const json = await res.json();
-      setCampaigns(json.data?.records || []);
+      setCampaigns(Array.isArray(json.data) ? json.data : (json.data?.records || []));
     } catch (e) { console.error(e); }
   }, [advertiser]);
 

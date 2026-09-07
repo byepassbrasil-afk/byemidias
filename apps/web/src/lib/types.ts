@@ -79,6 +79,15 @@ export interface Device {
   support_id: string | null;
   support_type: string;
   restart_requested: boolean;
+  // APK config fields (synced with device)
+  api_base_url: string | null;
+  video_player: 'native' | 'vlc' | 'exoplayer';
+  html_render: 'native' | 'webview';
+  image_fit_mode: 'fill' | 'center' | 'centerCrop' | 'centerInside' | 'fitCenter' | 'fit';
+  image_rotation_lock: number;
+  video_volume: number;
+  auto_update: boolean;
+  low_mem_restart: boolean;
   last_screenshot: string | null;
   screenshot_updated_at: string | null;
   created_at: string;
@@ -103,6 +112,7 @@ export interface Media {
   id: string;
   organization_id: string;
   name: string;
+  display_name?: string | null;
   type: MediaType;
   file_url: string;
   thumbnail_url: string | null;
@@ -112,6 +122,9 @@ export interface Media {
   height: number | null;
   tags: string[];
   status: 'active' | 'archived';
+  default_orientation?: 'auto' | 'portrait' | 'landscape';
+  expires_at: string | null;
+  expires_reason: string | null;
   created_at: string;
   updated_at: string;
 }

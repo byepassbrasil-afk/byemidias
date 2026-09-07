@@ -72,10 +72,31 @@ export async function POST(request: Request) {
     }
 
     // Return device settings
-    const [deviceData] = await sql`SELECT content_version, restart_requested, screen_rotation, mirror_horizontal, mirror_vertical FROM devices WHERE id = ${device_id}`;
+    const [deviceData] = await sql`SELECT content_version, restart_requested, screen_rotation, mirror_horizontal, mirror_vertical, orientation FROM devices WHERE id = ${device_id}`;
 
     if (deviceData?.restart_requested) {
       await sql`UPDATE devices SET restart_requested = false WHERE id = ${device_id}`;
+    }
+
+    // Map orientation → screen_rotation if rotation not explicitly set
+    // orientation 'portrait' = 0, 'landscape' = 90
+    let effectiveRotation = deviceData?.screen_rotation || 0;
+    if (!deviceData?.screen_rotation && deviceData?.orientation) {
+      effectiveRotation = deviceData.orientation === 'portrait' ? 0 : 90;
+    }
+
+    // Fetch pending remote commands for this device
+    const pendingCommands = await sql`
+      SELECT id, command, payload
+      FROM device_commands
+      WHERE device_id = ${device_id} AND executed_at IS NULL
+      ORDER BY created_at ASC
+      LIMIT 5
+    `;
+    // Marcar como executados
+    if (pendingCommands.length > 0) {
+      const cmdIds = pendingCommands.map((c: any) => c.id);
+      await sql`UPDATE device_commands SET executed_at = NOW() WHERE id = ANY(${cmdIds})`;
     }
 
     return NextResponse.json({
@@ -83,10 +104,21 @@ export async function POST(request: Request) {
       uptime: uptimeStr,
       content_version: deviceData?.content_version || 0,
       restart: deviceData?.restart_requested || false,
-      screen_rotation: deviceData?.screen_rotation || 0,
+      screen_rotation: effectiveRotation,
+      orientation: deviceData?.orientation || 'landscape',
       mirror_horizontal: deviceData?.mirror_horizontal || false,
       mirror_vertical: deviceData?.mirror_vertical || false,
+      commands: pendingCommands.map((c: any) => ({
+        command: c.command,
+        payload: typeof c.payload === 'string' ? JSON.parse(c.payload) : c.payload,
+      })),
     });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    console.error('POST /api/device/heartbeat error:', msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('POST /api/device/heartbeat error:', msg);

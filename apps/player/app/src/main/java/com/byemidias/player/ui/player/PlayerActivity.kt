@@ -147,7 +147,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.81")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.82")
 
             // CRITICAL: Apply orientation BEFORE setContentView so layout inflates with correct dimensions
             prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
@@ -1170,7 +1170,17 @@ class PlayerActivity : ComponentActivity() {
                 if (mediaId.isEmpty()) { flog("W", "Fetch", "fetchMedia: item[$j] empty media_id, skip"); continue }
                 val media = mediaMap[mediaId]
                 if (media == null) { flog("E", "Fetch", "fetchMedia: item[$j] mediaId=$mediaId NOT in mediaMap, skip — MEDIA NOT FOUND"); continue }
-                val duration = item.optInt("duration", 0).coerceAtLeast(media.optInt("duration", 0)).coerceAtLeast(5)
+                // duration=0 = até o final natural do vídeo (sem corte)
+                // Se item.duration não está setado (0/null), usa media.duration mas com mínimo de 5s para imagens
+                val rawDuration = item.optInt("duration", 0)
+                val mediaDuration = media.optInt("duration", 0)
+                val duration = if (rawDuration <= 0) {
+                    // Item sem duração: se for vídeo, 0 = natural; se for imagem, mínimo 5s
+                    if (media.optString("type", "image") == "video") 0
+                    else mediaDuration.coerceAtLeast(5)
+                } else {
+                    rawDuration
+                }
                 val fileUrl = media.optString("file_url", "")
                 val orientation = media.optString("default_orientation", "auto")
                 val displayName = media.optString("display_name", "").ifEmpty { null }
@@ -1454,7 +1464,10 @@ class PlayerActivity : ComponentActivity() {
             return
         }
 
-        flog("I", "Play", "playVideo REAL: ${item.name}, configured duration=${item.duration}s")
+        // duration=0 significa "até o final natural do vídeo"
+        val playToEnd = item.duration <= 0
+        flog("I", "Play", "playVideo REAL: ${item.name}, configured duration=${item.duration}s, playToEnd=$playToEnd")
+
         val latch = java.util.concurrent.CountDownLatch(1)
         var videoEndedNaturally = false
         var playerError: String? = null
@@ -1467,17 +1480,16 @@ class PlayerActivity : ComponentActivity() {
                 // Show ExoPlayerView, hide ImageView
                 exoPlayerView?.visibility = View.VISIBLE
 
-                // Release any previous ExoPlayer
-                try { exoPlayer?.release() } catch (_: Exception) {}
-
-                // Create fresh ExoPlayer instance
-                val player = ExoPlayer.Builder(this@PlayerActivity)
-                    .setHandleAudioBecomingNoisy(true)
-                    .build()
-                exoPlayer = player
-
-                // Bind to player view
-                exoPlayerView?.player = player
+                // Reuse existing ExoPlayer instance to avoid 4-5s freeze on every video change
+                // (creating fresh ExoPlayer + setting surface = expensive on Google TV)
+                var player = exoPlayer
+                if (player == null) {
+                    player = ExoPlayer.Builder(this@PlayerActivity)
+                        .setHandleAudioBecomingNoisy(true)
+                        .build()
+                    exoPlayer = player
+                    exoPlayerView?.player = player
+                }
 
                 val volume = getVideoVolume()
                 player.volume = volume
@@ -1487,7 +1499,7 @@ class PlayerActivity : ComponentActivity() {
                         when (state) {
                             Player.STATE_READY -> {
                                 flog("I", "Play", "ExoPlayer READY: ${item.name}, videoDuration=${player.duration}ms, configured=${item.duration}s")
-                                player.play()
+                                if (!player.isPlaying) player.play()
                             }
                             Player.STATE_ENDED -> {
                                 flog("I", "Play", "ExoPlayer ENDED naturally: ${item.name}")
@@ -1508,8 +1520,11 @@ class PlayerActivity : ComponentActivity() {
                 })
 
                 val mediaItem = ExoMediaItem.fromUri(item.fileUrl)
+                player.stop()
+                player.clearMediaItems()
                 player.setMediaItem(mediaItem)
                 player.prepare()
+                player.playWhenReady = true
 
                 flog("I", "Play", "ExoPlayer started: ${item.name}")
             } catch (e: Exception) {
@@ -1519,15 +1534,22 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
-        // Wait for either: video ends naturally, error, or configured duration + 5s buffer
-        withContext(Dispatchers.IO) { latch.await(item.duration.toLong() + 5, java.util.concurrent.TimeUnit.SECONDS) }
+        // Se playToEnd: espera até STATE_ENDED (latch.countDown()) sem limite.
+        // Senão: espera duração configurada + 5s de margem.
+        if (playToEnd) {
+            withContext(Dispatchers.IO) { latch.await() }  // sem timeout
+        } else {
+            withContext(Dispatchers.IO) { latch.await(item.duration.toLong() + 5, java.util.concurrent.TimeUnit.SECONDS) }
+        }
 
-        // Force stop at exactly the configured duration
-        withContext(Dispatchers.Main) {
-            val player = exoPlayer
-            if (player != null && !videoEndedNaturally && playerError == null) {
-                flog("I", "Play", "Duration cut: stopping ${item.name} at ${item.duration}s (configured cut-off)")
-                player.stop()
+        // Force stop at exactly the configured duration (only if not playToEnd and didn't end naturally)
+        if (!playToEnd) {
+            withContext(Dispatchers.Main) {
+                val player = exoPlayer
+                if (player != null && !videoEndedNaturally && playerError == null) {
+                    flog("I", "Play", "Duration cut: stopping ${item.name} at ${item.duration}s (configured cut-off)")
+                    player.stop()
+                }
             }
         }
 
@@ -1682,7 +1704,98 @@ class PlayerActivity : ComponentActivity() {
                     rootLayout?.scaleY = if (mirrorV) -1f else 1f
                 }
             }
+
+            // Process remote commands from dashboard
+            val commandsArray = json.optJSONArray("commands")
+            if (commandsArray != null && commandsArray.length() > 0) {
+                for (i in 0 until commandsArray.length()) {
+                    val cmd = commandsArray.getJSONObject(i)
+                    executeRemoteCommand(cmd.optString("command", ""))
+                }
+            }
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Executa comandos remotos vindos do painel (disparados via botão).
+     */
+    private fun executeRemoteCommand(command: String) {
+        flog("I", "Cmd", "executeRemoteCommand: $command")
+        runOnUiThread {
+            try {
+                when (command) {
+                    "open_config" -> {
+                        // Vai direto pra tela de configurações (mesma função do toque 10x)
+                        val intent = android.content.Intent(this, ConfigActivity::class.java)
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                    }
+                    "rotate" -> {
+                        // Alterna rotação (mesmo comportamento do botão Rotacionar no APK)
+                        rotateScreen()
+                    }
+                    "rotate_portrait" -> {
+                        prefs?.edit()?.putInt("screen_rotation", 0)?.apply()
+                        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
+                    "rotate_landscape" -> {
+                        prefs?.edit()?.putInt("screen_rotation", 90)?.apply()
+                        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    }
+                    "reload" -> {
+                        // Força re-sync
+                        needsResync = true
+                        currentContentVersion = -1
+                    }
+                    "clear_cache" -> {
+                        try {
+                            prefs?.edit()
+                                ?.remove("cache_media")
+                                ?.remove("cache_zones")
+                                ?.remove("cache_time")
+                                ?.apply()
+                        } catch (_: Exception) {}
+                        flog("I", "Cmd", "Cache cleared by remote command")
+                    }
+                    "toggle_kiosk" -> {
+                        try {
+                            val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                            // For simplicity: launch lock task
+                            val lockIntent = android.content.Intent(this, PlayerActivity::class.java)
+                            lockIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            startActivity(lockIntent)
+                            runOnUiThread {
+                                try { startLockTask() } catch (_: Exception) {}
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    "restart" -> {
+                        try {
+                            val intent = packageManager.getLaunchIntentForPackage(packageName)
+                            intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            finishAffinity()
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                flog("E", "Cmd", "executeRemoteCommand error: ${e.message}")
+            }
+        }
+    }
+
+    private fun rotateScreen() {
+        val current = prefs?.getInt("screen_rotation", 0) ?: 0
+        val next = when (current) {
+            0 -> 90
+            90 -> 0
+            else -> 0
+        }
+        prefs?.edit()?.putInt("screen_rotation", next)?.apply()
+        requestedOrientation = if (next == 0)
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        else
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
     }
 
     private fun sendHeartbeatOff() {

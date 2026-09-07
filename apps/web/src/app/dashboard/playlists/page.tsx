@@ -303,39 +303,93 @@ export default function PlaylistsPage() {
 
   async function handleRemoveItem(item: UnifiedItem) {
     if (!selectedPlaylist) return;
-    if (item.type === 'media') {
-      await fetch(`/api/admin/crud/playlist_items?id=${item.id}`, { method: 'DELETE' });
-    } else {
-      await fetch(`/api/admin/crud/playlist_slots?id=${item.id}`, { method: 'DELETE' });
-    }
-    const remaining = unifiedItems.filter(i => i.id !== item.id || i.type !== item.type);
-    setUnifiedItems(remaining);
-    // Persist new positions
-    for (let i = 0; i < remaining.length; i++) {
-      if (remaining[i].type === 'media') {
-        await fetch('/api/admin/crud/playlist_items', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, position: i }) });
+    try {
+      if (item.type === 'media') {
+        const res = await fetch(`/api/admin/crud/playlist_items?id=${item.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(`Erro ao remover: ${err.error || res.statusText}`);
+          return;
+        }
       } else {
-        await fetch('/api/admin/crud/playlist_slots', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, slot_order: i }) });
+        const res = await fetch(`/api/admin/crud/playlist_slots?id=${item.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(`Erro ao remover slot: ${err.error || res.statusText}`);
+          return;
+        }
       }
+      const remaining = unifiedItems.filter(i => i.id !== item.id || i.type !== item.type);
+      setUnifiedItems(remaining);
+      for (let i = 0; i < remaining.length; i++) {
+        if (remaining[i].type === 'media') {
+          await fetch('/api/admin/crud/playlist_items', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, position: i }) });
+        } else {
+          await fetch('/api/admin/crud/playlist_slots', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, slot_order: i }) });
+        }
+      }
+    } catch (e: any) {
+      alert(`Erro ao remover: ${e?.message || 'desconhecido'}`);
     }
   }
 
   async function handleUpdateDuration(item: UnifiedItem, newDuration: number) {
     if (!selectedPlaylist || item.type !== 'media') return;
-    await fetch('/api/admin/crud/playlist_items', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, duration: newDuration }) });
-    setUnifiedItems(prev => prev.map(i => i.id === item.id && i.type === 'media' ? { ...i, duration: newDuration } : i));
+    const dur = Math.max(1, Math.min(300, newDuration));
+    try {
+      const res = await fetch('/api/admin/crud/playlist_items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, duration: dur })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Erro ao salvar duração: ${err.error || res.statusText}`);
+        return;
+      }
+      setUnifiedItems(prev => prev.map(i => i.id === item.id && i.type === 'media' ? { ...i, duration: dur } : i));
+    } catch (e: any) {
+      alert(`Erro ao salvar duração: ${e?.message || 'desconhecido'}`);
+    }
   }
 
   async function handleUpdateTransition(item: UnifiedItem, newTransition: string) {
     if (!selectedPlaylist || item.type !== 'media') return;
-    await fetch('/api/admin/crud/playlist_items', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, transition: newTransition }) });
-    setUnifiedItems(prev => prev.map(i => i.id === item.id && i.type === 'media' ? { ...i, transition: newTransition } : i));
+    try {
+      const res = await fetch('/api/admin/crud/playlist_items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, transition: newTransition })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Erro ao salvar transição: ${err.error || res.statusText}`);
+        return;
+      }
+      setUnifiedItems(prev => prev.map(i => i.id === item.id && i.type === 'media' ? { ...i, transition: newTransition } : i));
+    } catch (e: any) {
+      alert(`Erro ao salvar transição: ${e?.message || 'desconhecido'}`);
+    }
   }
 
   async function handleUpdateSlotDuration(item: UnifiedItem, newDuration: number) {
     if (!selectedPlaylist || item.type !== 'slot') return;
-    await fetch('/api/admin/crud/playlist_slots', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, duration_seconds: newDuration }) });
-    setUnifiedItems(prev => prev.map(i => i.id === item.id && i.type === 'slot' ? { ...i, duration_seconds: newDuration } : i));
+    const dur = Math.max(1, Math.min(3600, newDuration));
+    try {
+      const res = await fetch('/api/admin/crud/playlist_slots', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, duration_seconds: dur })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Erro ao salvar duração do slot: ${err.error || res.statusText}`);
+        return;
+      }
+      setUnifiedItems(prev => prev.map(i => i.id === item.id && i.type === 'slot' ? { ...i, duration_seconds: dur } : i));
+    } catch (e: any) {
+      alert(`Erro ao salvar duração do slot: ${e?.message || 'desconhecido'}`);
+    }
   }
 
   async function forceUpdateDevices() {
@@ -557,13 +611,15 @@ export default function PlaylistsPage() {
                               </div>
                               <span className="text-sm text-gray-900 truncate">{sub.media?.name ?? sub.media_id}</span>
                             </div>
-                            <div>
-                              <div className="flex items-center gap-1">
-                                <input type="number" value={sub.duration ?? 10} onChange={e => handleUpdateDuration(sub, Number(e.target.value))}
-                                  min={1} max={300} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none" />
-                                <span className="text-xs text-gray-400">s</span>
+                              <div>
+                                <div className="flex items-center gap-1">
+                                  <input type="number" defaultValue={sub.duration ?? 10} key={sub.id + ':' + (sub.duration ?? 10)}
+                                    onBlur={e => { const v = Number(e.target.value); if (v !== (sub.duration ?? 10) && !isNaN(v) && v >= 0) handleUpdateDuration(sub, v) }}
+                                    min={0} max={300} title="0 = até o final natural do vídeo" className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none" />
+                                  <span className="text-xs text-gray-400" title="0 = vídeo inteiro">s</span>
+                                </div>
+                                <span className="text-[10px] text-orange-600" title="Duração 0 = até o fim do vídeo">0 = natural</span>
                               </div>
-                            </div>
                             <div>
                               <select value={sub.transition ?? 'fade'} onChange={e => handleUpdateTransition(sub, e.target.value)}
                                 className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 outline-none">
@@ -606,10 +662,13 @@ export default function PlaylistsPage() {
                     </div>
                     <div>
                       <div className="flex items-center gap-1">
-                        <input type="number" value={item.duration ?? 10} onChange={e => handleUpdateDuration(item, Number(e.target.value))}
-                          min={1} max={300} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none" />
+                        <input type="number" defaultValue={item.duration ?? 10} key={item.id + ':' + (item.duration ?? 10)}
+                          onBlur={e => { const v = Number(e.target.value); if (v !== (item.duration ?? 10) && !isNaN(v) && v >= 0) handleUpdateDuration(item, v) }}
+                          min={0} max={300} title="0 = até o final natural do vídeo" className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none" />
                         <span className="text-xs text-gray-400">s</span>
                       </div>
+                      <span className="text-[10px] text-orange-600" title="Duração 0 = até o fim do vídeo">0 = natural</span>
+                    </div>
                     </div>
                     <div>
                       <select value={item.transition ?? 'fade'} onChange={e => handleUpdateTransition(item, e.target.value)}

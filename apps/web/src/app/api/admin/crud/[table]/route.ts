@@ -54,7 +54,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ data: data ?? [] });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
-    console.error(`[admin/crud GET] table=${table}:`, msg);
+    console.error('[admin/crud GET]:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

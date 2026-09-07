@@ -14,6 +14,10 @@ interface Partner {
   display_name: string;
   status: string;
   created_at: string;
+  category_id: string | null;
+  category_name: string | null;
+  category_icon: string | null;
+  category_color: string | null;
   partner_devices: PartnerDevice[];
 }
 
@@ -44,6 +48,8 @@ export default function PartnersPage() {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [categories, setCategories] = useState<{ id: string; name: string; icon: string; color: string; is_global: boolean }[]>([]);
 
   const [selectedDevices, setSelectedDevices] = useState<Record<string, string>>({});
   const [orgSlug, setOrgSlug] = useState<string | null>(null);
@@ -70,6 +76,10 @@ export default function PartnersPage() {
           display_name: p.display_name || p.name || '',
           status: p.status,
           created_at: p.created_at,
+          category_id: p.category_id ?? null,
+          category_name: p.category_name ?? null,
+          category_icon: p.category_icon ?? null,
+          category_color: p.category_color ?? null,
           partner_devices: safeParseDevices(p.partner_devices),
         }));
         setPartners(list);
@@ -86,6 +96,15 @@ export default function PartnersPage() {
         const p = await playlistsRes.json();
         setAllPlaylists(p.data ?? []);
       }
+
+      // Carrega categorias
+      try {
+        const catRes = await fetch('/api/dashboard/categories');
+        if (catRes.ok) {
+          const catData = await catRes.json();
+          setCategories(catData.categories ?? []);
+        }
+      } catch {}
 
       if (profileRes && profileRes.ok) {
         const prof = await profileRes.json();
@@ -104,7 +123,7 @@ export default function PartnersPage() {
     const res = await fetch('/api/admin/partners', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, display_name: displayName, password }),
+      body: JSON.stringify({ username, display_name: displayName, password, category_id: categoryId || undefined }),
     });
 
     const data = await res.json();
@@ -116,6 +135,7 @@ export default function PartnersPage() {
     setUsername('');
     setDisplayName('');
     setPassword('');
+    setCategoryId('');
     setShowForm(false);
     loadData();
   }
@@ -221,6 +241,23 @@ export default function PartnersPage() {
                 minLength={4}
                 className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                🏷️ Categoria padrão do parceiro
+              </label>
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm">
+                <option value="">Padrão (automático)</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.is_global ? '🌍' : ''} {c.icon} {c.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Mídias deste parceiro serão automaticamente categorizadas. Se deixar vazio, recebe a "Padrão" da sua org.
+              </p>
+            </div>
           </div>
           <button type="submit" className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700">
             Criar Parceiro
@@ -301,6 +338,7 @@ export default function PartnersPage() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nome</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuário</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoria</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dispositivos</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Criado em</th>
@@ -312,6 +350,23 @@ export default function PartnersPage() {
                 <tr key={partner.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{partner.display_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500 font-mono">{partner.username}</td>
+                  <td className="px-6 py-4 text-sm">
+                    {partner.category_name ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
+                        style={{
+                          backgroundColor: (partner.category_color || '#6b7280') + '20',
+                          color: partner.category_color || '#6b7280',
+                          border: `1px solid ${partner.category_color || '#6b7280'}40`,
+                        }}
+                      >
+                        <span>{partner.category_icon || '🏷️'}</span>
+                        {partner.category_name}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">Padrão</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-sm text-gray-500">
                     {partner.partner_devices?.length || 0} dispositivo(s)
                   </td>

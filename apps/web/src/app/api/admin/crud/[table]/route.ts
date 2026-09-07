@@ -25,8 +25,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '500'), 1000);
     const offset = parseInt(searchParams.get('offset') || '0');
-    const orderBy = searchParams.get('order') || 'created_at';
+    const orderByRaw = searchParams.get('order') || 'created_at';
     const ascending = searchParams.get('asc') !== 'false';
+    // Whitelist orderBy to prevent SQL injection via ORDER BY
+    const ALLOWED_ORDER_COLUMNS = new Set(['created_at', 'updated_at', 'name', 'status', 'last_heartbeat', 'model', 'id']);
+    const orderBy = ALLOWED_ORDER_COLUMNS.has(orderByRaw) ? orderByRaw : 'created_at';
 
     const filters: string[] = [];
     for (const [key, value] of searchParams.entries()) {
@@ -40,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       } else {
         const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);
         if (hasOrgCol.length > 0 && user.organization_id) {
-          filters.push(`organization_id = '${user.organization_id}'`);
+          filters.push(`organization_id = '${user.organization_id?.replace(/'/g, "''")}'`);
         }
       }
     }
@@ -51,6 +54,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ data: data ?? [] });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    console.error(`[admin/crud GET] table=${table}:`, msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
@@ -67,6 +71,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const body = await request.json();
     if (!body || Object.keys(body).length === 0) {
       return NextResponse.json({ error: 'Dados obrigatórios' }, { status: 400 });
+    }
+
+    // Auto-inject organization_id if table has it and body doesn't include it
+    if (user.organization_id && !body.organization_id) {
+      const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);
+      if (hasOrgCol.length > 0) {
+        body.organization_id = user.organization_id;
+      }
     }
 
     const columns = Object.keys(body);
@@ -173,6 +185,20 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       if (org.owner_id !== user.id) return NextResponse.json({ error: 'Apenas o proprietário pode excluir esta organização' }, { status: 403 });
     }
 
+    // Special handling: clean FKs BEFORE any DELETE attempt
+    if (table === 'profiles') {
+      await deleteProfile(id, user);
+      return NextResponse.json({ success: true });
+    }
+    if (table === 'devices') {
+      await deleteDevice(id);
+      return NextResponse.json({ success: true });
+    }
+    if (table === 'media') {
+      await sql`DELETE FROM playback_logs WHERE media_id = ${id}`;
+      await sql`DELETE FROM partner_media_uploads WHERE media_id = ${id}`;
+    }
+
     if (user.role !== 'super_admin' && table !== 'organizations') {
       const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);
       if (hasOrgCol.length > 0 && user.organization_id) {
@@ -190,18 +216,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         return NextResponse.json({ success: true });
       }
       // hasOrgCol > 0 but no user.organization_id — treat as super_admin path
-    }
-
-    // Special handling for profiles: clean FKs first
-    if (table === 'profiles') {
-      await deleteProfile(id, user);
-      return NextResponse.json({ success: true });
-    }
-
-    // Special handling for devices: clean FKs first
-    if (table === 'devices') {
-      await deleteDevice(id);
-      return NextResponse.json({ success: true });
     }
 
     await sql.unsafe(`DELETE FROM ${table} WHERE id = $1`, [id]);

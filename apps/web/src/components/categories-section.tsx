@@ -73,11 +73,11 @@ export default function CategoriesSection({ deviceId }: CategoriesSectionProps) 
   }
 
   function allow(c: Category) {
-    const next = [...assigned.filter(a => a.category_id !== c.id), { ...c, is_blocked: false }];
+    const next = [...assigned.filter(a => a.category_id !== c.id), { category_id: c.id, is_blocked: false, name: c.name, icon: c.icon, color: c.color, is_global: c.is_global }];
     save(next.map(a => ({ category_id: a.category_id, is_blocked: a.is_blocked })));
   }
   function block(c: Category) {
-    const next = [...assigned.filter(a => a.category_id !== c.id), { ...c, is_blocked: true }];
+    const next = [...assigned.filter(a => a.category_id !== c.id), { category_id: c.id, is_blocked: true, name: c.name, icon: c.icon, color: c.color, is_global: c.is_global }];
     save(next.map(a => ({ category_id: a.category_id, is_blocked: a.is_blocked })));
   }
   function remove(c: Category) {

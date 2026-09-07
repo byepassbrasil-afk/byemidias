@@ -25,6 +25,7 @@ export default function MediaPage() {
   const [mediaCategories, setMediaCategories] = useState<{ id: string; name: string; icon: string; color: string; is_default: boolean; is_global: boolean }[]>([]);
   const [selectedCatIds, setSelectedCatIds] = useState<Set<string>>(new Set());
   const [availableCats, setAvailableCats] = useState<{ id: string; name: string; icon: string; color: string; is_default: boolean; is_global: boolean }[]>([]);
+  const [extendDays, setExtendDays] = useState<number>(7);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Only super_admin can do cross-org blocking (excluded_organization_ids, excluded_device_ids)
@@ -287,7 +288,7 @@ export default function MediaPage() {
       const available = availableRes.ok ? await availableRes.json() : { categories: [] };
       setMediaCategories(assigned.categories ?? []);
       setAvailableCats(available.categories ?? []);
-      setSelectedCatIds(new Set((assigned.categories ?? []).map((c: { id: string }) => c.id)));
+      setSelectedCatIds(new Set((assigned.categories ?? []).map((c: { category_id: string }) => c.category_id)));
     } catch (e) {
       console.error('loadMediaCategories', e);
     }
@@ -305,6 +306,73 @@ export default function MediaPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category_ids: Array.from(next) }),
       });
+    }
+  }
+
+  async function extendExpiration() {
+    if (!detailMedia) return;
+    try {
+      const res = await fetch(`/api/dashboard/media/${detailMedia.id}/extend-expiration`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: extendDays }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert('Erro: ' + (json.error || 'desconhecido'));
+        return;
+      }
+      const updated = { ...detailMedia, expires_at: json.expires_at };
+      setDetailMedia(updated);
+      loadMedia();
+      alert(`✅ Validade prorrogada até ${formatDate(json.expires_at)}`);
+    } catch (e) {
+      alert('Erro: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function removeExpiration() {
+    if (!detailMedia) return;
+    if (!confirm('Remover validade? A mídia ficará permanente.')) return;
+    try {
+      const res = await fetch(`/api/dashboard/media/${detailMedia.id}/extend-expiration`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 0 }), // 0 = permanente
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert('Erro: ' + (json.error || 'desconhecido'));
+        return;
+      }
+      setDetailMedia({ ...detailMedia, expires_at: json.expires_at });
+      loadMedia();
+      alert('✅ Mídia marcada como permanente (sem validade)');
+    } catch (e) {
+      alert('Erro: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function reactivateMedia() {
+    if (!detailMedia) return;
+    const days = extendDays || 7;
+    try {
+      const res = await fetch(`/api/dashboard/media/${detailMedia.id}/reactivate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert('Erro: ' + (json.error || 'desconhecido'));
+        return;
+      }
+      const updated = { ...detailMedia, expires_at: json.expires_at, status: 'active' };
+      setDetailMedia(updated);
+      loadMedia();
+      alert(`✅ Mídia reativada! Nova validade: ${formatDate(json.expires_at)}`);
+    } catch (e) {
+      alert('Erro: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -727,6 +795,48 @@ export default function MediaPage() {
                           </button>
                         );
                       })}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-3">
+                    <label className="block text-xs text-gray-500 mb-2">⏱️ Validade / Expiração</label>
+                    <div className="mb-2 text-sm">
+                      <span className="text-gray-500">Data atual:</span>{' '}
+                      {detailMedia.expires_at ? (
+                        <span className={`font-medium ${isExpired(detailMedia.expires_at) ? 'text-red-600' : isExpiringSoon(detailMedia.expires_at) ? 'text-amber-600' : 'text-gray-900'}`}>
+                          {formatDate(detailMedia.expires_at)}
+                          {isExpired(detailMedia.expires_at) && ' (VENCIDA)'}
+                        </span>
+                      ) : (
+                        <span className="text-green-600 font-medium">∞ Permanente</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input
+                        type="number"
+                        min={1}
+                        max={3650}
+                        value={extendDays}
+                        onChange={(e) => setExtendDays(Math.max(1, parseInt(e.target.value) || 0))}
+                        className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <span className="text-xs text-gray-500">dias</span>
+                      <button onClick={extendExpiration}
+                        className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
+                        ➕ Prorrogar
+                      </button>
+                      {detailMedia.expires_at && (
+                        <button onClick={removeExpiration}
+                          className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-300">
+                          ∞ Permanente
+                        </button>
+                      )}
+                      {detailMedia.expires_at && isExpired(detailMedia.expires_at) && (
+                        <button onClick={reactivateMedia}
+                          className="rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white hover:bg-green-700">
+                          ♻️ Reativar
+                        </button>
+                      )}
                     </div>
                   </div>
 

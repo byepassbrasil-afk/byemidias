@@ -335,7 +335,8 @@ export default function PlaylistsPage() {
 
   async function handleUpdateDuration(item: UnifiedItem, newDuration: number) {
     if (!selectedPlaylist || item.type !== 'media') return;
-    const dur = Math.max(1, Math.min(300, newDuration));
+    // 0 = até o final natural do vídeo. Aceita 0..300.
+    const dur = Math.max(0, Math.min(300, newDuration));
     try {
       const res = await fetch('/api/admin/crud/playlist_items', {
         method: 'PUT',
@@ -611,15 +612,15 @@ export default function PlaylistsPage() {
                               </div>
                               <span className="text-sm text-gray-900 truncate">{sub.media?.name ?? sub.media_id}</span>
                             </div>
-                              <div>
-                                <div className="flex items-center gap-1">
-                                  <input type="number" defaultValue={sub.duration ?? 10} key={sub.id + ':' + (sub.duration ?? 10)}
-                                    onBlur={e => { const v = Number(e.target.value); if (v !== (sub.duration ?? 10) && !isNaN(v) && v >= 0) handleUpdateDuration(sub, v) }}
-                                    min={0} max={300} title="0 = até o final natural do vídeo" className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none" />
-                                  <span className="text-xs text-gray-400" title="0 = vídeo inteiro">s</span>
-                                </div>
-                                <span className="text-[10px] text-orange-600" title="Duração 0 = até o fim do vídeo">0 = natural</span>
+                            <div>
+                              <div className="flex items-center gap-1">
+                                <input type="number" defaultValue={sub.duration ?? 10} key={sub.id + ':' + (sub.duration ?? 10)}
+                                  onBlur={e => { const v = Number(e.target.value); if (v !== (sub.duration ?? 10) && !isNaN(v) && v >= 0) handleUpdateDuration(sub, v) }}
+                                  min={0} max={300} title="0 = até o final natural do vídeo" className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-center focus:border-blue-500 outline-none" />
+                                <span className="text-xs text-gray-400" title="0 = vídeo inteiro">s</span>
                               </div>
+                              <span className="text-[10px] text-orange-600" title="Duração 0 = até o fim do vídeo">0 = natural</span>
+                            </div>
                             <div>
                               <select value={sub.transition ?? 'fade'} onChange={e => handleUpdateTransition(sub, e.target.value)}
                                 className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 outline-none">
@@ -668,7 +669,6 @@ export default function PlaylistsPage() {
                         <span className="text-xs text-gray-400">s</span>
                       </div>
                       <span className="text-[10px] text-orange-600" title="Duração 0 = até o fim do vídeo">0 = natural</span>
-                    </div>
                     </div>
                     <div>
                       <select value={item.transition ?? 'fade'} onChange={e => handleUpdateTransition(item, e.target.value)}

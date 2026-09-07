@@ -88,6 +88,25 @@ export default function CategoriesSection({ deviceId }: CategoriesSectionProps) 
     save(next.map(a => ({ category_id: a.category_id, is_blocked: a.is_blocked })));
   }
 
+  function addAll() {
+    // Mescla assigned + available, todas como permitidas (is_blocked: false)
+    const assignedIds = new Set(assigned.map(a => a.category_id));
+    const merged: AssignedCategory[] = [
+      ...assigned.map(a => ({ category_id: a.category_id, is_blocked: a.is_blocked, name: a.name, icon: a.icon, color: a.color, is_global: a.is_global })),
+      ...available
+        .filter(c => !assignedIds.has(c.id))
+        .map(c => ({
+          category_id: c.id,
+          is_blocked: false,
+          name: c.name,
+          icon: c.icon,
+          color: c.color,
+          is_global: c.is_global,
+        })),
+    ];
+    save(merged.map(a => ({ category_id: a.category_id, is_blocked: a.is_blocked })));
+  }
+
   const allowed = assigned.filter(a => !a.is_blocked);
   const blocked = assigned.filter(a => a.is_blocked);
 
@@ -156,6 +175,17 @@ export default function CategoriesSection({ deviceId }: CategoriesSectionProps) 
               <summary className="cursor-pointer text-sm text-orange-400 hover:text-orange-300 font-medium">
                 + Adicionar categoria ({available.length} disponíveis)
               </summary>
+              <div className="mt-3 mb-3 flex justify-end">
+                <button
+                  onClick={addAll}
+                  disabled={saving}
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                  style={{ backgroundColor: '#ee6a1e' }}
+                  title="Adiciona todas as categorias disponíveis como permitidas. Depois você pode bloquear individualmente."
+                >
+                  ➕ Adicionar todas ({available.length})
+                </button>
+              </div>
               <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2">
                 {available.map((c) => (
                   <div key={c.id} className="flex items-center gap-2 bg-gray-800 rounded-lg p-2">

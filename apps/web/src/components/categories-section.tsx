@@ -72,16 +72,19 @@ export default function CategoriesSection({ deviceId }: CategoriesSectionProps) 
     setSaving(false);
   }
 
-  function allow(c: Category) {
-    const next = [...assigned.filter(a => a.category_id !== c.id), { category_id: c.id, is_blocked: false, name: c.name, icon: c.icon, color: c.color, is_global: c.is_global }];
+  function allow(c: Category | AssignedCategory) {
+    const cid = 'id' in c ? c.id : c.category_id;
+    const next = [...assigned.filter(a => a.category_id !== cid), { category_id: cid, is_blocked: false, name: c.name, icon: c.icon, color: c.color, is_global: c.is_global }];
     save(next.map(a => ({ category_id: a.category_id, is_blocked: a.is_blocked })));
   }
-  function block(c: Category) {
-    const next = [...assigned.filter(a => a.category_id !== c.id), { category_id: c.id, is_blocked: true, name: c.name, icon: c.icon, color: c.color, is_global: c.is_global }];
+  function block(c: Category | AssignedCategory) {
+    const cid = 'id' in c ? c.id : c.category_id;
+    const next = [...assigned.filter(a => a.category_id !== cid), { category_id: cid, is_blocked: true, name: c.name, icon: c.icon, color: c.color, is_global: c.is_global }];
     save(next.map(a => ({ category_id: a.category_id, is_blocked: a.is_blocked })));
   }
-  function remove(c: Category) {
-    const next = assigned.filter(a => a.category_id !== c.id);
+  function remove(c: Category | AssignedCategory) {
+    const cid = 'id' in c ? c.id : c.category_id;
+    const next = assigned.filter(a => a.category_id !== cid);
     save(next.map(a => ({ category_id: a.category_id, is_blocked: a.is_blocked })));
   }
 

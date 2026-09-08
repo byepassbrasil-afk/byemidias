@@ -147,7 +147,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.82")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.83")
 
             // CRITICAL: Apply orientation BEFORE setContentView so layout inflates with correct dimensions
             prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
@@ -194,7 +194,23 @@ class PlayerActivity : ComponentActivity() {
                 Log.e(tag, "Immersive mode failed: ${e.message}")
             }
 
-            // KIOSK MODE: Start lock task to prevent leaving the app
+            // KIOSK MODE: Allow ConfigActivity + LogsActivity in lock task so remote commands
+            // like "open_config" can launch them. Falls back silently if device isn't Device Owner.
+            try {
+                val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                val adminComponent = android.content.ComponentName(this, com.byemidias.player.receiver.KioskDeviceAdminReceiver::class.java)
+                val packages = arrayOf(
+                    packageName,
+                    "$packageName/.ui.config.ConfigActivity",
+                    "$packageName/.ui.logs.LogsActivity"
+                )
+                dpm.setLockTaskPackages(adminComponent, packages)
+                flog("I", tag, "setLockTaskPackages: ${packages.joinToString()}")
+            } catch (e: Exception) {
+                flog("W", tag, "setLockTaskPackages failed (device may not be owner): ${e.message}")
+            }
+
+            // Start lock task to prevent leaving the app
             try {
                 startLockTask()
                 Log.i(tag, "Lock task started")

@@ -53,7 +53,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:screenOrientation="sensor"
-            android:theme="@style/Theme.ByeMidias" />
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.ByeMidias">
+            <meta-data
+                android:name="android.app.shortcut"
+                android:value="true" />
+        </activity>
 
         <activity
             android:name=".ui.logs.LogsActivity"

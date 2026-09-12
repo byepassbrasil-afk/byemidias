@@ -198,6 +198,38 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       await sql`DELETE FROM playback_logs WHERE media_id = ${id}`;
       await sql`DELETE FROM partner_media_uploads WHERE media_id = ${id}`;
     }
+    if (table === 'campaigns') {
+      // Limpa FKs antes de excluir a campanha
+      await sql`DELETE FROM playback_logs WHERE campaign_id = ${id}`;
+      await sql`DELETE FROM campaign_playlists WHERE campaign_id = ${id}`;
+      await sql`DELETE FROM campaign_targets WHERE campaign_id = ${id}`;
+      await sql`DELETE FROM campaign_time_slots WHERE campaign_id = ${id}`;
+      await sql`DELETE FROM campaign_calendar WHERE campaign_id = ${id}`;
+      await sql`DELETE FROM revenues WHERE campaign_id = ${id}`;
+      await sql`UPDATE devices SET campaign_id = NULL WHERE campaign_id = ${id}`;
+      await sql`UPDATE device_logs SET campaign_id = NULL WHERE campaign_id = ${id}`;
+    }
+    if (table === 'playlists') {
+      await sql`UPDATE devices SET campaign_id = NULL WHERE campaign_id IN (SELECT campaign_id FROM campaign_playlists WHERE playlist_id = ${id})`;
+      await sql`DELETE FROM campaign_playlists WHERE playlist_id = ${id}`;
+      await sql`DELETE FROM campaign_time_slots WHERE playlist_id = ${id}`;
+      await sql`DELETE FROM playlist_items WHERE playlist_id = ${id}`;
+      await sql`DELETE FROM playlist_slots WHERE playlist_id = ${id}`;
+    }
+    if (table === 'devices') {
+      await sql`DELETE FROM advertiser_devices WHERE device_id = ${id}`;
+      await sql`DELETE FROM device_categories WHERE device_id = ${id}`;
+      await sql`DELETE FROM device_overrides WHERE device_id = ${id}`;
+      await sql`DELETE FROM device_logs WHERE device_id = ${id}`;
+      await sql`DELETE FROM device_uptime_sessions WHERE device_id = ${id}`;
+      await sql`DELETE FROM partner_devices WHERE device_id = ${id}`;
+      await sql`DELETE FROM playback_logs WHERE device_id = ${id}`;
+    }
+    if (table === 'organizations') {
+      await sql`DELETE FROM organization_admins WHERE organization_id = ${id}`;
+      await sql`DELETE FROM campaign_targets WHERE organization_id = ${id}`;
+      await sql`UPDATE profiles SET organization_id = NULL WHERE organization_id = ${id}`;
+    }
 
     if (user.role !== 'super_admin' && table !== 'organizations') {
       const hasOrgCol = await sql.unsafe(`SELECT column_name FROM information_schema.columns WHERE table_name = '${table}' AND column_name = 'organization_id' LIMIT 1`);

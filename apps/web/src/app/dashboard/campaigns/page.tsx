@@ -50,6 +50,9 @@ export default function CampaignsPage() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteName, setDeleteName] = useState<string>('');
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,6 +101,29 @@ export default function CampaignsPage() {
     return links
       .filter(l => l.campaign_id === campaignId)
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  }
+
+  async function handleDeleteCampaign() {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/crud/campaigns?id=${deleteId}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErrorMsg(json.error || `Erro ${res.status}`);
+        setDeleteId(null);
+        setDeleting(false);
+        return;
+      }
+      setDeleteId(null);
+      setSuccessMsg('Campanha excluída');
+      setTimeout(() => setSuccessMsg(null), 2500);
+      load();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Erro ao excluir');
+      setDeleteId(null);
+    }
+    setDeleting(false);
   }
 
   return (
@@ -265,6 +291,13 @@ export default function CampaignsPage() {
                   >
                     ✏️ Editar
                   </button>
+                  <button
+                    onClick={() => { setDeleteId(c.id); setDeleteName(c.name); }}
+                    className="rounded-lg bg-red-50 hover:bg-red-100 text-red-700 py-1.5 px-2.5 text-xs font-medium"
+                    title="Excluir campanha permanentemente"
+                  >
+                    🗑️
+                  </button>
                 </div>
               </div>
             );
@@ -288,6 +321,40 @@ export default function CampaignsPage() {
           }}
           onError={(e) => setErrorMsg(e)}
         />
+      )}
+
+      {/* Modal de confirmação de exclusão */}
+      {deleteId && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => !deleting && setDeleteId(null)}>
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-2xl">🗑️</div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Excluir campanha?</h3>
+                <p className="text-sm text-gray-500">Esta ação não pode ser desfeita.</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 mb-2">
+              Você está prestes a excluir a campanha:
+            </p>
+            <p className="text-sm font-semibold text-gray-900 mb-3 px-3 py-2 bg-gray-50 rounded-lg">
+              "{deleteName}"
+            </p>
+            <p className="text-xs text-red-600 mb-4">
+              ⚠️ Todas as programações, vínculos com playlists e devices vinculados serão removidos.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setDeleteId(null)} disabled={deleting}
+                className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300 disabled:opacity-50">
+                Cancelar
+              </button>
+              <button type="button" onClick={handleDeleteCampaign} disabled={deleting}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                {deleting ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -375,8 +442,14 @@ function CampaignFormModal({
       const campId = editing?.id ?? (json.data?.[0]?.id ?? json.data?.id);
       if (!campId) throw new Error('Não foi possível identificar a campanha criada');
 
-      // Replace playlist links
-      await fetch(`/api/admin/crud/campaign_playlists?campaign_id=${campId}`, { method: 'DELETE' });
+      // Replace playlist links — first fetch existing links, then delete each by id
+      const existingLinks = await fetch(`/api/admin/crud/campaign_playlists?campaign_id=${campId}`)
+        .then(r => r.json())
+        .then(j => j.data ?? [])
+        .catch(() => []);
+      for (const link of existingLinks) {
+        await fetch(`/api/admin/crud/campaign_playlists?id=${link.id}`, { method: 'DELETE' });
+      }
       for (let i = 0; i < form.playlist_ids.length; i++) {
         await fetch('/api/admin/crud/campaign_playlists', {
           method: 'POST',

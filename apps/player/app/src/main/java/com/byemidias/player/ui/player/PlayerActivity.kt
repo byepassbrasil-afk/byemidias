@@ -103,7 +103,8 @@ class PlayerActivity : ComponentActivity() {
         val slotDurationSeconds: Int = 0,
         val slotHasContent: Boolean = true,
         val slotContentDuration: Int = 0,
-        val defaultOrientation: String = "auto"  // "auto" | "portrait" | "landscape"
+        val defaultOrientation: String = "auto",  // "auto" | "portrait" | "landscape"
+        val rotation: Int = 0  // 0/90/180/270 — applied visually on ImageView and PlayerView
     ) {
         companion object {
             private val IMAGE_EXTS = setOf("png", "jpg", "jpeg", "avif", "webp", "gif")
@@ -147,7 +148,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.83")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.84")
 
             // CRITICAL: Apply orientation BEFORE setContentView so layout inflates with correct dimensions
             prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
@@ -1200,6 +1201,7 @@ class PlayerActivity : ComponentActivity() {
                 val fileUrl = media.optString("file_url", "")
                 val orientation = media.optString("default_orientation", "auto")
                 val displayName = media.optString("display_name", "").ifEmpty { null }
+                val rotation = media.optInt("rotation", 0)
                 val mediaItem = MediaItem(
                     id = mediaId,
                     name = media.optString("name", ""),
@@ -1209,7 +1211,8 @@ class PlayerActivity : ComponentActivity() {
                     duration = duration,
                     campaignId = respCampaignId,
                     playlistId = playlistId,
-                    defaultOrientation = orientation
+                    defaultOrientation = orientation,
+                    rotation = rotation
                 )
                 val pos = item.optInt("position", j)
                 val slotId = item.optString("slot_id", "")
@@ -1347,6 +1350,7 @@ class PlayerActivity : ComponentActivity() {
     private var imageViewB: ImageView? = null
     private var activeImageView: ImageView? = null
     private var lastBitmap: android.graphics.Bitmap? = null
+    private var currentMediaRotation: Float = 0f
 
     private fun loadBitmapFromFileUrl(fileUrl: String): android.graphics.Bitmap? {
         return try {
@@ -1422,13 +1426,14 @@ class PlayerActivity : ComponentActivity() {
     private fun crossfadeToImage(newBitmap: android.graphics.Bitmap) {
         val current = activeImageView ?: imageViewA ?: return
         val next = if (current == imageViewA) imageViewB else imageViewA ?: return
+        val totalRotation = getImageRotation() + currentMediaRotation
 
         runOnUiThread {
             try {
                 exoPlayerView?.visibility = View.GONE
                 next?.setImageBitmap(newBitmap)
                 next?.scaleType = getImageScaleType()
-                next?.rotation = getImageRotation()
+                next?.rotation = totalRotation
                 current.alpha = 1f
                 next?.alpha = 0f
                 next?.visibility = View.VISIBLE
@@ -1461,7 +1466,7 @@ class PlayerActivity : ComponentActivity() {
                 exoPlayerView?.visibility = View.GONE
                 iv.setImageBitmap(bitmap)
                 iv.scaleType = getImageScaleType()
-                iv.rotation = getImageRotation()
+                iv.rotation = getImageRotation() + currentMediaRotation
                 iv.visibility = View.VISIBLE
                 iv.alpha = 1f
                 activeImageView = iv
@@ -1495,6 +1500,9 @@ class PlayerActivity : ComponentActivity() {
 
                 // Show ExoPlayerView, hide ImageView
                 exoPlayerView?.visibility = View.VISIBLE
+                // Aplica rotação da mídia (se persistida) sobre o PlayerView
+                val totalRotation = getImageRotation() + item.rotation.toFloat()
+                exoPlayerView?.rotation = totalRotation
 
                 // Reuse existing ExoPlayer instance to avoid 4-5s freeze on every video change
                 // (creating fresh ExoPlayer + setting surface = expensive on Google TV)
@@ -1623,9 +1631,10 @@ class PlayerActivity : ComponentActivity() {
             delay(item.duration * 1000L)
             return
         }
+        currentMediaRotation = item.rotation.toFloat()
         val bitmap = withContext(Dispatchers.IO) { loadBitmapFromFileUrl(item.fileUrl) }
         if (bitmap != null) {
-            flog("I", "Play", "playImage: OK ${item.name} ${bitmap.width}x${bitmap.height}")
+            flog("I", "Play", "playImage: OK ${item.name} ${bitmap.width}x${bitmap.height} rotation=${item.rotation}")
             val isFirstDisplay = lastBitmap == null && (activeImageView?.drawable == null)
             if (isFirstDisplay) {
                 showImageImmediate(bitmap)

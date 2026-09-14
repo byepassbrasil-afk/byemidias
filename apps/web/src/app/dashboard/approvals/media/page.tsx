@@ -130,21 +130,20 @@ export default function PartnerMediaApprovalsPage() {
     if (!previewMediaId) return;
     setSavingRotation(true);
     try {
-      // 0=auto, 90=landscape, 180=portrait-upside, 270=portrait
-      // Map rotation to default_orientation
-      // 0 or 180 → portrait (vertical)
-      // 90 or 270 → landscape (horizontal)
-      const orientation = (previewRotation === 90 || previewRotation === 270) ? 'landscape' : 'portrait';
       const res = await fetch('/api/admin/crud/media', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: previewMediaId, default_orientation: orientation }),
+        body: JSON.stringify({ id: previewMediaId, rotation: previewRotation }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert('Erro ao salvar orientação: ' + (json.error || res.statusText));
+        alert('Erro ao salvar rotação: ' + (json.error || res.statusText));
       } else {
-        alert(`✅ Orientação definida como ${orientation === 'portrait' ? 'Vertical (em pé)' : 'Horizontal (deitado)'} e sincronizada com dispositivos.`);
+        const orientLabel = previewRotation === 0 ? 'Original (0°)' :
+                             previewRotation === 90 ? 'Horizontal (90°)' :
+                             previewRotation === 180 ? 'Invertida (180°)' :
+                             'Vertical invertida (270°)';
+        alert(`✅ Rotação salva como ${orientLabel}. Sincronizando com dispositivos...`);
         loadUploads();
       }
     } catch (e: any) {
@@ -416,9 +415,8 @@ export default function PartnerMediaApprovalsPage() {
             </div>
             <p className="text-white text-sm truncate max-w-[80vw]">{previewName}</p>
             <p className="text-white/60 text-xs">
-              {previewRotation === 0 ? 'Orientação original — verifique se está correta' :
-               previewRotation === 90 || previewRotation === 270 ? 'Será salva como Horizontal' :
-               'Será salva como Vertical (em pé)'}
+              {previewRotation === 0 ? 'Orientação original — clique em "Salvar Rotação" para confirmar' :
+               `Será salvo como ${previewRotation}° — player rotaciona automaticamente`}
             </p>
           </div>
         </div>

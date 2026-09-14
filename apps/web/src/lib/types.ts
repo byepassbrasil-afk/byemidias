@@ -123,6 +123,7 @@ export interface Media {
   tags: string[];
   status: 'active' | 'archived';
   default_orientation?: 'auto' | 'portrait' | 'landscape';
+  rotation: number;
   expires_at: string | null;
   expires_reason: string | null;
   created_at: string;

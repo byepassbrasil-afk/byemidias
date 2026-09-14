@@ -58,11 +58,32 @@ export async function clearPartnerSessionCookie() {
 
 /**
  * Validate slug → returns organization_id or null
+ * Aceita match exato OU aproximado (case-insensitive, sem espaços extras)
  */
 export async function validateOrgSlug(slug: string): Promise<{ id: string; name: string } | null> {
-  const [org] = await sql`SELECT id, name FROM organizations WHERE slug = ${slug} AND status != 'inactive' LIMIT 1`;
-  if (!org) return null;
-  return { id: org.id as string, name: org.name as string };
+  if (!slug) return null;
+  const cleanSlug = slug.toLowerCase().trim();
+  // 1) Match exato (rápido, caminho comum)
+  const [exact] = await sql`
+    SELECT id, name FROM organizations
+    WHERE LOWER(slug) = ${cleanSlug} AND status != 'inactive'
+    LIMIT 1
+  `;
+  if (exact) return { id: exact.id as string, name: exact.name as string };
+
+  // 2) Match aproximado (sem traços / espaços) — tolerante a erros de digitação
+  const normalized = cleanSlug.replace(/[-\s]+/g, '');
+  const all = await sql`
+    SELECT id, name, slug FROM organizations WHERE status != 'inactive' LIMIT 50
+  `;
+  for (const row of all as Array<Record<string, unknown>>) {
+    const rowSlug = String(row.slug || '').toLowerCase().replace(/[-\s]+/g, '');
+    if (rowSlug === normalized) {
+      return { id: row.id as string, name: row.name as string };
+    }
+  }
+
+  return null;
 }
 
 /**

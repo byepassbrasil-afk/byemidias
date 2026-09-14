@@ -13,12 +13,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     const result = await validatePartnerCredentials(username, password, slug);
 
     if (!result.valid || !result.partner) {
+      console.warn('[partner-login] FAILED', { slug, username, hasOrg: result.valid });
       return NextResponse.json({ error: 'Credenciais inválidas ou organização não encontrada' }, { status: 401 });
     }
 
     const token = await createPartnerSession(result.partner);
     await setPartnerSessionCookie(token);
 
+    console.log('[partner-login] OK', { slug, username, partnerId: result.partner.partnerAccessId });
     return NextResponse.json({ success: true, partner: result.partner });
   } catch (error) {
     console.error('Partner login error:', error);

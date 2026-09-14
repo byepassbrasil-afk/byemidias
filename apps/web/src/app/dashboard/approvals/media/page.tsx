@@ -32,8 +32,11 @@ export default function PartnerMediaApprovalsPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
   const [previewName, setPreviewName] = useState<string>('');
+  const [previewMediaId, setPreviewMediaId] = useState<string | null>(null);
+  const [previewRotation, setPreviewRotation] = useState<number>(0); // 0, 90, 180, 270
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string>('');
+  const [savingRotation, setSavingRotation] = useState(false);
 
   const loadUploads = useCallback(async () => {
     setLoading(true);
@@ -107,12 +110,47 @@ export default function PartnerMediaApprovalsPage() {
     setPreviewUrl(u.file_url);
     setPreviewName(u.media_name || u.file_name || 'preview');
     setPreviewType(u.media_type === 'video' ? 'video' : 'image');
+    setPreviewMediaId(u.media_id);
+    setPreviewRotation(0);
   }
 
   function closePreview() {
     setPreviewUrl(null);
     setPreviewType(null);
     setPreviewName('');
+    setPreviewMediaId(null);
+    setPreviewRotation(0);
+  }
+
+  function rotatePreview() {
+    setPreviewRotation(r => (r + 90) % 360);
+  }
+
+  async function saveRotation() {
+    if (!previewMediaId) return;
+    setSavingRotation(true);
+    try {
+      // 0=auto, 90=landscape, 180=portrait-upside, 270=portrait
+      // Map rotation to default_orientation
+      // 0 or 180 → portrait (vertical)
+      // 90 or 270 → landscape (horizontal)
+      const orientation = (previewRotation === 90 || previewRotation === 270) ? 'landscape' : 'portrait';
+      const res = await fetch('/api/admin/crud/media', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: previewMediaId, default_orientation: orientation }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert('Erro ao salvar orientação: ' + (json.error || res.statusText));
+      } else {
+        alert(`✅ Orientação definida como ${orientation === 'portrait' ? 'Vertical (em pé)' : 'Horizontal (deitado)'} e sincronizada com dispositivos.`);
+        loadUploads();
+      }
+    } catch (e: any) {
+      alert('Erro: ' + e.message);
+    }
+    setSavingRotation(false);
   }
 
   function formatSize(bytes: number | null) {
@@ -308,7 +346,7 @@ export default function PartnerMediaApprovalsPage() {
           <button
             type="button"
             onClick={closePreview}
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white text-2xl flex items-center justify-center"
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white text-2xl flex items-center justify-center z-10"
             aria-label="Fechar"
           >
             ✕
@@ -317,30 +355,71 @@ export default function PartnerMediaApprovalsPage() {
             className="max-w-[90vw] max-h-[90vh] flex flex-col items-center gap-3"
             onClick={e => e.stopPropagation()}
           >
-            {previewType === 'image' ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={previewUrl}
-                alt={previewName}
-                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
-              />
-            ) : (
-              <video
-                src={previewUrl}
-                controls
-                autoPlay
-                className="max-w-full max-h-[80vh] rounded-lg shadow-2xl bg-black"
-              />
-            )}
+            <div className="relative" style={{ transform: `rotate(${previewRotation}deg)`, transition: 'transform 0.3s' }}>
+              {previewType === 'image' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={previewUrl}
+                  alt={previewName}
+                  className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-2xl"
+                />
+              ) : (
+                <video
+                  src={previewUrl}
+                  controls
+                  autoPlay
+                  className="max-w-full max-h-[70vh] rounded-lg shadow-2xl bg-black"
+                />
+              )}
+            </div>
+            {/* Toolbar com rotação e ações */}
+            <div className="flex items-center gap-2 bg-white/10 backdrop-blur rounded-full px-3 py-2">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); rotatePreview(); }}
+                className="flex items-center gap-1.5 rounded-full bg-orange-500 hover:bg-orange-400 text-white px-3 py-1.5 text-sm font-medium transition-colors"
+                title="Girar 90°"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                Girar 90°
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setPreviewRotation(0); }}
+                className="rounded-full bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 text-sm font-medium transition-colors"
+                title="Resetar rotação"
+              >
+                ↺ Reset
+              </button>
+              <span className="text-white/80 text-xs px-2">
+                {previewRotation}°
+              </span>
+              <span className="w-px h-5 bg-white/20" />
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); saveRotation(); }}
+                disabled={savingRotation || previewRotation === 0}
+                className="flex items-center gap-1.5 rounded-full bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title={previewRotation === 0 ? 'Gire a mídia primeiro' : 'Salvar orientação e sincronizar com dispositivos'}
+              >
+                {savingRotation ? '⏳ Salvando...' : '💾 Salvar Rotação'}
+              </button>
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-300 hover:text-blue-200 text-xs underline ml-1"
+                onClick={e => e.stopPropagation()}
+              >
+                ↗
+              </a>
+            </div>
             <p className="text-white text-sm truncate max-w-[80vw]">{previewName}</p>
-            <a
-              href={previewUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-300 hover:text-blue-200 text-xs underline"
-            >
-              Abrir em nova aba
-            </a>
+            <p className="text-white/60 text-xs">
+              {previewRotation === 0 ? 'Orientação original — verifique se está correta' :
+               previewRotation === 90 || previewRotation === 270 ? 'Será salva como Horizontal' :
+               'Será salva como Vertical (em pé)'}
+            </p>
           </div>
         </div>
       )}

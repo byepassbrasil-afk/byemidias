@@ -8,7 +8,7 @@
     },
     {
       "path": "/api/cron/cleanup-files",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/contract-expiry",

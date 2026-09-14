@@ -254,15 +254,26 @@ export default function MediaPage() {
   }
 
   async function handleRename() {
-    if (!detailMedia || !editName.trim()) return;
-    const r = await fetch('/api/admin/crud/media', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: detailMedia.id, display_name: editName.trim() }),
-    });
-    if (!r.ok) { const err = await r.json().catch(() => ({})); alert('Erro: ' + (err.error || r.statusText)); return; }
-    setDetailMedia({ ...detailMedia, display_name: editName.trim() });
-    loadMedia();
+    if (!detailMedia || !editName.trim()) {
+      alert('Nome vazio');
+      return;
+    }
+    try {
+      const r = await fetch('/api/admin/crud/media', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ id: detailMedia.id, display_name: editName.trim() }),
+      });
+      const json = await r.json().catch(() => ({}));
+      if (!r.ok) { alert('Erro: ' + (json.error || r.statusText)); return; }
+      if (!json.data) { alert('Resposta vazia — nome não foi alterado. Verifique se a mídia pertence à sua organização.'); return; }
+      setDetailMedia({ ...detailMedia, display_name: editName.trim() });
+      loadMedia();
+      alert('✓ Nome atualizado');
+    } catch (e: any) {
+      alert('Erro de conexão: ' + e.message);
+    }
   }
 
   async function handleOrientationChange() {

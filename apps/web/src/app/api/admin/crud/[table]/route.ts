@@ -159,9 +159,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       bumpContentVersion(user.organization_id).catch(() => {});
     }
 
+    console.log('[admin/crud PUT]', id, 'updates=' + JSON.stringify(updates), 'row=' + JSON.stringify(row));
     return NextResponse.json({ data: row });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    console.error('[admin/crud PUT] ERROR:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

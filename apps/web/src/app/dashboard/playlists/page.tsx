@@ -71,6 +71,7 @@ export default function PlaylistsPage() {
   const [partners, setPartners] = useState<{ id: string; username: string; display_name: string }[]>([]);
   const [newSlotPartnerId, setNewSlotPartnerId] = useState('');
   const [newSlotDuration, setNewSlotDuration] = useState(30);
+  const [previewMedia, setPreviewMedia] = useState<Media | null>(null);
 
   useEffect(() => { loadPlaylists(); loadOrgs(); loadPartners(); }, []);
 
@@ -483,15 +484,25 @@ export default function PlaylistsPage() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 max-h-[500px] overflow-y-auto">
                 {media.map(m => (
-                  <button key={m.id} onClick={() => setSelectedMediaId(m.id)}
-                    className={`relative rounded-lg overflow-hidden border-2 transition-all ${selectedMediaId === m.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-400'}`}>
-                    <div className="aspect-square bg-gray-100">
-                      {m.type === 'image' || m.type === 'gif' ? <img src={m.file_url} alt={m.name} className="w-full h-full object-cover" />
-                        : <div className="w-full h-full flex items-center justify-center bg-purple-50"><span className="text-3xl">🎬</span></div>}
-                    </div>
-                    <div className="p-1.5"><p className="text-xs text-gray-700 truncate">{m.name}</p></div>
-                    {selectedMediaId === m.id && <div className="absolute top-1 right-1 bg-blue-500 rounded-full w-5 h-5 flex items-center justify-center"><span className="text-white text-xs">✓</span></div>}
-                  </button>
+                  <div key={m.id} className={`relative rounded-lg overflow-hidden border-2 transition-all group ${selectedMediaId === m.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-400'}`}>
+                    <button onClick={() => setSelectedMediaId(m.id)}
+                      className="w-full text-left">
+                      <div className="aspect-square bg-gray-100 relative">
+                        {m.type === 'image' || m.type === 'gif' ? <img src={m.file_url} alt={m.name} className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex items-center justify-center bg-purple-50"><span className="text-3xl">🎬</span></div>}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none">
+                          <span className="text-white text-2xl opacity-0 group-hover:opacity-100">▶</span>
+                        </div>
+                      </div>
+                      <div className="p-1.5"><p className="text-xs text-gray-700 truncate">{m.name}</p></div>
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); setPreviewMedia(m); }}
+                      className="absolute top-1 right-1 z-10 rounded-full bg-blue-600 text-white w-6 h-6 flex items-center justify-center text-xs hover:bg-blue-700 shadow"
+                      title="Pré-visualizar">
+                      ▶
+                    </button>
+                    {selectedMediaId === m.id && <div className="absolute top-1 left-1 bg-blue-500 rounded-full w-5 h-5 flex items-center justify-center"><span className="text-white text-xs">✓</span></div>}
+                  </div>
                 ))}
               </div>
             )}
@@ -603,13 +614,23 @@ export default function PlaylistsPage() {
                           <div key={`slot-${item.id}-media-${sub.id}`} className={`grid grid-cols-1 md:grid-cols-[60px_1fr_120px_140px_60px] gap-2 px-4 py-3 items-center hover:bg-orange-50/30 transition-colors ${subIdx > 0 ? 'border-t border-gray-100' : ''}`}>
                             <div className="text-sm font-medium text-gray-400 text-xs">{idx + 1}.{subIdx + 1}</div>
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded bg-gray-100 flex-shrink-0 overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => sub.media && setPreviewMedia(sub.media)}
+                                className="w-10 h-10 rounded bg-gray-100 flex-shrink-0 overflow-hidden hover:ring-2 hover:ring-blue-400 transition-all relative group"
+                                title={sub.media?.file_url ? 'Clique para visualizar' : ''}
+                              >
                                 {sub.media?.type === 'image' || sub.media?.type === 'gif' ? (
                                   <img src={sub.media?.file_url} alt="" className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
                                 )}
-                              </div>
+                                {sub.media && (
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                    <span className="text-white text-xs opacity-0 group-hover:opacity-100">▶</span>
+                                  </div>
+                                )}
+                              </button>
                               <span className="text-sm text-gray-900 truncate">{sub.media?.name ?? sub.media_id}</span>
                             </div>
                             <div>
@@ -652,13 +673,23 @@ export default function PlaylistsPage() {
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded bg-gray-100 flex-shrink-0 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => item.media && setPreviewMedia(item.media)}
+                        className="w-10 h-10 rounded bg-gray-100 flex-shrink-0 overflow-hidden hover:ring-2 hover:ring-blue-400 transition-all relative group"
+                        title={item.media?.file_url ? 'Clique para visualizar' : ''}
+                      >
                         {item.media?.type === 'image' || item.media?.type === 'gif' ? (
                           <img src={item.media?.file_url} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
                         )}
-                      </div>
+                        {item.media && (
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                            <span className="text-white text-xs opacity-0 group-hover:opacity-100">▶</span>
+                          </div>
+                        )}
+                      </button>
                       <span className="text-sm text-gray-900 truncate">{item.media?.name ?? item.media_id}</span>
                     </div>
                     <div>
@@ -771,6 +802,45 @@ export default function PlaylistsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal de preview de mídia (vídeo / imagem) */}
+      {previewMedia && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setPreviewMedia(null)}>
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{previewMedia.display_name || previewMedia.name}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {previewMedia.type === 'video' ? '🎬 Vídeo' : previewMedia.type === 'image' ? '🖼️ Imagem' : '📄 Documento'} · {previewMedia.file_size ? `${(previewMedia.file_size / 1024 / 1024).toFixed(2)} MB` : ''}
+                </p>
+              </div>
+              <button onClick={() => setPreviewMedia(null)} className="text-gray-400 hover:text-gray-600 text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">×</button>
+            </div>
+            <div className="flex-1 bg-black flex items-center justify-center min-h-[300px]">
+              {previewMedia.type === 'video' ? (
+                <video
+                  src={previewMedia.file_url}
+                  controls
+                  autoPlay
+                  className="max-w-full max-h-[70vh] w-auto h-auto"
+                />
+              ) : previewMedia.type === 'image' || previewMedia.type === 'gif' ? (
+                <img src={previewMedia.file_url} alt={previewMedia.name} className="max-w-full max-h-[70vh] object-contain" />
+              ) : (
+                <div className="text-white text-center p-8">
+                  <p className="text-6xl mb-4">📄</p>
+                  <p>Pré-visualização não disponível para este tipo de arquivo.</p>
+                  <a href={previewMedia.file_url} target="_blank" rel="noopener" className="mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg">Abrir em nova aba</a>
+                </div>
+              )}
+            </div>
+            <div className="p-3 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+              <span className="truncate">{previewMedia.file_url}</span>
+              <a href={previewMedia.file_url} target="_blank" rel="noopener" className="text-blue-600 hover:underline ml-2">Abrir ↗</a>
+            </div>
+          </div>
         </div>
       )}
     </div>

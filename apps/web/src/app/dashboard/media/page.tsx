@@ -75,7 +75,7 @@ export default function MediaPage() {
   }
 
   async function loadMedia() {
-    const res = await fetch('/api/admin/crud/media?order=created_at&asc=false&limit=500');
+    const res = await fetch('/api/admin/crud/media?order=created_at&asc=false&limit=500&status=active');
     const json = await res.json();
     const list = (json.data ?? []) as Media[];
     // Ordena por data de vencimento: sem expires_at vai pro final,

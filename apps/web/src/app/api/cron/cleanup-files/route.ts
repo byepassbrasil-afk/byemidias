@@ -85,6 +85,11 @@ export async function GET(request: Request) {
         }
 
         // 3. HARD delete from DB (libera espaço em índices e remove referência para sempre)
+        // Primeiro remove FKs que podem bloquear a exclusão
+        await sql`DELETE FROM playback_logs WHERE media_id = ${m.id}`;
+        await sql`DELETE FROM partner_media_uploads WHERE media_id = ${m.id}`;
+        await sql`DELETE FROM media_categories WHERE media_id = ${m.id}`;
+        await sql`DELETE FROM media_overrides WHERE media_id = ${m.id}`;
         await sql`DELETE FROM media WHERE id = ${m.id}`;
       } catch (err: any) {
         console.error(`[cleanup-files] Failed to cleanup media ${m.id}:`, err.message);

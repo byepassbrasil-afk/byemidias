@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import type { Playlist, PlaylistItem, Media } from '@/lib/types';
+import VideoThumbnail from '@/components/video-thumbnail';
 
 interface PlaylistSlot {
   id: string;
@@ -622,6 +623,8 @@ export default function PlaylistsPage() {
                               >
                                 {sub.media?.type === 'image' || sub.media?.type === 'gif' ? (
                                   <img src={sub.media?.file_url} alt="" className="w-full h-full object-cover" />
+                                ) : sub.media?.type === 'video' ? (
+                                  <VideoThumbnail src={sub.media?.file_url || ''} alt={sub.media?.name || ''} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
                                 )}
@@ -681,6 +684,8 @@ export default function PlaylistsPage() {
                       >
                         {item.media?.type === 'image' || item.media?.type === 'gif' ? (
                           <img src={item.media?.file_url} alt="" className="w-full h-full object-cover" />
+                        ) : item.media?.type === 'video' ? (
+                          <VideoThumbnail src={item.media?.file_url || ''} alt={item.media?.name || ''} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
                         )}

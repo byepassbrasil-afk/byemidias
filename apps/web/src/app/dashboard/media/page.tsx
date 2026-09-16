@@ -485,7 +485,6 @@ export default function MediaPage() {
                 setPreDeviceSearch={setPreDeviceSearch}
               />
             </div>
-            </div>
           </div>
         </div>
       )}

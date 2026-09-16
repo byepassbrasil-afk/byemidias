@@ -625,6 +625,10 @@ export default function PlaylistsPage() {
                                   <img src={sub.media?.file_url} alt="" className="w-full h-full object-cover" />
                                 ) : sub.media?.type === 'video' ? (
                                   <VideoThumbnail src={sub.media?.file_url || ''} alt={sub.media?.name || ''} className="w-full h-full object-cover" />
+                                ) : sub.media?.type === 'url' ? (
+                                  <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-1">
+                                    <span className="text-base">🌐</span>
+                                  </div>
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
                                 )}
@@ -672,7 +676,7 @@ export default function PlaylistsPage() {
                     <div className="text-sm font-medium text-gray-500 text-center">{idx + 1}</div>
                     <div>
                       <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-                        {item.media?.type === 'video' ? '🎬' : '🖼️'} Mídia
+                        {item.media?.type === 'video' ? '🎬' : item.media?.type === 'url' ? '🌐' : '🖼️'} Mídia
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -686,6 +690,10 @@ export default function PlaylistsPage() {
                           <img src={item.media?.file_url} alt="" className="w-full h-full object-cover" />
                         ) : item.media?.type === 'video' ? (
                           <VideoThumbnail src={item.media?.file_url || ''} alt={item.media?.name || ''} className="w-full h-full object-cover" />
+                        ) : item.media?.type === 'url' ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-1">
+                            <span className="text-base">🌐</span>
+                          </div>
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
                         )}

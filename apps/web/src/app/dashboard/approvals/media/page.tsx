@@ -30,7 +30,7 @@ export default function PartnerMediaApprovalsPage() {
   const [filter, setFilter] = useState<FilterStatus>('pending');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
+  const [previewType, setPreviewType] = useState<'image' | 'video' | 'url' | null>(null);
   const [previewName, setPreviewName] = useState<string>('');
   const [previewMediaId, setPreviewMediaId] = useState<string | null>(null);
   const [previewRotation, setPreviewRotation] = useState<number>(0); // 0, 90, 180, 270
@@ -109,7 +109,7 @@ export default function PartnerMediaApprovalsPage() {
     if (!u.file_url) return;
     setPreviewUrl(u.file_url);
     setPreviewName(u.media_name || u.file_name || 'preview');
-    setPreviewType(u.media_type === 'video' ? 'video' : 'image');
+    setPreviewType(u.media_type === 'video' ? 'video' : u.media_type === 'url' ? 'url' : 'image');
     setPreviewMediaId(u.media_id);
     setPreviewRotation(0);
   }
@@ -254,6 +254,20 @@ export default function PartnerMediaApprovalsPage() {
                                   </div>
                                 </div>
                               </>
+                            ) : u.media_type === 'url' ? (
+                              <>
+                                <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-1">
+                                  <span className="text-3xl">🌐</span>
+                                  <span className="text-[8px] text-blue-700 truncate w-full text-center px-1">{u.file_url?.replace(/^https?:\/\//, '').substring(0, 25)}</span>
+                                </div>
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/50 transition-colors">
+                                  <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
+                                    <svg className="w-5 h-5 text-gray-900 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </>
                             ) : (
                               <div className="w-full h-full flex items-center justify-center bg-gray-100 text-2xl">📄</div>
                             )}
@@ -354,7 +368,7 @@ export default function PartnerMediaApprovalsPage() {
             className="max-w-[90vw] max-h-[90vh] flex flex-col items-center gap-3"
             onClick={e => e.stopPropagation()}
           >
-            <div className="relative" style={{ transform: `rotate(${previewRotation}deg)`, transition: 'transform 0.3s' }}>
+            <div className="relative" style={{ transform: previewType === 'url' ? undefined : `rotate(${previewRotation}deg)`, transition: 'transform 0.3s' }}>
               {previewType === 'image' ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -362,16 +376,23 @@ export default function PartnerMediaApprovalsPage() {
                   alt={previewName}
                   className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-2xl"
                 />
-              ) : (
+              ) : previewType === 'video' ? (
                 <video
                   src={previewUrl}
                   controls
                   autoPlay
                   className="max-w-full max-h-[70vh] rounded-lg shadow-2xl bg-black"
                 />
-              )}
+              ) : previewType === 'url' ? (
+                <iframe
+                  src={previewUrl}
+                  title={previewName}
+                  className="w-[90vw] max-w-5xl h-[70vh] rounded-lg shadow-2xl bg-white border-0"
+                />
+              ) : null}
             </div>
             {/* Toolbar com rotação e ações */}
+            {previewType !== 'url' && (
             <div className="flex items-center gap-2 bg-white/10 backdrop-blur rounded-full px-3 py-2">
               <button
                 type="button"
@@ -413,9 +434,11 @@ export default function PartnerMediaApprovalsPage() {
                 ↗
               </a>
             </div>
+            )}
             <p className="text-white text-sm truncate max-w-[80vw]">{previewName}</p>
             <p className="text-white/60 text-xs">
-              {previewRotation === 0 ? 'Orientação original — clique em "Salvar Rotação" para confirmar' :
+              {previewType === 'url' ? '🌐 Página web — exibe em tela cheia no dispositivo (sem interação)' :
+               previewRotation === 0 ? 'Orientação original — clique em "Salvar Rotação" para confirmar' :
                `Será salvo como ${previewRotation}° — player rotaciona automaticamente`}
             </p>
           </div>

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import type { Media } from '@/lib/types';
 import { convertImageToWebP, formatBytes } from '@/lib/image-convert';
 import VideoThumbnail from '@/components/video-thumbnail';
+import UrlUploadForm from '@/components/url-upload-form';
 
 export default function MediaPage() {
   const [media, setMedia] = useState<Media[]>([]);
@@ -35,6 +36,8 @@ export default function MediaPage() {
   // Pre-upload config modal state
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
+  const [pendingUrl, setPendingUrl] = useState<string>('');  // upload via URL pública
+  const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [preTtlDays, setPreTtlDays] = useState<number>(7);
   const [preDisplayName, setPreDisplayName] = useState<string>('');
   const [preOrientation, setPreOrientation] = useState<string>('auto');
@@ -142,6 +145,8 @@ export default function MediaPage() {
     if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
     setPendingFile(null);
     setPendingPreviewUrl(null);
+    setPendingUrl('');
+    setUploadMode('file');
     setPreShowReason(false);
     setPreReason('');
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -429,11 +434,60 @@ export default function MediaPage() {
             </div>
           )}
           <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" />
-          <button onClick={() => fileInputRef.current?.click()} disabled={uploading || !organizationId} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-            + Upload
-          </button>
+          <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+            <button onClick={() => { setUploadMode('file'); fileInputRef.current?.click(); }} disabled={uploading || !organizationId}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${uploadMode === 'file' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              📁 Arquivo
+            </button>
+            <button onClick={() => { setUploadMode('url'); setPendingFile(new File([], 'url')); setPendingPreviewUrl(null); setPreDisplayName(''); setPreOrientation('auto'); setPreTtlDays(7); setPreReason(''); setPreCategoryIds(new Set()); setPreExcludedCatIds(new Set()); setPreExcludedOrgIds(new Set()); setPreExcludedDeviceIds(new Set()); setPreDeviceSearch(''); }}
+              disabled={uploading || !organizationId}
+              className={`px-4 py-2 text-sm font-medium border-l border-gray-300 transition-colors ${uploadMode === 'url' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              🌐 URL
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Modal de upload via URL (sem necessidade de selecionar arquivo) */}
+      {pendingFile && pendingFile.size === 0 && pendingFile.name === 'url' && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeUploadConfig}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900">🌐 Adicionar Página Web (URL)</h2>
+                <button onClick={closeUploadConfig} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              </div>
+              <UrlUploadForm
+                onClose={closeUploadConfig}
+                onSaved={() => { closeUploadConfig(); loadMedia(); }}
+                organizationId={organizationId}
+                preTtlDays={preTtlDays}
+                setPreTtlDays={setPreTtlDays}
+                preDisplayName={preDisplayName}
+                setPreDisplayName={setPreDisplayName}
+                preOrientation={preOrientation}
+                setPreOrientation={setPreOrientation}
+                preReason={preReason}
+                setPreReason={setPreReason}
+                preShowReason={preShowReason}
+                setPreShowReason={setPreShowReason}
+                availableCats={availableCats}
+                preCategoryIds={preCategoryIds}
+                setPreCategoryIds={setPreCategoryIds}
+                preExcludedCatIds={preExcludedCatIds}
+                setPreExcludedCatIds={setPreExcludedCatIds}
+                preExcludedOrgIds={preExcludedOrgIds}
+                setPreExcludedOrgIds={setPreExcludedOrgIds}
+                preExcludedDeviceIds={preExcludedDeviceIds}
+                setPreExcludedDeviceIds={setPreExcludedDeviceIds}
+                availableDevices={availableDevices}
+                preDeviceSearch={preDeviceSearch}
+                setPreDeviceSearch={setPreDeviceSearch}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteId && (
         <div className="mb-6 rounded-xl bg-red-50 p-6 border border-red-200">
@@ -462,11 +516,19 @@ export default function MediaPage() {
                   <img src={item.file_url} alt={item.name} className="w-full h-full object-cover" />
                 ) : item.type === 'video' ? (
                   <VideoThumbnail src={item.file_url} alt={item.name} className="w-full h-full object-cover" />
+                ) : item.type === 'url' ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-2 text-center">
+                    <span className="text-5xl">🌐</span>
+                    <span className="text-[10px] text-blue-700 font-medium mt-1 truncate w-full">{item.file_url?.replace(/^https?:\/\//, '').substring(0, 30) || 'URL'}</span>
+                  </div>
                 ) : (
                   <div className="text-4xl">📄</div>
                 )}
                 {item.type === 'video' && (
                   <div className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white">🎬</div>
+                )}
+                {item.type === 'url' && (
+                  <div className="absolute bottom-1 right-1 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">URL</div>
                 )}
               </div>
               <div className="p-3">

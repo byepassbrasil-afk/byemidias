@@ -37,6 +37,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import com.byemidias.player.ByeMidiasApp
 import com.byemidias.player.BuildConfig
 import com.byemidias.player.R
@@ -76,6 +79,7 @@ class PlayerActivity : ComponentActivity() {
 
     private var exoPlayer: ExoPlayer? = null
     private var exoPlayerView: PlayerView? = null
+    private var webView: WebView? = null
     private var imageView: ImageView? = null
     private var activeZoneViews = mutableListOf<View>()
     private var clockTextViews = mutableListOf<TextView>()
@@ -148,7 +152,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.84")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.85")
 
             // CRITICAL: Apply orientation BEFORE setContentView so layout inflates with correct dimensions
             prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
@@ -905,11 +909,12 @@ class PlayerActivity : ComponentActivity() {
         try { imageViewA?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
         try { imageViewB?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
         try { imageView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
+        try { webView?.let { rootLayout?.removeView(it) } } catch (_: Exception) {}
         for (v in activeZoneViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
         for (v in clockTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
         for (v in weatherTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
         for (v in widgetTextViews) try { rootLayout?.removeView(v) } catch (_: Exception) {}
-        exoPlayerView = null; imageView = null; imageViewA = null; imageViewB = null; activeImageView = null
+        exoPlayerView = null; imageView = null; imageViewA = null; imageViewB = null; activeImageView = null; webView = null
         lastBitmap = null
         activeZoneViews.clear(); clockTextViews.clear(); weatherTextViews.clear(); widgetTextViews.clear()
     }
@@ -1287,6 +1292,7 @@ class PlayerActivity : ComponentActivity() {
                 when (resolvedType) {
                     "video" -> playVideo(item)
                     "image" -> playImage(item)
+                    "url" -> playUrl(item)
                     else -> { flog("W", "Play", "playLoop: unknown resolved type $resolvedType for ${item.name}, delaying ${item.duration}s"); delay(item.duration * 1000L) }
                 }
                 logPlayback(item)
@@ -1646,6 +1652,70 @@ class PlayerActivity : ComponentActivity() {
             // Keep current image visible if we have one
         }
         delay(item.duration * 1000L)
+    }
+
+    /**
+     * Renderiza uma URL/página web em WebView ocupando toda a tela.
+     * Bloqueia interação (scroll, clique, zoom) — apenas visualização.
+     * Permanece na tela pela duração configurada, depois some.
+     */
+    private suspend fun playUrl(item: MediaItem) {
+        if (item.fileUrl.isEmpty()) {
+            flog("W", "Play", "playUrl: empty url for ${item.name}, skipping")
+            delay(item.duration * 1000L)
+            return
+        }
+        val displayDuration = if (item.duration <= 0) 30 else item.duration  // default 30s para URL
+        flog("I", "Play", "playUrl: ${item.name} → ${item.fileUrl.take(80)} (duration=${displayDuration}s)")
+
+        withContext(Dispatchers.Main) {
+            try {
+                imageViewA?.visibility = View.GONE
+                imageViewB?.visibility = View.GONE
+                exoPlayerView?.visibility = View.GONE
+
+                val wv = webView ?: findViewById(R.id.webView)
+                wv?.let {
+                    it.settings.apply {
+                        javaScriptEnabled = false
+                        domStorageEnabled = false
+                        loadWithOverviewMode = false
+                        // sem cache — sempre fresh
+                        cacheMode = WebSettings.LOAD_NO_CACHE
+                        useWideViewPort = false
+                        allowFileAccess = false
+                        allowContentAccess = false
+                        mediaPlaybackRequiresUserGesture = false
+                    }
+                    it.setBackgroundColor(0xFF000000.toInt())
+                    // Bloqueia qualquer interação do usuário (scroll, zoom, clique)
+                    it.setOnTouchListener { _, _ -> true }
+                    // Cliente WebView que intercepta navegações externas — mantém tudo dentro do app
+                    it.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                            // Bloqueia navegação para outros URLs — apenas o carregamento inicial passa
+                            return url != item.fileUrl
+                        }
+                    }
+                    it.visibility = View.VISIBLE
+                    it.bringToFront()
+                    it.loadUrl(item.fileUrl)
+                    webView = it
+                }
+            } catch (e: Exception) {
+                flog("E", "Play", "playUrl EXCEPTION: ${item.name} — ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
+
+        // Aguarda o tempo configurado
+        delay(displayDuration * 1000L)
+
+        withContext(Dispatchers.Main) {
+            try {
+                webView?.visibility = View.GONE
+                webView?.loadUrl("about:blank")  // descarrega
+            } catch (_: Exception) {}
+        }
     }
 
     // ===================== PLAYBACK LOG =====================

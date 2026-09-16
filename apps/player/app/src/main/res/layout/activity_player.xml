@@ -25,6 +25,12 @@
         app:shutter_background_color="#000000"
         android:visibility="visible" />
 
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/statusText"
         android:layout_width="wrap_content"

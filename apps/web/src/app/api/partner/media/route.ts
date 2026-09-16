@@ -184,6 +184,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // display_name: optional custom name
+      const displayName = body.display_name ? String(body.display_name).trim().substring(0, 200) : null;
+
+      // default_orientation: auto | portrait | landscape
+      const orientation = ['auto', 'portrait', 'landscape'].includes(body.default_orientation)
+        ? body.default_orientation
+        : 'auto';
+
       let expiresAt: Date | null = null;
       if (ttlDays > 0) {
         expiresAt = new Date();
@@ -191,8 +199,8 @@ export async function POST(request: NextRequest) {
       }
 
       const [mediaRecord] = await sql`
-        INSERT INTO media (organization_id, name, type, file_url, file_size, status, expires_at, expires_reason)
-        VALUES (${session.organizationId}, ${file_name}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active', ${expiresAt}, ${ttlDays === 0 ? expiresReason : null})
+        INSERT INTO media (organization_id, name, display_name, type, file_url, file_size, status, expires_at, expires_reason, default_orientation)
+        VALUES (${session.organizationId}, ${file_name}, ${displayName || file_name}, ${mediaType}, ${file_url}, ${file_size || 0}, 'active', ${expiresAt}, ${ttlDays === 0 ? expiresReason : null}, ${orientation})
         RETURNING id
       `;
 
@@ -201,7 +209,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, mediaId: mediaRecord.id });
     }
 
-    return NextResponse.json({ error: 'Ação inválida. Use "presign" ou "save".' }, { status: 400 });
+    // Parceiros também podem submeter URL pública (web page) sem upload
+    if (action === 'save_url') {
+      const { url } = body;
+      if (!url || !/^https?:\/\/[^\s]+/i.test(String(url))) {
+        return NextResponse.json({ error: 'URL inválida. Use http:// ou https://' }, { status: 400 });
+      }
+      const ttlDays = body.ttl_days !== undefined && body.ttl_days !== null ? Number(body.ttl_days) : 7;
+      const expiresReason = body.expires_reason;
+      if (ttlDays === 0) {
+        if (!expiresReason || String(expiresReason).trim().length < 10) {
+          return NextResponse.json({ error: 'Para manter para sempre é obrigatório justificar com pelo menos 10 caracteres.' }, { status: 400 });
+        }
+      }
+      const displayName = body.display_name ? String(body.display_name).trim().substring(0, 200) : String(url).substring(0, 100);
+      const orientation = ['auto', 'portrait', 'landscape'].includes(body.default_orientation) ? body.default_orientation : 'auto';
+      let expiresAt: Date | null = null;
+      if (ttlDays > 0) {
+        expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + ttlDays);
+      }
+      const [mediaRecord] = await sql`
+        INSERT INTO media (organization_id, name, display_name, type, file_url, file_size, status, expires_at, expires_reason, default_orientation)
+        VALUES (${session.organizationId}, ${displayName}, ${displayName}, 'url', ${url}, 0, 'active', ${expiresAt}, ${ttlDays === 0 ? expiresReason : null}, ${orientation})
+        RETURNING id
+      `;
+      await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'pending')`;
+      return NextResponse.json({ success: true, mediaId: mediaRecord.id });
+    }
+
+    return NextResponse.json({ error: 'Ação inválida. Use "presign", "save" ou "save_url".' }, { status: 400 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('POST /api/partner/media error:', msg);

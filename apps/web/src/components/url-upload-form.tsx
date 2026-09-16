@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface UrlUploadFormProps {
   onClose: () => void;
@@ -34,6 +34,12 @@ export default function UrlUploadForm(props: UrlUploadFormProps) {
   const [url, setUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
+
+  // Foca o input de URL ao abrir
+  useEffect(() => {
+    setTimeout(() => urlInputRef.current?.focus(), 100);
+  }, []);
 
   function toggleSet(s: Set<string>, v: string): Set<string> {
     const next = new Set(s);
@@ -63,7 +69,6 @@ export default function UrlUploadForm(props: UrlUploadFormProps) {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          id: undefined, // not needed for create
           organization_id: props.organizationId,
           file_url: url,
           file_name: props.preDisplayName || url,
@@ -91,76 +96,100 @@ export default function UrlUploadForm(props: UrlUploadFormProps) {
     setSaving(false);
   }
 
+  const isValidUrl = /^https?:\/\/[^\s]+/i.test(url);
+
   return (
     <div className="space-y-4">
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>
       )}
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">🌐 URL da página</label>
+      {/* CAMPO PRINCIPAL: URL — bem grande e em destaque */}
+      <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-4">
+        <label className="block text-sm font-bold text-blue-900 mb-2">
+          🌐 Cole a URL da página que quer exibir
+        </label>
         <input
+          ref={urlInputRef}
           value={url}
           onChange={e => setUrl(e.target.value)}
           placeholder="https://exemplo.com/pagina"
-          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+          className="w-full rounded-lg border-2 border-blue-400 px-4 py-3 text-base focus:border-blue-600 focus:ring-2 focus:ring-blue-300 outline-none font-mono bg-white"
+          autoComplete="off"
+          spellCheck={false}
         />
-        <p className="text-xs text-gray-500 mt-1">
-          URL pública (http/https). O dispositivo vai abrir essa página em tela cheia, sem scroll/clique.
+        <p className="text-xs text-blue-700 mt-2">
+          ✓ Aceita http:// ou https:// &nbsp;|&nbsp; ✓ O dispositivo abre em tela cheia &nbsp;|&nbsp; ✓ Sem scroll/clique
         </p>
       </div>
 
-      {url && /^https?:\/\/[^\s]+/i.test(url) && (
-        <div className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
-          <div className="text-xs text-gray-500 px-3 py-1.5 border-b border-gray-200 bg-white">Preview (somente visualização)</div>
+      {/* Preview iframe em tempo real */}
+      {isValidUrl && (
+        <div className="rounded-lg overflow-hidden border-2 border-blue-200 bg-gray-50">
+          <div className="text-xs text-gray-600 px-3 py-1.5 border-b border-gray-200 bg-white flex items-center justify-between">
+            <span>👁️ Preview</span>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+              Abrir em nova aba ↗
+            </a>
+          </div>
           <iframe src={url} title="preview" className="w-full h-64 bg-white pointer-events-none" />
         </div>
       )}
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Nome de exibição</label>
-        <input value={props.preDisplayName} onChange={e => props.setPreDisplayName(e.target.value)}
-          placeholder="Ex: Cardápio Digital"
-          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
-      </div>
-
+      {/* Configurações básicas */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Validade (dias)</label>
-          <select value={props.preTtlDays} onChange={e => props.setPreTtlDays(Number(e.target.value))}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 outline-none">
-            <option value={1}>1 dia</option>
-            <option value={7}>7 dias (padrão)</option>
-            <option value={15}>15 dias</option>
-            <option value={30}>30 dias</option>
-            <option value={90}>90 dias</option>
-            <option value={0}>Para sempre (requer justificativa)</option>
-          </select>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nome de exibição</label>
+          <input
+            value={props.preDisplayName}
+            onChange={e => props.setPreDisplayName(e.target.value)}
+            placeholder="Ex: Cardápio Digital"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+          />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Orientação</label>
-          <select value={props.preOrientation} onChange={e => props.setPreOrientation(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 outline-none">
-            <option value="auto">Automática</option>
-            <option value="portrait">Vertical (em pé)</option>
-            <option value="landscape">Horizontal</option>
+          <label className="block text-sm font-medium text-gray-700 mb-1">⏱️ Duração</label>
+          <select
+            value={props.preTtlDays}
+            onChange={e => props.setPreTtlDays(Number(e.target.value))}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none"
+          >
+            <option value={10}>10s</option>
+            <option value={30}>30s</option>
+            <option value={60}>1 min</option>
+            <option value={300}>5 min</option>
+            <option value={900}>15 min</option>
+            <option value={3600}>1 hora</option>
+            <option value={0}>∞ Para sempre</option>
           </select>
+          <p className="text-[10px] text-gray-400 mt-1">Tempo que fica visível antes do próximo item</p>
         </div>
       </div>
 
-      {props.preTtlDays === 0 && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Motivo (mínimo 10 caracteres) *</label>
-          <textarea value={props.preReason} onChange={e => props.setPreReason(e.target.value)}
-            rows={2}
-            placeholder="Justificativa para manter para sempre..."
-            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
-        </div>
-      )}
-
       <details className="rounded-lg border border-gray-200 bg-white">
-        <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">🏷️ Categorias e restrições (opcional)</summary>
+        <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          ⚙️ Configurações avançadas (orientação, categorias, restrições)
+        </summary>
         <div className="p-4 space-y-4 border-t border-gray-200">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Orientação</label>
+            <select value={props.preOrientation} onChange={e => props.setPreOrientation(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none">
+              <option value="auto">Automática</option>
+              <option value="portrait">Vertical (em pé)</option>
+              <option value="landscape">Horizontal</option>
+            </select>
+          </div>
+
+          {props.preTtlDays === 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Motivo (mínimo 10 caracteres) *</label>
+              <textarea value={props.preReason} onChange={e => props.setPreReason(e.target.value)}
+                rows={2} placeholder="Justificativa para manter para sempre..."
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none" />
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-2">Categorias permitidas</label>
             <div className="flex flex-wrap gap-2">
@@ -177,8 +206,9 @@ export default function UrlUploadForm(props: UrlUploadFormProps) {
               })}
             </div>
           </div>
+
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-2">Categorias bloqueadas (excluir)</label>
+            <label className="block text-xs font-medium text-gray-700 mb-2">Categorias bloqueadas</label>
             <div className="flex flex-wrap gap-2">
               {props.availableCats.map(c => {
                 const selected = props.preExcludedCatIds.has(c.id);
@@ -201,9 +231,9 @@ export default function UrlUploadForm(props: UrlUploadFormProps) {
           className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300 disabled:opacity-50">
           Cancelar
         </button>
-        <button onClick={handleSave} disabled={saving || !url}
-          className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
-          {saving ? 'Salvando...' : '💾 Salvar URL'}
+        <button onClick={handleSave} disabled={saving || !isValidUrl}
+          className="flex-1 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
+          {saving ? '⏳ Salvando...' : '💾 Salvar URL'}
         </button>
       </div>
     </div>

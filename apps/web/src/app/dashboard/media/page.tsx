@@ -451,12 +451,12 @@ export default function MediaPage() {
       {/* Modal de upload via URL (sem necessidade de selecionar arquivo) */}
       {pendingFile && pendingFile.size === 0 && pendingFile.name === 'url' && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeUploadConfig}>
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900">🌐 Adicionar Página Web (URL)</h2>
-                <button onClick={closeUploadConfig} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
-              </div>
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[95vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-6 pb-3 flex items-center justify-between border-b border-gray-100">
+              <h2 className="text-xl font-bold text-gray-900">🌐 Adicionar Página Web (URL)</h2>
+              <button onClick={closeUploadConfig} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <div className="p-6 pt-4 overflow-y-auto flex-1">
               <UrlUploadForm
                 onClose={closeUploadConfig}
                 onSaved={() => { closeUploadConfig(); loadMedia(); }}
@@ -484,6 +484,7 @@ export default function MediaPage() {
                 preDeviceSearch={preDeviceSearch}
                 setPreDeviceSearch={setPreDeviceSearch}
               />
+            </div>
             </div>
           </div>
         </div>

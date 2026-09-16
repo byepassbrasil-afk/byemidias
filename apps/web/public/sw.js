@@ -1,6 +1,6 @@
-const STATIC_CACHE = 'byemidias-static-v8';
-const CONTENT_CACHE = 'byemidias-content-v1';
-const API_CACHE = 'byemidias-api-v1';
+const STATIC_CACHE = 'byemidias-static-v9';
+const CONTENT_CACHE = 'byemidias-content-v2';
+const API_CACHE = 'byemidias-api-v2';
 
 const STATIC_ASSETS = [
   '/',
@@ -11,22 +11,26 @@ const STATIC_ASSETS = [
   '/icons/icon-512.png',
 ];
 
-// Install: cache static assets
+// Install: cache static assets (mas não força skipWaiting agressivo)
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS).catch(() => {}))
   );
-  self.skipWaiting();
+  // NÃO chama self.skipWaiting() — deixa o usuário controlar via mensagem
 });
 
-// Activate: clean old caches
+// Activate: limpa todos os caches antigos (qualquer versão diferente)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys
-          .filter((k) => k !== STATIC_CACHE && k !== CONTENT_CACHE && k !== API_CACHE)
-          .map((k) => caches.delete(k))
+        keys.map((k) => {
+          // Deleta QUALQUER cache que não seja das versões atuais
+          if (k !== STATIC_CACHE && k !== CONTENT_CACHE && k !== API_CACHE) {
+            return caches.delete(k);
+          }
+          return Promise.resolve();
+        })
       )
     )
   );
@@ -38,6 +42,23 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
+
+  // Páginas HTML: network first, cache fallback (offline)
+  // Isso garante que mudanças no JS/CSS cheguem ao usuário imediatamente
+  if (request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/offline.html')))
+    );
+    return;
+  }
 
   // API calls: network first, cache as backup
   if (url.pathname.startsWith('/api/')) {
@@ -73,7 +94,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache first, network fallback
+  // Static assets (JS, CSS, images): cache first, network fallback
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
@@ -86,10 +107,6 @@ self.addEventListener('fetch', (event) => {
         caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
         return response;
       }).catch(() => {
-        // Offline fallback
-        if (request.mode === 'navigate') {
-          return caches.match('/offline.html');
-        }
         return new Response('Offline', { status: 503 });
       });
     })

@@ -152,7 +152,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.85")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.86")
 
             // CRITICAL: Apply orientation BEFORE setContentView so layout inflates with correct dimensions
             prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
@@ -178,10 +178,13 @@ class PlayerActivity : ComponentActivity() {
 
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+            // Esconde barras de sistema (status bar + nav bar) em mobile com notch/cutout
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    window.setDecorFitsSystemWindows(false)
                     window.insetsController?.let {
                         it.hide(android.view.WindowInsets.Type.systemBars())
+                        // BEHAVIOR_DEFAULT: esconde permanente, só mostra com swipe a partir da borda
                         it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                     }
                 } else {
@@ -271,18 +274,6 @@ class PlayerActivity : ComponentActivity() {
         setContentView(tv)
     }
 
-    override fun onResume() {
-        super.onResume()
-        try {
-            applyRotationFromPrefs()
-        } catch (_: Exception) {}
-        try {
-            lifecycleScope.launch(Dispatchers.IO) {
-                sendHeartbeatOn()
-            }
-        } catch (_: Exception) {}
-    }
-
     override fun onStop() {
         super.onStop()
         try {
@@ -317,6 +308,46 @@ class PlayerActivity : ComponentActivity() {
      * Also tries the View-based fallback (rootLayout rotation) for devices where
      * setRequestedOrientation is ignored (some Android TV boxes).
      */
+    /**
+     * Esconde as barras de sistema (status bar + nav bar) em mobile.
+     * Chamado após setContentView e em onResume para garantir que ficam ocultas.
+     */
+    private fun hideSystemBars() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.setDecorFitsSystemWindows(false)
+                window.insetsController?.let {
+                    it.hide(android.view.WindowInsets.Type.systemBars())
+                    it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                )
+            }
+        } catch (_: Exception) {}
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-esconde as barras toda vez que volta do lock task / app switcher
+        hideSystemBars()
+        try {
+            applyRotationFromPrefs()
+        } catch (_: Exception) {}
+        try {
+            lifecycleScope.launch(Dispatchers.IO) {
+                sendHeartbeatOn()
+            }
+        } catch (_: Exception) {}
+    }
+
     private fun applyRotationFromPrefs() {
         val p = prefs ?: return
         val rotation = p.getInt("screen_rotation", 0)

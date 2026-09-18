@@ -73,14 +73,70 @@ export default function PlaylistsPage() {
   const [newSlotPartnerId, setNewSlotPartnerId] = useState('');
   const [newSlotDuration, setNewSlotDuration] = useState(30);
   const [previewMedia, setPreviewMedia] = useState<Media | null>(null);
+  const [campaignByPlaylist, setCampaignByPlaylist] = useState<Record<string, { id: string; name: string; status: string }>>({});
+  const [devicesByPlaylist, setDevicesByPlaylist] = useState<Record<string, Array<{ id: string; name: string; status: string; is_online: boolean }>>>({});
 
   useEffect(() => { loadPlaylists(); loadOrgs(); loadPartners(); }, []);
 
   async function loadPlaylists() {
     const res = await fetch('/api/admin/crud/playlists?order=created_at&asc=false');
     const json = await res.json();
-    setPlaylists(json.data ?? []);
+    const list = (json.data ?? []) as Playlist[];
+    setPlaylists(list);
     setLoading(false);
+    // Carrega campanhas e devices vinculados em background
+    if (list.length > 0) {
+      loadCampaignAndDeviceData(list);
+    }
+  }
+
+  async function loadCampaignAndDeviceData(list: Playlist[]) {
+    try {
+      // 1) Pega todos os campaign_playlists (sem filtro — filtra no cliente)
+      const cpRes = await fetch('/api/admin/crud/campaign_playlists');
+      const cpJson = await cpRes.json();
+      const links = (cpJson.data ?? []) as Array<{ playlist_id: string; campaign_id: string }>;
+
+      // 2) Pega todas as campanhas
+      const campRes = await fetch('/api/admin/crud/campaigns?order=name');
+      const campJson = await campRes.json();
+      const camps = (campJson.data ?? []) as Array<{ id: string; name: string; status: string }>;
+      const campById: Record<string, { id: string; name: string; status: string }> = {};
+      for (const c of camps) campById[c.id] = c;
+
+      // 3) Mapeia playlist → primeira campanha vinculada
+      const cpMap: Record<string, { id: string; name: string; status: string }> = {};
+      const playlistIds = new Set(list.map(p => p.id));
+      for (const link of links) {
+        if (playlistIds.has(link.playlist_id) && !cpMap[link.playlist_id] && campById[link.campaign_id]) {
+          cpMap[link.playlist_id] = campById[link.campaign_id];
+        }
+      }
+      setCampaignByPlaylist(cpMap);
+
+      // 4) Pega todos os devices
+      const devRes = await fetch('/api/admin/crud/devices?order=name&limit=500');
+      const devJson = await devRes.json();
+      const devs = (devJson.data ?? []) as Array<{ id: string; name: string; status: string; campaign_id: string | null; is_online: boolean }>;
+
+      // 5) Mapeia playlist → devices via campaign
+      const devByCampaign: Record<string, typeof devs> = {};
+      for (const d of devs) {
+        if (d.campaign_id) {
+          if (!devByCampaign[d.campaign_id]) devByCampaign[d.campaign_id] = [];
+          devByCampaign[d.campaign_id].push(d);
+        }
+      }
+      const devMap: Record<string, typeof devs> = {};
+      for (const link of links) {
+        if (playlistIds.has(link.playlist_id) && devByCampaign[link.campaign_id] && !devMap[link.playlist_id]) {
+          devMap[link.playlist_id] = devByCampaign[link.campaign_id];
+        }
+      }
+      setDevicesByPlaylist(devMap);
+    } catch (e) {
+      console.error('loadCampaignAndDeviceData', e);
+    }
   }
 
   async function loadOrgs() {
@@ -794,7 +850,10 @@ export default function PlaylistsPage() {
         <div className="rounded-xl bg-white p-12 shadow-sm border border-gray-200 text-center"><p className="text-gray-500">Nenhuma playlist encontrada.</p></div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {playlists.map(pl => (
+          {playlists.map(pl => {
+            const camp = campaignByPlaylist[pl.id];
+            const devs = devicesByPlaylist[pl.id] || [];
+            return (
             <div key={pl.id} className="group rounded-xl bg-white p-6 shadow-sm border border-gray-200">
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
@@ -806,7 +865,51 @@ export default function PlaylistsPage() {
                 <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${pl.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{pl.status}</span>
                 <span className="text-xs text-gray-400">{new Date(pl.created_at).toLocaleDateString('pt-BR')}</span>
               </div>
-              <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2">
+
+              {/* Campanha vinculada */}
+              {camp && (
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1.5">
+                    <span>🎯</span>
+                    <span className="font-semibold uppercase tracking-wider text-[10px]">Campanha</span>
+                  </div>
+                  <div className="flex items-center justify-between px-2 py-1.5 bg-purple-50 rounded border border-purple-100">
+                    <span className="text-sm text-gray-900 truncate flex-1">{camp.name}</span>
+                    <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                      camp.status === 'active' ? 'bg-green-100 text-green-700' :
+                      camp.status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>{camp.status}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Dispositivos vinculados */}
+              {devs.length > 0 && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <span>📺</span>
+                      <span className="font-semibold uppercase tracking-wider text-[10px]">Dispositivos</span>
+                    </div>
+                    <span className="text-[10px] text-gray-400">{devs.length} total</span>
+                  </div>
+                  <div className="bg-gray-50 rounded border border-gray-200 p-1.5 max-h-32 overflow-y-auto space-y-1">
+                    {devs.slice(0, 5).map(d => (
+                      <div key={d.id} className="flex items-center gap-2 px-1.5 py-1 bg-white rounded text-xs">
+                        <span className={`w-1.5 h-1.5 rounded-full ${d.is_online ? 'bg-green-500' : 'bg-gray-400'}`} />
+                        <span className="truncate flex-1 text-gray-700">{d.name}</span>
+                        <span className="text-[10px] text-gray-400">{d.status}</span>
+                      </div>
+                    ))}
+                    {devs.length > 5 && (
+                      <p className="text-[10px] text-gray-500 italic px-1.5 py-0.5">+{devs.length - 5} mais...</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2">
                 <button onClick={() => openItems(pl)} className="flex-1 rounded-lg bg-blue-100 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-200 transition-colors">
                   🎬 Gerenciar Itens
                 </button>
@@ -814,7 +917,8 @@ export default function PlaylistsPage() {
                 <button onClick={() => setDeleteId(pl.id)} className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">🗑️</button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

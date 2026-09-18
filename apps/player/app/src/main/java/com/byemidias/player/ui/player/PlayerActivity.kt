@@ -152,10 +152,11 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.87")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.88")
 
             // CRITICAL: Apply orientation BEFORE setContentView so layout inflates with correct dimensions
             prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
+            mediaFileCache = com.byemidias.player.cache.MediaFileCache(this)
             try {
                 applyRotationFromPrefs()
             } catch (e: Exception) {
@@ -1099,6 +1100,20 @@ class PlayerActivity : ComponentActivity() {
                 mediaList.addAll(items)
                 currentIndex = 0
 
+                // Pré-baixar arquivos em background para offline.
+                // No primeiro sync, espera o download terminar pra evitar tela preta offline depois.
+                val urlsToPrefetch = items.map { it.fileUrl }.filter { it.isNotEmpty() && it.startsWith("http") }
+                if (isFirstSync) {
+                    flog("I", tag, "First sync: prefetching ${urlsToPrefetch.size} media files before playback...")
+                    showStatus("Baixando mídias (1ª vez)...")
+                    withContext(Dispatchers.IO) { mediaFileCache?.prefetchAll(urlsToPrefetch) }
+                    hideStatus()
+                } else {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        mediaFileCache?.prefetchAll(urlsToPrefetch)
+                    }
+                }
+
                 layoutZones = zones
                 if (layoutZones.isNotEmpty()) {
                     buildZoneLayout()
@@ -1387,7 +1402,24 @@ class PlayerActivity : ComponentActivity() {
     private var imageViewB: ImageView? = null
     private var activeImageView: ImageView? = null
     private var lastBitmap: android.graphics.Bitmap? = null
+    private var mediaFileCache: com.byemidias.player.cache.MediaFileCache? = null
     private var currentMediaRotation: Float = 0f
+
+    /**
+     * Retorna o path local (file:// URI) se a mídia está em cache,
+     * senão retorna a URL original. Usado para playback offline-first.
+     */
+    private fun getEffectiveMediaUrl(fileUrl: String): String {
+        if (fileUrl.isEmpty()) return fileUrl
+        if (fileUrl.startsWith("data:")) return fileUrl
+        val cached = mediaFileCache?.getCachedFile(fileUrl)
+        return if (cached != null) {
+            flog("I", "Fetch", "getEffectiveMediaUrl: using cache for ${fileUrl.take(60)}")
+            "file://$cached"
+        } else {
+            fileUrl
+        }
+    }
 
     private fun loadBitmapFromFileUrl(fileUrl: String): android.graphics.Bitmap? {
         return try {
@@ -1580,7 +1612,7 @@ class PlayerActivity : ComponentActivity() {
                     }
                 })
 
-                val mediaItem = ExoMediaItem.fromUri(item.fileUrl)
+                val mediaItem = ExoMediaItem.fromUri(getEffectiveMediaUrl(item.fileUrl))
                 player.stop()
                 player.clearMediaItems()
                 player.setMediaItem(mediaItem)
@@ -1669,7 +1701,8 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         currentMediaRotation = item.rotation.toFloat()
-        val bitmap = withContext(Dispatchers.IO) { loadBitmapFromFileUrl(item.fileUrl) }
+        val effectiveUrl = getEffectiveMediaUrl(item.fileUrl)
+        val bitmap = withContext(Dispatchers.IO) { loadBitmapFromFileUrl(effectiveUrl) }
         if (bitmap != null) {
             flog("I", "Play", "playImage: OK ${item.name} ${bitmap.width}x${bitmap.height} rotation=${item.rotation}")
             val isFirstDisplay = lastBitmap == null && (activeImageView?.drawable == null)

@@ -834,13 +834,21 @@ export default function PlaylistsPage() {
             <div className="flex-1 bg-black flex items-center justify-center min-h-[300px]">
               {previewMedia.type === 'video' ? (
                 <video
+                  key={previewMedia.id}
                   src={previewMedia.file_url}
                   controls
                   autoPlay
+                  preload="metadata"
                   className="max-w-full max-h-[70vh] w-auto h-auto"
                 />
               ) : previewMedia.type === 'image' || previewMedia.type === 'gif' ? (
-                <img src={previewMedia.file_url} alt={previewMedia.name} className="max-w-full max-h-[70vh] object-contain" />
+                <img
+                  key={previewMedia.id}
+                  src={previewMedia.file_url}
+                  alt={previewMedia.name}
+                  loading="eager"
+                  className="max-w-full max-h-[70vh] object-contain"
+                />
               ) : (
                 <div className="text-white text-center p-8">
                   <p className="text-6xl mb-4">📄</p>

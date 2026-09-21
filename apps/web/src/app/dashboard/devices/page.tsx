@@ -41,6 +41,47 @@ export default function DevicesPage() {
   const [quickAssignDevice, setQuickAssignDevice] = useState<Device | null>(null);
   const [showQrScanner, setShowQrScanner] = useState(false);
 
+  // Pastas (grupos) para organizar devices
+  // localStorage: { "device-folder:<deviceId>": "<folderName>" }
+  // folders: lista de nomes únicos conhecidos
+  const [folders, setFolders] = useState<string[]>([]);
+  const [folderOfDevice, setFolderOfDevice] = useState<Record<string, string>>({});
+  const [activeFolder, setActiveFolder] = useState<string | null>(null); // null = "Todos"
+  const [showFolderModal, setShowFolderModal] = useState<{ device: Device; currentFolder: string } | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = JSON.parse(localStorage.getItem('device-folders') || '{}') as Record<string, string>;
+      setFolderOfDevice(stored);
+      const unique = Array.from(new Set(Object.values(stored).filter(v => v && v.trim()))).sort();
+      setFolders(unique);
+    } catch {}
+  }, []);
+
+  function saveFolders(map: Record<string, string>) {
+    setFolderOfDevice(map);
+    const unique = Array.from(new Set(Object.values(map).filter(v => v && v.trim()))).sort();
+    setFolders(unique);
+    try { localStorage.setItem('device-folders', JSON.stringify(map)); } catch {}
+  }
+
+  function assignDeviceToFolder(deviceId: string, folderName: string) {
+    const next = { ...folderOfDevice };
+    if (!folderName || !folderName.trim()) {
+      delete next[deviceId];
+    } else {
+      next[deviceId] = folderName.trim();
+    }
+    saveFolders(next);
+  }
+
+  function createFolderAndAssign(deviceId: string, folderName: string) {
+    if (!folderName.trim()) return;
+    assignDeviceToFolder(deviceId, folderName.trim());
+  }
+
   // Load session profile first — we need organization_id to scope the device query.
   useEffect(() => {
     let cancelled = false;
@@ -207,7 +248,8 @@ export default function DevicesPage() {
       (filterStatus === 'offline' && !isOnline(d));
     const matchCategory = !filterCategory ||
       (deviceCategories[d.id] || []).some(c => c.category_id === filterCategory);
-    return matchSearch && matchStatus && matchCategory;
+    const matchFolder = !activeFolder || folderOfDevice[d.id] === activeFolder;
+    return matchSearch && matchStatus && matchCategory && matchFolder;
   });
 
   function startEdit(d: Device) {
@@ -443,6 +485,18 @@ export default function DevicesPage() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome, UUID ou modelo..."
               className="w-full rounded-xl bg-gray-900 border border-gray-800 pl-10 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors" />
           </div>
+
+          {/* Folder filter */}
+          {folders.length > 0 && (
+            <select value={activeFolder ?? ''} onChange={e => setActiveFolder(e.target.value || null)}
+              className="rounded-xl bg-gray-900 border border-gray-800 px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors min-w-[160px]">
+              <option value="">📁 Todas pastas</option>
+              {folders.map(f => (
+                <option key={f} value={f}>📁 {f}</option>
+              ))}
+            </select>
+          )}
+
           <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
             className="rounded-xl bg-gray-900 border border-gray-800 px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors min-w-[180px]">
             <option value="">🏷️ Todas categorias</option>
@@ -511,6 +565,11 @@ export default function DevicesPage() {
                         <div className="min-w-0">
                           <h3 className="text-sm font-semibold text-white truncate">{device.name}</h3>
                           <p className="text-[11px] text-gray-600 font-mono truncate">{device.device_uuid?.slice(0, 12)}...</p>
+                          {folderOfDevice[device.id] && (
+                            <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[10px] bg-orange-900/30 text-orange-300 border border-orange-700/30">
+                              📁 {folderOfDevice[device.id]}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="relative">
@@ -524,6 +583,9 @@ export default function DevicesPage() {
                             <div className="absolute right-0 top-10 z-50 w-52 rounded-xl bg-gray-800 border border-gray-700 shadow-2xl py-1.5">
                               <button onClick={() => { setQuickAssignDevice(device); setActionMenuId(null); }} className="w-full px-4 py-2.5 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
                                 <span className="text-purple-400">📢</span> Atribuir campanha
+                              </button>
+                              <button onClick={() => { setShowFolderModal({ device, currentFolder: folderOfDevice[device.id] || '' }); setActionMenuId(null); }} className="w-full px-4 py-2.5 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
+                                <span className="text-orange-400">📁</span> Mover para pasta
                               </button>
                               <button onClick={() => startEdit(device)} className="w-full px-4 py-2.5 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
                                 <span className="text-blue-400">✏️</span> Editar
@@ -813,6 +875,78 @@ export default function DevicesPage() {
               }
             }}
           />
+        )}
+
+        {/* Modal: Mover device para pasta */}
+        {showFolderModal && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setShowFolderModal(null)}>
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="p-5 border-b border-gray-800 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-white">📁 Mover para pasta</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{showFolderModal.device.name}</p>
+                </div>
+                <button onClick={() => setShowFolderModal(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800">✕</button>
+              </div>
+              <div className="p-5 space-y-3">
+                <input
+                  value={newFolderName}
+                  onChange={e => setNewFolderName(e.target.value)}
+                  placeholder="Nome da pasta (ex: Loja Centro, Recepção...)"
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      createFolderAndAssign(showFolderModal.device.id, newFolderName);
+                      setShowFolderModal(null);
+                      setNewFolderName('');
+                    }}
+                    className="flex-1 rounded-lg bg-orange-600 px-3 py-2 text-sm font-medium text-white hover:bg-orange-500"
+                  >
+                    📁 Criar e mover
+                  </button>
+                  {showFolderModal.currentFolder && (
+                    <button
+                      onClick={() => {
+                        assignDeviceToFolder(showFolderModal.device.id, '');
+                        setShowFolderModal(null);
+                        setNewFolderName('');
+                      }}
+                      className="rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700"
+                      title="Tirar desta pasta"
+                    >
+                      🚫 Sem pasta
+                    </button>
+                  )}
+                </div>
+                {folders.length > 0 && (
+                  <div className="pt-3 border-t border-gray-800">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold mb-2">Pastas existentes</p>
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                      {folders.map(f => (
+                        <button
+                          key={f}
+                          onClick={() => {
+                            assignDeviceToFolder(showFolderModal.device.id, f);
+                            setShowFolderModal(null);
+                            setNewFolderName('');
+                          }}
+                          className={`text-left rounded-lg border px-3 py-2 text-sm transition-colors ${
+                            showFolderModal.currentFolder === f
+                              ? 'bg-orange-900/30 border-orange-600 text-orange-300'
+                              : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                          }`}
+                        >
+                          📁 {f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

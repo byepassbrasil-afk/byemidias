@@ -109,6 +109,30 @@ const sql = async (strings: TemplateStringsArray, ...values: any[]): Promise<Que
 };
 
 async function handleSelect(sql: string, values: any[]): Promise<QueryResult> {
+  // Caso especial: SELECT column_name FROM information_schema.columns
+  if (/FROM\s+information_schema\.columns/i.test(sql)) {
+    try {
+      // Heurística - retorna colunas conhecidas por collection
+      const knownCollections: Array<Record<string, any>> = [
+        { column_name: 'id', table_name: 'organizations' },
+        { column_name: 'name', table_name: 'organizations' },
+        { column_name: 'slug', table_name: 'organizations' },
+        { column_name: 'id', table_name: 'devices' },
+        { column_name: 'organization_id', table_name: 'devices' },
+        { column_name: 'id', table_name: 'media' },
+        { column_name: 'organization_id', table_name: 'media' },
+      ];
+      const m = sql.match(/table_name\s*=\s*'([^']+)'/i);
+      if (m) {
+        const t = m[1];
+        return { rows: knownCollections.filter(c => c.table_name === t) };
+      }
+      return { rows: knownCollections };
+    } catch (e: any) {
+      return { rows: [] };
+    }
+  }
+
   const table = parseTableFromSql(sql);
   if (!table) return { rows: [] };
 
@@ -125,8 +149,16 @@ async function handleSelect(sql: string, values: any[]): Promise<QueryResult> {
     filterParts.push(`${k} = "${escaped}"`);
   }
   const filter = filterParts.length > 0 ? filterParts.join(' && ') : '';
-  const order = parseOrderBy(sql);
+  let order = parseOrderBy(sql);
   const limit = parseLimit(sql);
+
+  // Mapeia colunas "created_at" -> "created", etc para PB
+  if (order) {
+    order = order.replace(/^created_at$/, 'created')
+                .replace(/^updated_at$/, 'updated')
+                .replace(/^-created_at$/, '-created')
+                .replace(/^-updated_at$/, '-updated');
+  }
 
   try {
     const pb = await getAdminClient();

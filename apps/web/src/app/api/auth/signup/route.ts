@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       password,
       passwordConfirm: password,
       emailVisibility: true,
-      verified: false,
+      verified: true,  // verificado direto (sem email confirmation)
     });
 
     // 5. Cria o profile vinculado ao user

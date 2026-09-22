@@ -25,9 +25,7 @@ export async function POST(request: NextRequest) {
       throw e;
     }
 
-    if (!user.verified && user.verified !== undefined) {
-      return NextResponse.json({ error: 'Email ainda não foi confirmado. Verifique sua caixa de entrada.' }, { status: 403 });
-    }
+    // (verified check removido — signup cria verificado, e auth do PB já garante email válido)
 
     // PB não tem bcrypt.compare via admin; mas podemos tentar login via auth
     // para confirmar a senha. Se falhar, a senha está errada.

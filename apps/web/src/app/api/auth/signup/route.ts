@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomUUID } from 'crypto';
-import sql from '@/lib/db';
+import { generateSlug } from '@/lib/pb-server';
+import { getAdminClient, newId, findOne, create, update, hashPassword } from '@/lib/pb-server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,51 +15,88 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Senha deve ter no mínimo 6 caracteres' }, { status: 400 });
     }
 
-    const slug = company_slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const slug = generateSlug(company_slug);
     if (slug.length < 3) {
       return NextResponse.json({ error: 'Slug muito curto (mínimo 3 caracteres)' }, { status: 400 });
     }
 
-    const existingUser = await sql`SELECT id FROM profiles WHERE email = ${email} LIMIT 1`;
-    if (existingUser.length > 0) {
-      return NextResponse.json({ error: 'Email já cadastrado' }, { status: 409 });
+    const pb = await getAdminClient();
+
+    // 1. Verifica se email já existe na collection users (auth)
+    try {
+      const existingUser = await pb.collection('users').getFirstListItem(`email = "${email}"`);
+      if (existingUser) {
+        return NextResponse.json({ error: 'Email já cadastrado' }, { status: 409 });
+      }
+    } catch (e: any) {
+      if (e.status !== 404) throw e;
     }
 
-    const existingSlug = await sql`SELECT id FROM organizations WHERE slug = ${slug} LIMIT 1`;
-    if (existingSlug.length > 0) {
-      return NextResponse.json({ error: 'Esse slug já está em uso. Tente outro.' }, { status: 409 });
+    // 2. Verifica slug único em organizations
+    try {
+      const existingSlug = await pb.collection('organizations').getFirstListItem(`slug = "${slug}"`);
+      if (existingSlug) {
+        return NextResponse.json({ error: 'Esse slug já está em uso. Tente outro.' }, { status: 409 });
+      }
+    } catch (e: any) {
+      if (e.status !== 404) throw e;
     }
 
-    const bcrypt = await import('bcryptjs');
-    const passwordHash = await bcrypt.hash(password, 10);
+    // 3. Cria a organização
+    const orgId = newId();
+    const org = await pb.collection('organizations').create({
+      id: orgId,
+      name: company_name,
+      slug,
+      status: 'pending_approval',
+      plan: 'free',
+      max_devices: 3,
+    });
 
-    const orgId = randomUUID();
-    const userId = randomUUID();
+    // 4. Cria o usuário na collection users (auth) — PocketBase cuida do hash
+    const user = await pb.collection('users').create({
+      email: email.toLowerCase().trim(),
+      password,
+      passwordConfirm: password,
+      emailVisibility: true,
+      verified: false,
+    });
 
-    const [org] = await sql`
-      INSERT INTO organizations (id, name, slug, status, plan, max_devices, created_at)
-      VALUES (${orgId}, ${company_name}, ${slug}, 'pending_approval', 'free', 3, NOW())
-      RETURNING id, name, slug
-    `;
+    // 5. Cria o profile vinculado ao user
+    const profile = await pb.collection('profiles').create({
+      id: newId(),
+      user_id: user.id,
+      email: email.toLowerCase().trim(),
+      full_name: full_name.trim(),
+      role: 'manager',
+      status: 'active',
+      organization_id: orgId,
+    });
 
-    const [profile] = await sql`
-      INSERT INTO profiles (id, email, full_name, role, organization_id, status, password_hash, created_at)
-      VALUES (${userId}, ${email}, ${full_name}, 'manager', ${orgId}, 'active', ${passwordHash}, NOW())
-      RETURNING id, email, full_name, role
-    `;
-
-    await sql`
-      UPDATE organizations SET owner_id = ${userId} WHERE id = ${orgId}
-    `;
+    // 6. Define o owner_id da organization
+    await pb.collection('organizations').update(orgId, { owner_id: user.id });
 
     return NextResponse.json({
       success: true,
       message: 'Conta criada com sucesso!',
-      user: { id: profile.id, email: profile.email, full_name: profile.full_name },
-      organization: { id: org.id, name: org.name, slug: org.slug },
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: profile.full_name,
+      },
+      organization: {
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+      },
     });
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    console.error('[signup] ERRO:', msg);
+    if (e && typeof e === 'object' && 'data' in e) {
+      console.error('[signup] data:', JSON.stringify(e.data).slice(0, 500));
+    }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+

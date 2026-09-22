@@ -4,5 +4,10 @@
  * Toda lógica de auth está em auth-pb.ts (que usa PocketBase).
  */
 
-export * from './auth-pb';
-export { UserProfile } from './auth-pb';
+export {
+  requireAuth,
+  requireAuthApi,
+  getOrgId,
+  isSuperAdmin,
+  type UserProfile,
+} from './auth-pb';

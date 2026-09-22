@@ -1,9 +1,12 @@
 /**
  * /api/pb/crud
- * Endpoint genérico PB para listagem de coleções.
- * GET /api/pb/crud?table=organizations&order=name&asc=true&limit=10
+ * Endpoint genérico PB para CRUD em qualquer collection.
+ * GET    /api/pb/crud?table=X&order=Y&asc=true&limit=10
+ * POST   /api/pb/crud?table=X   body: {...campos}
+ * PUT    /api/pb/crud?table=X   body: {id, ...campos}
+ * DELETE /api/pb/crud?table=X   body: {id}  ou  ?id=X
  *
- * Diferente de /api/admin/crud/[table] que usa Postgres (que está fora).
+ * Substitui o /api/admin/crud/[table]/route.ts original que usava Postgres.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -23,13 +26,11 @@ const ALLOWED_TABLES = [
   'advertiser_invoices', 'expenses', 'revenues', 'contact_leads',
 ];
 
-// Colunas permitidas para ORDER BY
 const ALLOWED_ORDER = new Set([
   'created', 'updated', 'name', 'status', 'last_heartbeat', 'model', 'id',
-  'date', 'expires_at', 'position',
+  'date', 'expires_at', 'position', 'expires', 'start_date', 'end_date',
 ]);
 
-// Tabelas que têm organization_id (auto-filtra para non-super_admin)
 const TABLES_WITH_ORG = new Set([
   'organizations', 'devices', 'media', 'playlists', 'campaigns',
   'units', 'playlist_items', 'campaign_playlists', 'campaign_targets',
@@ -42,77 +43,144 @@ const TABLES_WITH_ORG = new Set([
   'expenses', 'revenues',
 ]);
 
+async function getAuthAndScope() {
+  const cookieStore = await (await import('next/headers')).cookies();
+  const sessionCookie = cookieStore.get('session')?.value;
+  if (!sessionCookie) return { error: 'Não autenticado', status: 401 };
+  let session: any;
+  try { session = JSON.parse(sessionCookie); } catch { return { error: 'Sessão inválida', status: 401 }; }
+  if (!session?.email) return { error: 'Não autenticado', status: 401 };
+
+  const pb = await getAdminClient();
+  const user = await pb.collection('users').getFirstListItem(`email = "${session.email}"`);
+  let profile = null;
+  try { profile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`); } catch {}
+  if (!profile) return { error: 'Profile não encontrado', status: 403 };
+
+  return {
+    pb,
+    isSuperAdmin: profile.role === 'super_admin',
+    userOrgId: profile.organization_id,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
-    // 1. Verifica sessão
-    const cookieStore = await (await import('next/headers')).cookies();
-    const sessionCookie = cookieStore.get('session')?.value;
-    if (!sessionCookie) {
-      return NextResponse.json({ data: [] });
-    }
-    let session: any;
-    try { session = JSON.parse(sessionCookie); } catch {
-      return NextResponse.json({ data: [] });
-    }
-    if (!session?.email) {
-      return NextResponse.json({ data: [] });
-    }
+    const auth = await getAuthAndScope();
+    if (auth.error) return NextResponse.json({ data: [] }, { status: auth.status });
+    const { pb, isSuperAdmin, userOrgId } = auth;
 
-    // 2. Pega user, profile, role
-    const pb = await getAdminClient();
-    let user;
-    try {
-      user = await pb.collection('users').getFirstListItem(`email = "${session.email}"`);
-    } catch {
-      return NextResponse.json({ data: [] });
-    }
-    let profile = null;
-    try {
-      profile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`);
-    } catch {}
-    const isSuperAdmin = profile?.role === 'super_admin';
-    const userOrgId = profile?.organization_id;
-
-    // 3. Parse params
     const { searchParams } = new URL(request.url);
     const table = searchParams.get('table');
+    if (!table || !ALLOWED_TABLES.includes(table)) {
+      return NextResponse.json({ data: [] });
+    }
     const order = searchParams.get('order') || 'created';
     const ascending = searchParams.get('asc') !== 'false';
     const limit = Math.min(parseInt(searchParams.get('limit') || '500'), 1000);
 
-    if (!table || !ALLOWED_TABLES.includes(table)) {
-      return NextResponse.json({ data: [] });
-    }
-
-    // 4. Filtros
     const filterParts: string[] = [];
     for (const [key, value] of searchParams.entries()) {
       if (key.startsWith('_') || ['table', 'limit', 'offset', 'order', 'asc'].includes(key)) continue;
       filterParts.push(`${key} = "${String(value).replace(/"/g, '\\"')}"`);
     }
-
-    // 5. Auto-filtro por organization_id (gestor vê só sua org)
     if (!isSuperAdmin && userOrgId && TABLES_WITH_ORG.has(table) && !filterParts.some(f => f.startsWith('organization_id'))) {
       filterParts.push(`organization_id = "${userOrgId}"`);
     }
-    // organizations: non-super_admin só vê a sua
     if (!isSuperAdmin && table === 'organizations' && !filterParts.some(f => f.startsWith('id'))) {
       filterParts.push(`id = "${userOrgId}"`);
     }
-
     const filter = filterParts.length > 0 ? filterParts.join(' && ') : '';
     const safeOrder = ALLOWED_ORDER.has(order) ? order : 'created';
     const sortSign = ascending ? '' : '-';
+    const opts: any = { perPage: limit };
+    if (filter) opts.filter = filter;
+    if (safeOrder) opts.sort = `${sortSign}${safeOrder}`;
 
-    // 4. Query no PB
-    const result = await pb.collection(table).getList(1, limit, {
-      filter: filter || undefined,
-      sort: `${sortSign}${safeOrder}`,
-    });
-
+    const result = await pb.collection(table).getList(1, limit, opts);
     return NextResponse.json({ data: result.items });
   } catch (e: any) {
-    console.error('[pb/crud GET] erro:', e?.message || e);
+    console.error('[pb/crud GET] erro:', e?.message);
     return NextResponse.json({ data: [], error: e?.message });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const auth = await getAuthAndScope();
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { pb, isSuperAdmin, userOrgId } = auth;
+
+    const { searchParams } = new URL(request.url);
+    const table = searchParams.get('table');
+    if (!table || !ALLOWED_TABLES.includes(table)) {
+      return NextResponse.json({ error: 'Tabela não permitida' }, { status: 400 });
+    }
+
+    const body = await request.json();
+
+    // Auto-inject organization_id se tabela tem esse campo e body não tem
+    if (TABLES_WITH_ORG.has(table) && !body.organization_id && userOrgId && !isSuperAdmin) {
+      body.organization_id = userOrgId;
+    }
+
+    const result = await pb.collection(table).create(body);
+    return NextResponse.json({ data: result });
+  } catch (e: any) {
+    console.error('[pb/crud POST] erro:', e?.message);
+    return NextResponse.json({ error: e?.message || 'Erro' }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const auth = await getAuthAndScope();
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { pb } = auth;
+
+    const { searchParams } = new URL(request.url);
+    const table = searchParams.get('table');
+    if (!table || !ALLOWED_TABLES.includes(table)) {
+      return NextResponse.json({ error: 'Tabela não permitida' }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const id = body.id;
+    if (!id) {
+      // Tenta pegar id da query string
+      const idFromQuery = searchParams.get('id');
+      if (!idFromQuery) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+      delete body.id;
+      const result = await pb.collection(table).update(idFromQuery, body);
+      return NextResponse.json({ data: result });
+    }
+    delete body.id;
+    const result = await pb.collection(table).update(id, body);
+    return NextResponse.json({ data: result });
+  } catch (e: any) {
+    console.error('[pb/crud PUT] erro:', e?.message);
+    return NextResponse.json({ error: e?.message || 'Erro' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await getAuthAndScope();
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { pb } = auth;
+
+    const { searchParams } = new URL(request.url);
+    const table = searchParams.get('table');
+    if (!table || !ALLOWED_TABLES.includes(table)) {
+      return NextResponse.json({ error: 'Tabela não permitida' }, { status: 400 });
+    }
+    const id = searchParams.get('id') || (await request.json().catch(() => ({}))).id;
+    if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+
+    await pb.collection(table).delete(id);
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    console.error('[pb/crud DELETE] erro:', e?.message);
+    return NextResponse.json({ error: e?.message || 'Erro' }, { status: 500 });
   }
 }

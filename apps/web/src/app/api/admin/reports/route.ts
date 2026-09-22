@@ -76,7 +76,7 @@ export async function GET(request: Request) {
             total_plays: Number(playsResult?.[0]?.count) || 0,
             period_days: days,
           },
-          devices: (devices || []).map(d => ({
+          devices: (devices || []).map((d: any) => ({
             id: d.id,
             name: d.name,
             model: d.model,
@@ -341,8 +341,9 @@ export async function GET(request: Request) {
       default:
         return NextResponse.json({ error: 'Invalid report type' }, { status: 400 });
     }
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+

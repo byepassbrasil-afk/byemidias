@@ -35,7 +35,7 @@ export async function GET() {
     }
 
     const result = await Promise.all(
-      Array.from(pendingPlaylists ?? []).map(async (pl) => {
+      Array.from(pendingPlaylists ?? []).map(async (pl: any) => {
         const items = await sql`
           SELECT pi.*, row_to_json(m.*) as media
           FROM playlist_items pi
@@ -44,7 +44,7 @@ export async function GET() {
           ORDER BY pi.position ASC
         `;
 
-        let originalItems: unknown[] = [];
+        let originalItems: any[] = [];
         if (pl.parent_id) {
           const origResult = await sql`
             SELECT pi.*, row_to_json(m.*) as media
@@ -65,9 +65,10 @@ export async function GET() {
     );
 
     return NextResponse.json({ playlists: result });
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('GET /api/admin/playlists/pending error:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+

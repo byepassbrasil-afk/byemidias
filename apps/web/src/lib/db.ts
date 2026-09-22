@@ -6,5 +6,10 @@
  * Este shim existe para destravar o app AGORA sem reescrever 115 rotas.
  */
 
-export { default, sql, sql_unsafe, sql_str, bumpContentVersion } from './pb-shim';
-export * from './pb-shim';
+import * as pbShim from './pb-shim';
+
+export const sql: any = pbShim._sql;
+export const sql_unsafe: any = pbShim._unsafe;
+export const sql_str: any = pbShim._unsafe;
+export default pbShim._default;
+export const bumpContentVersion = pbShim.bumpContentVersion;

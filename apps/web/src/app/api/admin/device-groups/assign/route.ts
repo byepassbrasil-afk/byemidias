@@ -16,14 +16,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Grupo sem dispositivos' }, { status: 400 });
     }
 
-    const deviceIds = members.map(m => m.device_id);
+    const deviceIds = (members as Array<{device_id: string}>).map(m => m.device_id);
     for (const deviceId of deviceIds) {
       await sql`UPDATE devices SET campaign_id = ${campaign_id || null} WHERE id = ${deviceId}`;
     }
 
     return NextResponse.json({ success: true, updated: deviceIds.length });
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+

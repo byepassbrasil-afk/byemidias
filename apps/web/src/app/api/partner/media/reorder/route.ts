@@ -16,7 +16,7 @@ export async function PUT(request: Request) {
 
   const partnerDevices = await sql`SELECT playlist_id FROM partner_devices WHERE partner_access_id = ${session.partnerAccessId} AND playlist_id IS NOT NULL`;
 
-  const playlistIds = [...new Set(partnerDevices.map((pd) => pd.playlist_id))];
+  const playlistIds = [...new Set((partnerDevices as Array<{playlist_id: string}>).map((pd) => pd.playlist_id))];
 
   for (const item of items) {
     const [playlistItem] = await sql`SELECT id, playlist_id FROM playlist_items WHERE id = ${item.id}`;

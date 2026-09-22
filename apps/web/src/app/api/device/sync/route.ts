@@ -328,7 +328,7 @@ export async function GET(request: Request) {
           const categoryIds = blockedByCategoryIdsPerMedia.get(mid) || [];
           blockedMediaLog.push({
             media_id: mid,
-            media_name: mediaNameMap.get(mid) || 'unknown',
+            media_name: (mediaNameMap as Map<string, any>).get(mid) || 'unknown',
             reason,
             category_ids: categoryIds,
           });
@@ -438,8 +438,9 @@ export async function GET(request: Request) {
       mirror_horizontal: device.mirror_horizontal || false,
       mirror_vertical: device.mirror_vertical || false,
     });
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import sql from '@/lib/db';
+import { getAdminClient, verifyPassword } from '@/lib/pb-server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,33 +10,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email e senha são obrigatórios' }, { status: 400 });
     }
 
-    const [profile] = await sql`SELECT id, email, full_name, role, status, password_hash, organization_id FROM profiles WHERE email = ${email} LIMIT 1`;
+    const emailNorm = String(email).toLowerCase().trim();
 
-    if (!profile) {
+    const pb = await getAdminClient();
+
+    // Busca o user no PocketBase (collection users, tipo auth)
+    let user;
+    try {
+      user = await pb.collection('users').getFirstListItem(`email = "${emailNorm}"`);
+    } catch (e: any) {
+      if (e?.status === 404) {
+        return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
+      }
+      throw e;
+    }
+
+    if (!user.verified && user.verified !== undefined) {
+      return NextResponse.json({ error: 'Email ainda não foi confirmado. Verifique sua caixa de entrada.' }, { status: 403 });
+    }
+
+    // PB não tem bcrypt.compare via admin; mas podemos tentar login via auth
+    // para confirmar a senha. Se falhar, a senha está errada.
+    let passwordOk = false;
+    try {
+      const authPb = new (require('pocketbase/cjs'))(process.env.PB_URL);
+      await authPb.collection('users').authWithPassword(emailNorm, password);
+      passwordOk = true;
+    } catch {
+      passwordOk = false;
+    }
+
+    if (!passwordOk) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
-    if (profile.status === 'pending_invite') {
+    // Pega profile vinculado (collection custom)
+    let profile = null;
+    try {
+      profile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`);
+    } catch {
+      // Sem profile — não bloqueia, mas status não tem
+    }
+
+    // Status check (mirror do Neon)
+    if (profile?.status === 'pending_invite') {
       return NextResponse.json({ error: 'Sua conta está aguardando aprovação do administrador.' }, { status: 403 });
     }
-    if (profile.status !== 'active') {
+    if (profile?.status && profile.status !== 'active') {
       return NextResponse.json({ error: 'Conta inativa. Contate o administrador.' }, { status: 403 });
     }
 
-    const bcrypt = await import('bcryptjs');
-    const valid = await bcrypt.compare(password, profile.password_hash);
-    if (!valid) {
-      return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
-    }
-
-    const mustChangePassword = profile.password_hash.startsWith('temp:');
+    const mustChangePassword = false; // PB não usa temp: prefix
 
     const response = NextResponse.json({
-      user: { id: profile.id, email: profile.email, full_name: profile.full_name, role: profile.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: profile?.full_name || user.name || user.email,
+        role: profile?.role || 'manager',
+        organization_id: profile?.organization_id,
+      },
       must_change_password: mustChangePassword,
     });
 
-    response.cookies.set('session', JSON.stringify({ email: profile.email }), {
+    response.cookies.set('session', JSON.stringify({ email: user.email }), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -45,8 +82,10 @@ export async function POST(request: NextRequest) {
     });
 
     return response;
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    console.error('[login] ERRO:', msg);
+    if (e?.data) console.error('[login] data:', JSON.stringify(e.data).slice(0, 500));
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

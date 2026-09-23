@@ -127,6 +127,18 @@ class PlayerActivity : ComponentActivity() {
             }
 
             fun getResolvedType(fileUrl: String, fallbackType: String): String {
+                // URL HTTP/HTTPS sem extensão de imagem/vídeo → é página web
+                if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+                    val clean = fileUrl.substringBefore("?").substringBefore("#")
+                    val ext = clean.substringAfterLast(".", "").lowercase()
+                    // Se tem extensão de imagem/vídeo, é mídia; senão é URL/página
+                    if (ext.isEmpty() || (!IMAGE_EXTS.contains(ext) && !VIDEO_EXTS.contains(ext))) {
+                        // Mas se fallbackType for "url", respeita
+                        if (fallbackType == "url") return "url"
+                        // Se for http/https sem extensão, é url
+                        if (ext.isEmpty()) return "url"
+                    }
+                }
                 if (isImageFile(fileUrl)) return "image"
                 if (isVideoFile(fileUrl)) return "video"
                 return fallbackType

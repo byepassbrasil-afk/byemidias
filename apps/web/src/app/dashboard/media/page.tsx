@@ -525,13 +525,25 @@ export default function MediaPage() {
               </button>
               <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden relative">
                 {item.type === 'image' || item.type === 'gif' ? (
-                  <img src={item.file_url} alt={item.name} className="w-full h-full object-cover" />
+                  <img
+                    src={item.file_url}
+                    alt={item.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                      const parent = (e.target as HTMLImageElement).parentElement;
+                      if (parent) parent.innerHTML = '<div class="text-4xl">🖼️</div>';
+                    }}
+                    loading="lazy"
+                  />
                 ) : item.type === 'video' ? (
                   <VideoThumbnail src={item.file_url} alt={item.name} className="w-full h-full object-cover" />
                 ) : item.type === 'url' ? (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-2 text-center">
-                    <span className="text-5xl">🌐</span>
-                    <span className="text-[10px] text-blue-700 font-medium mt-1 truncate w-full">{item.file_url?.replace(/^https?:\/\//, '').substring(0, 30) || 'URL'}</span>
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-2 text-center relative">
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="text-5xl">🌐</span>
+                      <span className="text-[10px] text-blue-700 font-medium mt-1 truncate w-full px-1">{item.file_url?.replace(/^https?:\/\//, '').substring(0, 30) || 'URL'}</span>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-4xl">📄</div>
@@ -569,8 +581,8 @@ export default function MediaPage() {
         </div>
       )}
 
-      {/* Pre-upload config modal */}
-      {pendingFile && (
+      {/* Pre-upload config modal - SÓ para arquivos, NÃO para URL */}
+      {pendingFile && pendingFile.size > 0 && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeUploadConfig}>
           <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="p-6">

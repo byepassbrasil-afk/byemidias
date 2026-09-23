@@ -1,0 +1,28 @@
+# ============================================
+# VARIÁVEIS DE AMBIENTE - VERCEL
+# ByeMidias Project
+# ============================================
+# Cole cada linha no campo "Key" = "Value"
+# em: Vercel Dashboard > Settings > Environment Variables
+# ============================================
+
+# --- DATABASE (PostgreSQL Supabase Self-hosted) ---
+# ATENÇÃO: usar senha do POSTGRES_PASSWORD (não do DASHBOARD_PASSWORD)
+# POSTGRES_PASSWORD=b85idmclmfmicq1gyighd8a4hqhy078r
+DATABASE_URL=postgresql://postgres:b85idmclmfmicq1gyighd8a4hqhy078r@byemidias-supabase-2f9293-2-25-238-133.sslip.io:5432/postgres
+
+# --- SUPABASE ---
+NEXT_PUBLIC_SUPABASE_URL=https://byemidias-supabase-2f9293-2-25-238-133.sslip.io
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_e8fdf9405650f2ede4eea9_3730b763
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3OTAwOTUyNjYsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlzcyI6InN1cGFiYXNlIn0.75h2fWqHuZjqG-hfvuo0XqKT9bheabeerQcJ8BB0zpg
+
+# --- APP ---
+NEXT_PUBLIC_APP_URL=https://byemidias.vercel.app
+NEXT_PUBLIC_APP_NAME=ByeMidias
+
+# --- AUTH ---
+AUTH_SECRET=byemidias-nextauth-secret-2026-do-not-change
+AUTH_URL=https://byemidias.vercel.app
+
+# --- PARTNER JWT ---
+PARTNER_JWT_SECRET=bm-8k2m9x4p1w7t3r5j6n0q2e8u4y1a3c

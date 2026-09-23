@@ -1,0 +1,13 @@
+const fs = require('fs');
+const path = require('path');
+const envPath = path.join('apps', 'web', '.env.local');
+const env = fs.readFileSync(envPath, 'utf8');
+const lines = env.split('\n');
+const dbLine = lines.find(l => l.startsWith('DATABASE_URL='));
+const dbUrl = dbLine ? dbLine.slice('DATABASE_URL='.length).trim() : null;
+console.log('DATABASE_URL host:', dbUrl ? new URL(dbUrl).host : 'NÃO ENCONTRADA');
+console.log('DATABASE_URL preview:', dbUrl ? dbUrl.substring(0, 80) + '...' : 'N/A');
+console.log('---');
+const supabaseKeys = lines.filter(l => l.match(/SUPABASE/i));
+console.log('Linhas com SUPABASE:', supabaseKeys.length);
+supabaseKeys.forEach(l => console.log('  ' + l.substring(0, 80)));

@@ -11,7 +11,7 @@
 
 const PocketBase = require('pocketbase/cjs');
 
-const PB_URL = process.env.PB_URL || 'http://2.25.238.133:32769';
+const PB_URL = process.env.PB_URL || 'http://servermidias-pocketbase-a0db05-2-25-238-133.sslip.io';
 
 // Cliente para uso com admin auth (server-side)
 // Cache para não autenticar a cada request

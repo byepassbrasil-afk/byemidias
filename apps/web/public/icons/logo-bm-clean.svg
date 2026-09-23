@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Orange background -->
+  <rect width="512" height="512" fill="#ee6a1e"/>
+
+  <!-- Hexagonal BM logo centered -->
+  <g transform="translate(76, 56)">
+    <!-- Hexagon outline (white) -->
+    <polygon points="180,0 360,100 360,300 180,400 0,300 0,100"
+             fill="none" stroke="#ffffff" stroke-width="14" stroke-linejoin="round"/>
+
+    <!-- B letter (white, left side) -->
+    <path d="M 65,90 L 65,310 L 145,310 Q 195,310 195,265 Q 195,235 165,225 Q 185,215 185,180 Q 185,90 145,90 Z
+             M 100,140 L 140,140 Q 150,140 150,160 Q 150,180 140,180 L 100,180 Z
+             M 100,225 L 145,225 Q 155,225 155,250 Q 155,275 145,275 L 100,275 Z"
+          fill="#ffffff"/>
+
+    <!-- M letter (white, right side) -->
+    <path d="M 205,90 L 250,90 L 270,230 L 290,90 L 335,90 L 335,310 L 305,310 L 305,160 L 285,310 L 255,310 L 235,160 L 235,310 L 205,310 Z"
+          fill="#ffffff"/>
+  </g>
+</svg>

@@ -1,12 +1,13 @@
-import { NextResponse } from 'next/server';
-import sql from '@/lib/db';
+import { NextResponse, NextRequest } from 'next/server';
+import { getAdminClient } from '@/lib/pb-server';
 import { sendPushToOrg } from '@/lib/push';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 
 // POST /api/device/heartbeat
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { device_id, status, player_version, storage_available, error_message, uptime_seconds, media_id, campaign_id, playlist_id } = body;
@@ -15,130 +16,227 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'device_id obrigatório' }, { status: 400 });
     }
 
-    // Auto-deactivate expired campaigns
-    try { await sql`SELECT deactivate_expired_campaigns()`; } catch (_) {}
+    const pb = await getAdminClient();
 
-    // Update device
-    if (status === 'offline') {
-      const [prevDevice] = await sql`SELECT status, name, organization_id FROM devices WHERE id = ${device_id}`;
-      await sql`UPDATE devices SET last_heartbeat = '1970-01-01T00:00:00Z', status = 'offline', player_version = ${player_version || null}, storage_available = ${storage_available || null} WHERE id = ${device_id}`;
-      if (prevDevice && prevDevice.status === 'online') {
-        try {
-          await sql`INSERT INTO notifications (organization_id, type, title, message, device_id) VALUES (${prevDevice.organization_id}, 'device_offline', 'Dispositivo Offline', ${`O dispositivo "${prevDevice.name}" ficou offline.`}, ${device_id})`;
-          // Send push notification to admin users
-          sendPushToOrg(prevDevice.organization_id, '🔴 Dispositivo Offline', `O dispositivo "${prevDevice.name}" ficou offline.`, '/dashboard/monitoring').catch(() => {});
-        } catch (_) {}
-      }
+    // 1. Buscar estado anterior do device
+    let prevDevice: any = null;
+    try {
+      const filter = `id = "${device_id}"`;
+      const list = await pb.collection('devices').getList(1, 1, { filter });
+      if (list.items.length > 0) prevDevice = list.items[0];
+    } catch (e) {
+      console.error('[heartbeat] erro ao buscar device:', e);
+    }
+
+    if (!prevDevice) {
+      return NextResponse.json({ error: 'device não encontrado' }, { status: 404 });
+    }
+
+    // 2. Atualizar device
+    const isOffline = status === 'offline';
+    const updateData: any = {
+      player_version: player_version || null,
+      storage_available: storage_available || null,
+    };
+
+    if (isOffline) {
+      updateData.last_heartbeat = '1970-01-01T00:00:00Z';
+      updateData.status = 'offline';
     } else {
-      const [prevDevice] = await sql`SELECT status, name, organization_id FROM devices WHERE id = ${device_id}`;
-      await sql`UPDATE devices SET last_heartbeat = NOW(), status = 'online', player_version = ${player_version || null}, storage_available = ${storage_available || null} WHERE id = ${device_id}`;
-      if (prevDevice && prevDevice.status === 'offline') {
-        try {
-          await sql`INSERT INTO notifications (organization_id, type, title, message, device_id) VALUES (${prevDevice.organization_id}, 'device_online', 'Dispositivo Online', ${`O dispositivo "${prevDevice.name}" voltou ao online.`}, ${device_id})`;
-          await sql`UPDATE notifications SET read = true WHERE device_id = ${device_id} AND type = 'device_offline' AND read = false`;
-          // Send push notification to admin users
-          sendPushToOrg(prevDevice.organization_id, '🟢 Dispositivo Online', `O dispositivo "${prevDevice.name}" voltou ao online.`, '/dashboard/monitoring').catch(() => {});
-        } catch (_) {}
+      updateData.last_heartbeat = new Date().toISOString();
+      updateData.status = 'online';
+    }
+
+    await pb.collection('devices').update(device_id, updateData);
+
+    // 3. Notificações de mudança de status
+    if (prevDevice && prevDevice.status !== updateData.status) {
+      try {
+        await pb.collection('notifications').create({
+          organization_id: prevDevice.organization_id,
+          type: isOffline ? 'device_offline' : 'device_online',
+          title: isOffline ? 'Dispositivo Offline' : 'Dispositivo Online',
+          message: isOffline
+            ? `O dispositivo "${prevDevice.name}" ficou offline.`
+            : `O dispositivo "${prevDevice.name}" voltou ao online.`,
+          device_id: device_id,
+        });
+        sendPushToOrg(
+          prevDevice.organization_id,
+          isOffline ? '🔴 Dispositivo Offline' : '🟢 Dispositivo Online',
+          isOffline
+            ? `O dispositivo "${prevDevice.name}" ficou offline.`
+            : `O dispositivo "${prevDevice.name}" voltou ao online.`,
+          '/dashboard/monitoring'
+        ).catch(() => {});
+      } catch (e) {
+        console.error('[heartbeat] erro notification:', e);
       }
     }
 
-    // Log heartbeat event
+    // 4. Log no device_logs
     const uptimeMin = uptime_seconds ? Math.round(uptime_seconds / 60) : null;
     const uptimeStr = uptimeMin !== null
       ? uptimeMin < 60 ? `${uptimeMin}min` : `${Math.floor(uptimeMin / 60)}h${uptimeMin % 60 > 0 ? `${uptimeMin % 60}min` : ''}`
       : null;
-    const eventType = status === 'offline' ? 'disconnect' : (error_message ? 'error' : 'heartbeat');
-    const logMessage = status === 'offline'
+    const eventType = isOffline ? 'disconnect' : (error_message ? 'error' : 'heartbeat');
+    const logMessage = isOffline
       ? `Offline${uptimeStr ? ` after ${uptimeStr}` : ''}`
       : (error_message || (uptimeStr ? `Online ${uptimeStr}` : null));
 
-    await sql`INSERT INTO device_logs (device_id, event_type, message, uptime_seconds, player_version) VALUES (${device_id}, ${eventType}, ${logMessage}, ${uptime_seconds || null}, ${player_version || null})`;
+    try {
+      await pb.collection('device_logs').create({
+        device_id,
+        event_type: eventType,
+        message: logMessage,
+        uptime_seconds: uptime_seconds || null,
+        player_version: player_version || null,
+      });
+    } catch (e) {
+      console.error('[heartbeat] erro device_logs:', e);
+    }
 
-    // Manage uptime session
-    if (status === 'offline') {
-      await sql`SELECT close_stale_uptime_sessions()`;
-      await sql`UPDATE device_uptime_sessions SET ended_at = NOW() WHERE device_id = ${device_id} AND ended_at IS NULL`;
-    } else {
-      const [openSession] = await sql`SELECT id FROM device_uptime_sessions WHERE device_id = ${device_id} AND ended_at IS NULL LIMIT 1`;
-      if (!openSession) {
-        const [deviceInfo] = await sql`SELECT organization_id FROM devices WHERE id = ${device_id}`;
-        if (deviceInfo) {
-          await sql`INSERT INTO device_uptime_sessions (device_id, organization_id, started_at) VALUES (${device_id}, ${deviceInfo.organization_id}, NOW())`;
+    // 5. Gerenciar uptime sessions
+    if (isOffline) {
+      try {
+        const openSessions = await pb.collection('device_uptime_sessions').getList(1, 500, {
+          filter: `device_id = "${device_id}" && ended_at = null`,
+        });
+        for (const s of openSessions.items) {
+          await pb.collection('device_uptime_sessions').update(s.id, {
+            ended_at: new Date().toISOString(),
+          });
         }
+      } catch (e) {
+        console.error('[heartbeat] erro uptime close:', e);
+      }
+    } else {
+      try {
+        const openSessions = await pb.collection('device_uptime_sessions').getList(1, 1, {
+          filter: `device_id = "${device_id}" && ended_at = null`,
+        });
+        if (openSessions.items.length === 0) {
+          await pb.collection('device_uptime_sessions').create({
+            device_id,
+            organization_id: prevDevice.organization_id,
+            started_at: new Date().toISOString(),
+          });
+        }
+      } catch (e) {
+        console.error('[heartbeat] erro uptime create:', e);
       }
     }
 
-    // Log playback if media_id is provided
-    if (media_id && status === 'playing') {
-      const [deviceInfo2] = await sql`SELECT organization_id FROM devices WHERE id = ${device_id}`;
-      await sql`INSERT INTO playback_logs (device_id, organization_id, media_id, campaign_id, playlist_id, player_version) VALUES (${device_id}, ${deviceInfo2?.organization_id || null}, ${media_id}, ${campaign_id || null}, ${playlist_id || null}, ${player_version || null})`;
+    // 6. Log playback (APENAS quando muda de mídia, não em todo heartbeat)
+    if (media_id && !isOffline && media_id !== prevDevice?.last_media_id) {
+      try {
+        // Verifica se já tem registro recente (último minuto) para evitar duplicatas
+        const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
+        const recentLogs = await pb.collection('playback_logs').getList(1, 1, {
+          filter: `device_id = "${device_id}" && media_id = "${media_id}" && timestamp > "${oneMinuteAgo}"`,
+        });
+
+        if (recentLogs.items.length === 0) {
+          await pb.collection('playback_logs').create({
+            device_id,
+            organization_id: prevDevice.organization_id,
+            media_id,
+            campaign_id: campaign_id || null,
+            playlist_id: playlist_id || null,
+            player_version: player_version || null,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // Salva o last_media_id no device para detectar mudança
+        await pb.collection('devices').update(device_id, {
+          last_media_id: media_id,
+        });
+      } catch (e) {
+        console.error('[heartbeat] erro playback_logs:', e);
+      }
     }
 
-    // Return device settings
-    const [deviceData] = await sql`SELECT content_version, restart_requested, screen_rotation, mirror_horizontal, mirror_vertical, orientation FROM devices WHERE id = ${device_id}`;
+    // 7. Buscar comandos pendentes (sem SQL raw!)
+    let pendingCommands: any[] = [];
+    try {
+      const cmds = await pb.collection('device_commands').getList(1, 5, {
+        filter: `device_id = "${device_id}" && executed_at = null`,
+        sort: 'created_at',
+      });
+      pendingCommands = cmds.items;
 
-    if (deviceData?.restart_requested) {
-      await sql`UPDATE devices SET restart_requested = false WHERE id = ${device_id}`;
+      // Marcar como executados
+      for (const cmd of pendingCommands) {
+        try {
+          await pb.collection('device_commands').update(cmd.id, {
+            executed_at: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.error('[heartbeat] erro marcar comando:', e);
+        }
+      }
+    } catch (e) {
+      console.error('[heartbeat] erro buscar comandos:', e);
     }
 
-    // Map orientation → screen_rotation if rotation not explicitly set
-    // orientation 'portrait' = 0, 'landscape' = 90
-    let effectiveRotation = deviceData?.screen_rotation || 0;
-    if (!deviceData?.screen_rotation && deviceData?.orientation) {
-      effectiveRotation = deviceData.orientation === 'portrait' ? 0 : 90;
+    // 8. Configurações do device
+    let effectiveRotation = prevDevice.screen_rotation || 0;
+    if (!prevDevice.screen_rotation && prevDevice.orientation) {
+      effectiveRotation = prevDevice.orientation === 'portrait' ? 0 : 90;
     }
 
-    // Fetch pending remote commands for this device
-    const pendingCommands = await sql`
-      SELECT id, command, payload
-      FROM device_commands
-      WHERE device_id = ${device_id} AND executed_at IS NULL
-      ORDER BY created_at ASC
-      LIMIT 5
-    `;
-    // Marcar como executados
-    if (pendingCommands.length > 0) {
-      const cmdIds = pendingCommands.map((c: any) => c.id);
-      await sql`UPDATE device_commands SET executed_at = NOW() WHERE id = ANY(${cmdIds})`;
+    // Reset restart_requested
+    if (prevDevice.restart_requested) {
+      try {
+        await pb.collection('devices').update(device_id, { restart_requested: false });
+      } catch (e) {}
     }
 
     return NextResponse.json({
       success: true,
       uptime: uptimeStr,
-      content_version: deviceData?.content_version || 0,
-      restart: deviceData?.restart_requested || false,
+      content_version: prevDevice.content_version || 0,
+      restart: prevDevice.restart_requested || false,
       screen_rotation: effectiveRotation,
-      orientation: deviceData?.orientation || 'landscape',
-      mirror_horizontal: deviceData?.mirror_horizontal || false,
-      mirror_vertical: deviceData?.mirror_vertical || false,
+      orientation: prevDevice.orientation || 'landscape',
+      mirror_horizontal: prevDevice.mirror_horizontal || false,
+      mirror_vertical: prevDevice.mirror_vertical || false,
       commands: pendingCommands.map((c: any) => ({
         command: c.command,
         payload: typeof c.payload === 'string' ? JSON.parse(c.payload) : c.payload,
       })),
     });
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
-    console.error('POST /api/device/heartbeat error:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[heartbeat] erro:', msg, e.data);
+    return NextResponse.json({ error: msg, data: e.data }, { status: 500 });
   }
 }
 
 // GET /api/device/heartbeat?device_id=X
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const deviceId = searchParams.get('device_id');
     const limit = parseInt(searchParams.get('limit') || '50');
 
+    const pb = await getAdminClient();
+
     if (!deviceId) {
-      const logs = await sql`SELECT dl.*, d.name as device_name FROM device_logs dl LEFT JOIN devices d ON d.id = dl.device_id ORDER BY dl.created_at DESC LIMIT ${limit}`;
-      return NextResponse.json({ logs });
+      // Lista todos os logs (limitado)
+      const logs = await pb.collection('device_logs').getList(1, limit, { sort: '-id' });
+      return NextResponse.json({ logs: logs.items });
     }
 
-    const logs = await sql`SELECT * FROM device_logs WHERE device_id = ${deviceId} ORDER BY created_at DESC LIMIT ${limit}`;
-    return NextResponse.json({ logs });
-  } catch (e: unknown) {
+    const logs = await pb.collection('device_logs').getList(1, limit, {
+      filter: `device_id = "${deviceId}"`,
+      sort: '-id',
+    });
+    return NextResponse.json({ logs: logs.items });
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    console.error('[heartbeat GET]', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

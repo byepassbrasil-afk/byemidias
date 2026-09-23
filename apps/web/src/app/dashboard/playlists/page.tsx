@@ -199,9 +199,9 @@ export default function PlaylistsPage() {
 
     // Load both items and slots in parallel
     const [itemsRes, slotsRes, mediaRes, partnersRes] = await Promise.all([
-      fetch(`/api/admin/crud/playlist_items?playlist_id=${playlist.id}&order=position&asc=true`),
-      fetch(`/api/admin/crud/playlist_slots?playlist_id=${playlist.id}&order=slot_order&asc=true`),
-      fetch('/api/admin/crud/media?order=created_at&asc=false'),
+      fetch(`/api/admin/crud/playlist_items?playlist_id=${playlist.id}&order=order_index&asc=true`),
+      fetch(`/api/admin/crud/playlist_slots?playlist_id=${playlist.id}&order=slot_index&asc=true`),
+      fetch('/api/admin/crud/media?order=id&asc=false'),
       fetch('/api/admin/crud/partner_access?order=username&asc=true'),
     ]);
 
@@ -283,7 +283,7 @@ export default function PlaylistsPage() {
         await fetch('/api/admin/crud/playlist_slots', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: item.id, slot_order: i }),
+          body: JSON.stringify({ id: item.id, slot_index: i }),
         });
       }
     }
@@ -311,7 +311,7 @@ export default function PlaylistsPage() {
         await fetch('/api/admin/crud/playlist_slots', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: newItems[i].id, slot_order: i }),
+          body: JSON.stringify({ id: newItems[i].id, slot_index: i }),
         });
       }
     }
@@ -343,20 +343,30 @@ export default function PlaylistsPage() {
     if (!selectedPlaylist || !selectedMediaId) return;
     setSaving(true);
     const maxPos = unifiedItems.length;
-    await fetch('/api/admin/crud/playlist_items', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playlist_id: selectedPlaylist.id,
-        media_id: selectedMediaId,
-        position: maxPos,
-        duration: itemDuration,
-        transition: 'fade',
-      }),
-    });
-    setShowAddMedia(false);
+    try {
+      const res = await fetch('/api/admin/crud/playlist_items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playlist_id: selectedPlaylist.id,
+          media_id: selectedMediaId,
+          position: maxPos,
+          duration: itemDuration,
+          transition: 'fade',
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error) {
+        alert(`Erro ao adicionar mídia: ${json.error || res.statusText}`);
+        setSaving(false);
+        return;
+      }
+      setShowAddMedia(false);
+      openItems(selectedPlaylist);
+    } catch (e: any) {
+      alert(`Erro ao adicionar mídia: ${e?.message || 'desconhecido'}`);
+    }
     setSaving(false);
-    openItems(selectedPlaylist);
   }
 
   async function handleRemoveItem(item: UnifiedItem) {
@@ -383,7 +393,7 @@ export default function PlaylistsPage() {
         if (remaining[i].type === 'media') {
           await fetch('/api/admin/crud/playlist_items', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, position: i }) });
         } else {
-          await fetch('/api/admin/crud/playlist_slots', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, slot_order: i }) });
+          await fetch('/api/admin/crud/playlist_slots', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, slot_index: i }) });
         }
       }
     } catch (e: any) {

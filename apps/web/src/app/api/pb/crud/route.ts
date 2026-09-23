@@ -97,6 +97,8 @@ export async function GET(request: NextRequest) {
     if (filter) opts.filter = filter;
     if (safeOrder) opts.sort = `${sortSign}${safeOrder}`;
 
+    console.log('[pb/crud GET]', { table, filter, sort: opts.sort, isSuperAdmin, userOrgId, hasOrgFilter: TABLES_WITH_ORG.has(table) });
+
     const result = await pb.collection(table).getList(1, limit, opts);
     return NextResponse.json({ data: result.items });
   } catch (e: any) {

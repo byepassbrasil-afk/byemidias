@@ -11,14 +11,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 });
     }
 
-    if (password.length < 6) {
-      return NextResponse.json({ error: 'Senha deve ter no mínimo 6 caracteres' }, { status: 400 });
+    if (password.length < 8) {
+      return NextResponse.json({ error: 'Senha deve ter no mínimo 8 caracteres' }, { status: 400 });
     }
 
     const slug = generateSlug(company_slug);
     if (slug.length < 3) {
       return NextResponse.json({ error: 'Slug muito curto (mínimo 3 caracteres)' }, { status: 400 });
     }
+
+    const emailNorm = String(email).toLowerCase().trim();
 
     const pb = await getAdminClient();
 
@@ -108,10 +110,24 @@ export async function POST(request: NextRequest) {
     if (e && typeof e === 'object' && 'data' in e) {
       console.error('[signup] data:', JSON.stringify(e.data).slice(0, 500));
     }
+    // Extrair mensagem útil do PocketBase
+    let userMessage = msg;
+    if (e?.data?.data) {
+      const fields = e.data.data;
+      const fieldErrors = Object.entries(fields).map(([key, val]: [string, any]) => {
+        const fieldMsg = val?.message || val?.code || JSON.stringify(val);
+        return `${key}: ${fieldMsg}`;
+      });
+      if (fieldErrors.length > 0) {
+        userMessage = fieldErrors.join('; ');
+      }
+    } else if (e?.data?.message) {
+      userMessage = e.data.message;
+    }
     // Se for erro do PocketBase com status válido, usa ele
     const errStatus = (e?.status && e.status >= 400 && e.status < 600) ? e.status : 500;
     return NextResponse.json({
-      error: msg,
+      error: userMessage,
       status: e?.status,
       data: e?.data,
     }, { status: errStatus });

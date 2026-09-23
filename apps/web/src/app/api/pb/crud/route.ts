@@ -27,8 +27,9 @@ const ALLOWED_TABLES = [
 ];
 
 const ALLOWED_ORDER = new Set([
-  'created', 'updated', 'name', 'status', 'last_heartbeat', 'model', 'id',
+  'id', '-id', 'name', 'status', 'last_heartbeat', 'model',
   'date', 'expires_at', 'position', 'expires', 'start_date', 'end_date',
+  'email', 'role', 'full_name', 'user_id', 'organization_id',
 ]);
 
 const TABLES_WITH_ORG = new Set([
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
     if (!table || !ALLOWED_TABLES.includes(table)) {
       return NextResponse.json({ data: [] });
     }
-    const order = searchParams.get('order') || 'created';
+    const order = searchParams.get('order') || 'id';
     const ascending = searchParams.get('asc') !== 'false';
     const limit = Math.min(parseInt(searchParams.get('limit') || '500'), 1000);
 
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
       filterParts.push(`id = "${userOrgId}"`);
     }
     const filter = filterParts.length > 0 ? filterParts.join(' && ') : '';
-    const safeOrder = ALLOWED_ORDER.has(order) ? order : 'created';
+    const safeOrder = ALLOWED_ORDER.has(order) ? order : 'id';
     const sortSign = ascending ? '' : '-';
     const opts: any = { perPage: limit };
     if (filter) opts.filter = filter;

@@ -1,0 +1,32 @@
+{
+  "name": "byemidias",
+  "description": "ByeMidias - Plataforma de Mídia Digital",
+  "repository": "https://github.com/byepassbrasil-afk/byemidias",
+  "keywords": ["nextjs", "react", "pocketbase", "digital-signage"],
+  "build": {
+    "provider": "nixpacks"
+  },
+  "env": {
+    "NODE_ENV": {
+      "description": "Node environment",
+      "value": "production"
+    },
+    "PORT": {
+      "description": "Port to listen on",
+      "value": "3000"
+    },
+    "HOSTNAME": {
+      "description": "Host to bind",
+      "value": "0.0.0.0"
+    },
+    "PB_URL": {
+      "description": "PocketBase URL"
+    },
+    "PB_ADMIN_EMAIL": {
+      "description": "PocketBase admin email"
+    },
+    "PB_ADMIN_PASSWORD": {
+      "description": "PocketBase admin password"
+    }
+  }
+}

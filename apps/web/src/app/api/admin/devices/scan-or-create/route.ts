@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       model: model || '',
       status: 'online',
       last_heartbeat: new Date().toISOString(),
+      device_uuid: String(device_uuid),
     };
 
     const created = await pb.collection('devices').create(deviceData);

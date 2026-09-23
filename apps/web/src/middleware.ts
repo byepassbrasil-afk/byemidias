@@ -5,7 +5,7 @@ const PARTNER_SECRET = new TextEncoder().encode(
   process.env.PARTNER_JWT_SECRET || 'byemidias-partner-secret-change-in-production'
 );
 
-const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password', '/api/auth/login', '/api/auth/signup', '/api/auth/logout', '/api/auth/forgot-password', '/api/auth/reset-password', '/api/test-pb', '/api/test', '/api/test-crud', '/manifest.json', '/sw.js', '/offline.html'];
+const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password', '/api/auth/login', '/api/auth/signup', '/api/auth/logout', '/api/auth/forgot-password', '/api/auth/reset-password', '/api/test-pb', '/api/test', '/api/test-crud', '/api/test-direct', '/manifest.json', '/sw.js', '/offline.html'];
 
 const PUBLIC_API_PREFIXES = ['/api/device/', '/api/keepalive', '/api/auth/', '/api/contract-view/', '/api/geocode/', '/api/map/', '/api/lp/', '/api/test', '/api/test-pb', '/api/test-crud', '/api/debug-signup'];
 

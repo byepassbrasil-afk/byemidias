@@ -175,13 +175,18 @@ export default function MediaPage() {
       }
 
       // Upload via server-side route (bypass R2 CORS)
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('organization_id', organizationId);
+      // Usa raw body binary para evitar limite de 4.5MB do Next.js
+      const fileBuffer = await file.arrayBuffer();
 
-      const uploadRes = await fetch('/api/admin/media/upload', {
+      const uploadRes = await fetch('/api/admin/media/upload-proxy', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'Content-Length': String(fileBuffer.byteLength),
+          'X-Filename': file.name,
+          'X-Organization-Id': organizationId,
+        },
+        body: fileBuffer,
       });
 
       const uploadData = await uploadRes.json();

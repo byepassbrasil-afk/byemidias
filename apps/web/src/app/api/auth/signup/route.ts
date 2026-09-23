@@ -98,10 +98,13 @@ export async function POST(request: NextRequest) {
     if (e && typeof e === 'object' && 'data' in e) {
       console.error('[signup] data:', JSON.stringify(e.data).slice(0, 500));
     }
-    if (e && typeof e === 'object' && 'status' in e) {
-      console.error('[signup] status:', e.status);
-    }
-    return NextResponse.json({ error: msg, status: e?.status }, { status: 500 });
+    // Se for erro do PocketBase com status válido, usa ele
+    const errStatus = (e?.status && e.status >= 400 && e.status < 600) ? e.status : 500;
+    return NextResponse.json({
+      error: msg,
+      status: e?.status,
+      data: e?.data,
+    }, { status: errStatus });
   }
 }
 

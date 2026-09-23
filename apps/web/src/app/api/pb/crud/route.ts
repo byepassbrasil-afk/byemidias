@@ -101,6 +101,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: result.items });
   } catch (e: any) {
     console.error('[pb/crud GET] erro:', e?.message);
+    console.error('[pb/crud GET] stack:', e?.stack?.slice(0, 500));
+    if (e?.data) console.error('[pb/crud GET] data:', JSON.stringify(e.data).slice(0, 500));
+    if (e?.status) console.error('[pb/crud GET] status:', e.status);
     return NextResponse.json({ data: [], error: e?.message });
   }
 }

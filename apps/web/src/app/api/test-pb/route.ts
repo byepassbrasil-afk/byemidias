@@ -4,6 +4,27 @@ const PB_URL = process.env.PB_URL || 'http://servermidias-pocketbase-a0db05-2-25
 
 export const dynamic = 'force-dynamic';
 
+async function authPB(): Promise<PocketBase> {
+  const pb = new PocketBase(PB_URL);
+  pb.autoCancellation(false);
+  try {
+    await pb.collection('_superusers').authWithPassword(
+      process.env.PB_ADMIN_EMAIL || '',
+      process.env.PB_ADMIN_PASSWORD || ''
+    );
+  } catch (e: any) {
+    if (e.status === 404) {
+      await pb.admins.authWithPassword(
+        process.env.PB_ADMIN_EMAIL || '',
+        process.env.PB_ADMIN_PASSWORD || ''
+      );
+    } else {
+      throw e;
+    }
+  }
+  return pb;
+}
+
 export async function GET() {
   const startTime = Date.now();
 
@@ -26,7 +47,6 @@ export async function GET() {
     try {
       const pb = new PocketBase(PB_URL);
       pb.autoCancellation(false);
-
       const cols = await pb.collections.getList(1, 100);
       collections = cols.items.map((c: any) => c.name);
       sdkOk = true;
@@ -34,16 +54,11 @@ export async function GET() {
       sdkError = e.message;
     }
 
-    // Test 3: Admin auth
+    // Test 3: Superuser auth
     let adminOk = false;
     let adminError: string | null = null;
     try {
-      const pb = new PocketBase(PB_URL);
-      pb.autoCancellation(false);
-      await pb.admins.authWithPassword(
-        process.env.PB_ADMIN_EMAIL || '',
-        process.env.PB_ADMIN_PASSWORD || ''
-      );
+      const pb = await authPB();
       adminOk = true;
     } catch (e: any) {
       adminError = e.message;
@@ -57,7 +72,7 @@ export async function GET() {
       tests: {
         health: { ok: healthOk, error: healthError },
         sdk: { ok: sdkOk, error: sdkError },
-        adminAuth: { ok: adminOk, error: adminError },
+        superuserAuth: { ok: adminOk, error: adminError },
       },
       collections,
       envKeys: Object.keys(process.env).filter(k => k.startsWith('PB_')),

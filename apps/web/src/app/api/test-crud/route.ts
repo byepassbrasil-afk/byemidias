@@ -5,17 +5,31 @@ const PB_URL = process.env.PB_URL || 'http://servermidias-pocketbase-a0db05-2-25
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function authPB(): Promise<PocketBase> {
+  const pb = new PocketBase(PB_URL);
+  pb.autoCancellation(false);
   try {
-    const pb = new PocketBase(PB_URL);
-    pb.autoCancellation(false);
-
-    await pb.admins.authWithPassword(
+    await pb.collection('_superusers').authWithPassword(
       process.env.PB_ADMIN_EMAIL || '',
       process.env.PB_ADMIN_PASSWORD || ''
     );
+  } catch (e: any) {
+    if (e.status === 404) {
+      await pb.admins.authWithPassword(
+        process.env.PB_ADMIN_EMAIL || '',
+        process.env.PB_ADMIN_PASSWORD || ''
+      );
+    } else {
+      throw e;
+    }
+  }
+  return pb;
+}
 
-    // Test CRUD: Create a record in test_collection
+export async function GET() {
+  try {
+    const pb = await authPB();
+
     const testCollection = 'test_playlists';
 
     // Ensure test collection exists

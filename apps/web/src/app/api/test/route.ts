@@ -15,33 +15,42 @@ export async function GET() {
     } catch {}
 
     let collections: string[] = [];
+    let collectionsErr: string | null = null;
     try {
       const pb = new PocketBase(PB_URL);
       pb.autoCancellation(false);
       const cols = await pb.collections.getList(1, 100);
       collections = cols.items.map((c: any) => c.name);
     } catch (e: any) {
-      return Response.json({
-        success: false,
-        step: 'collections',
-        error: e.message,
-        pbUrl: PB_URL,
-        healthOk,
-      });
+      collectionsErr = e.message;
     }
 
-    let adminOk = false;
-    let adminErr: string | null = null;
+    let superuserOk = false;
+    let superuserErr: string | null = null;
     try {
       const pb = new PocketBase(PB_URL);
       pb.autoCancellation(false);
-      await pb.admins.authWithPassword(
+      await pb.collection('_superusers').authWithPassword(
         process.env.PB_ADMIN_EMAIL || '',
         process.env.PB_ADMIN_PASSWORD || ''
       );
-      adminOk = true;
+      superuserOk = true;
     } catch (e: any) {
-      adminErr = e.message;
+      superuserErr = e.message;
+      if (e.status === 404) {
+        try {
+          const pb = new PocketBase(PB_URL);
+          pb.autoCancellation(false);
+          await pb.admins.authWithPassword(
+            process.env.PB_ADMIN_EMAIL || '',
+            process.env.PB_ADMIN_PASSWORD || ''
+          );
+          superuserOk = true;
+          superuserErr = null;
+        } catch (e2: any) {
+          superuserErr = e2.message;
+        }
+      }
     }
 
     return Response.json({
@@ -51,8 +60,9 @@ export async function GET() {
       healthOk,
       collectionsCount: collections.length,
       collections,
-      adminAuth: adminOk,
-      adminError: adminErr,
+      collectionsErr,
+      superuserAuth: superuserOk,
+      superuserError: superuserErr,
       hasEmail: !!process.env.PB_ADMIN_EMAIL,
       hasPassword: !!process.env.PB_ADMIN_PASSWORD,
     });

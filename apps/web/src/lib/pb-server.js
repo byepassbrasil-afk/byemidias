@@ -32,8 +32,17 @@ async function getAdminClient() {
   }
 
   adminClient = new PocketBase(PB_URL);
-  // authWithPassword não suporta "auto-refresh" em admin — guarda token manualmente
-  await adminClient.admins.authWithPassword(email, password);
+  // PocketBase v0.21+: admins foi renomeado para _superusers
+  try {
+    await adminClient.collection('_superusers').authWithPassword(email, password);
+  } catch (e) {
+    // Fallback para versões antigas
+    if (e.message?.includes('not found') || e.status === 404) {
+      await adminClient.admins.authWithPassword(email, password);
+    } else {
+      throw e;
+    }
+  }
   adminToken = adminClient.authStore.token;
   // Tokens PB duram ~14 dias, mas renovamos a cada 1h por segurança
   adminTokenExpires = now + 60 * 60 * 1000;

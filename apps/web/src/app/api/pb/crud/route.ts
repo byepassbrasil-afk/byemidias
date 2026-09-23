@@ -79,6 +79,9 @@ export async function GET(request: NextRequest) {
     const ascending = searchParams.get('asc') !== 'false';
     const limit = Math.min(parseInt(searchParams.get('limit') || '500'), 1000);
 
+    console.log('[pb/crud GET] raw URL:', request.url);
+    console.log('[pb/crud GET] all params:', Array.from(searchParams.entries()));
+
     const filterParts: string[] = [];
     for (const [key, value] of searchParams.entries()) {
       if (key.startsWith('_') || ['table', 'limit', 'offset', 'order', 'asc'].includes(key)) continue;

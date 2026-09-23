@@ -92,11 +92,16 @@ export async function POST(request: NextRequest) {
     });
   } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    const stack = e instanceof Error ? e.stack : '';
     console.error('[signup] ERRO:', msg);
+    console.error('[signup] STACK:', stack?.slice(0, 800));
     if (e && typeof e === 'object' && 'data' in e) {
       console.error('[signup] data:', JSON.stringify(e.data).slice(0, 500));
     }
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (e && typeof e === 'object' && 'status' in e) {
+      console.error('[signup] status:', e.status);
+    }
+    return NextResponse.json({ error: msg, status: e?.status }, { status: 500 });
   }
 }
 

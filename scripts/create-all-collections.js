@@ -1,9 +1,25 @@
 const PocketBase = require('pocketbase/cjs');
 
 const PB_URL = 'http://servermidias-pocketbase-a0db05-2-25-238-133.sslip.io';
-const email = 'gwmorata@gmail.com';
-const password = '@Gaedaam08';
+const EMAIL = 'gwmorata@gmail.com';
+const PASSWORD = '@Gaedaam08';
 
+async function authPB() {
+  const pb = new PocketBase(PB_URL);
+  pb.autoCancellation(false);
+  try {
+    await pb.collection('_superusers').authWithPassword(EMAIL, PASSWORD);
+  } catch (e) {
+    if (e.status === 404) {
+      await pb.admins.authWithPassword(EMAIL, PASSWORD);
+    } else {
+      throw e;
+    }
+  }
+  return pb;
+}
+
+// Definir todas as collections com schema completo
 const collections = [
   {
     name: 'organizations',
@@ -349,23 +365,25 @@ const collections = [
 ];
 
 async function main() {
-  const pb = new PocketBase(PB_URL);
-  await pb.collection('_superusers').authWithPassword(email, password);
+  const pb = await authPB();
   console.log('✅ Admin auth OK');
 
-  // Get existing collections
+  // Get existing
   const existing = await pb.collections.getList(1, 100);
-  const existingNames = existing.items.map(c => c.name);
-  console.log('Existing collections:', existingNames.length);
+  const existingNames = new Set(existing.items.map(c => c.name));
+  console.log(`Existing: ${existing.items.length}`);
+
+  let created = 0;
+  let skipped = 0;
 
   for (const col of collections) {
-    if (existingNames.includes(col.name)) {
-      console.log(`⚠️  ${col.name} already exists, skipping`);
+    if (existingNames.has(col.name)) {
+      skipped++;
       continue;
     }
 
     try {
-      const created = await pb.collections.create({
+      await pb.collections.create({
         name: col.name,
         type: col.type,
         schema: col.schema,
@@ -376,15 +394,13 @@ async function main() {
         deleteRule: '',
       });
       console.log(`✅ ${col.name} created`);
+      created++;
     } catch (e) {
-      console.error(`❌ ${col.name} error:`, e.message);
+      console.error(`❌ ${col.name}:`, e.message);
     }
   }
 
-  // Verify
-  const all = await pb.collections.getList(1, 100);
-  console.log(`\n📋 Total collections: ${all.items.length}`);
-  all.items.forEach(c => console.log(`  - ${c.name}`));
+  console.log(`\n📋 Result: ${created} created, ${skipped} skipped`);
 }
 
 main().catch(e => { console.error('Erro fatal:', e.message); process.exit(1); });

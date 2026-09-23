@@ -32,13 +32,20 @@ async function getAdminClient() {
   }
 
   adminClient = new PocketBase(PB_URL);
+  adminClient.autoCancellation(false);
+
+  console.log('[pb-server] Authenticating to:', PB_URL);
+
   // PocketBase v0.21+: admins foi renomeado para _superusers
   try {
     await adminClient.collection('_superusers').authWithPassword(email, password);
+    console.log('[pb-server] ✅ Auth via _superusers OK');
   } catch (e) {
+    console.log('[pb-server] _superusers auth failed:', e.status, e.message);
     // Fallback para versões antigas
-    if (e.message?.includes('not found') || e.status === 404) {
+    if (e.status === 404 || e.message?.includes('not found')) {
       await adminClient.admins.authWithPassword(email, password);
+      console.log('[pb-server] ✅ Auth via admins (fallback) OK');
     } else {
       throw e;
     }

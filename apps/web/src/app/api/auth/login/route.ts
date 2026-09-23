@@ -82,8 +82,11 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    const stack = e instanceof Error ? e.stack : '';
     console.error('[login] ERRO:', msg);
+    console.error('[login] STACK:', stack?.slice(0, 800));
     if (e?.data) console.error('[login] data:', JSON.stringify(e.data).slice(0, 500));
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (e?.status) console.error('[login] status:', e.status);
+    return NextResponse.json({ error: msg, status: e?.status }, { status: 500 });
   }
 }

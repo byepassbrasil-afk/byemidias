@@ -168,38 +168,53 @@ export default function MediaPage() {
     setUploading(true);
     try {
       // Convert images (PNG/JPEG/etc) to WebP for ~30-50% smaller files
-      const file = await convertImageToWebP(originalFile, 0.85);
-      if (file !== originalFile) {
-        const reduction = Math.round((1 - file.size / originalFile.size) * 100);
-        console.log(`Convertido ${originalFile.name}: ${formatBytes(originalFile.size)} → ${formatBytes(file.size)} (-${reduction}%)`);
+      // Vídeos não são convertidos
+      let file = originalFile;
+      if (originalFile.type.startsWith('image/') && !originalFile.type.includes('webp')) {
+        file = await convertImageToWebP(originalFile, 0.85);
+        if (file !== originalFile) {
+          const reduction = Math.round((1 - file.size / originalFile.size) * 100);
+          console.log(`Convertido ${originalFile.name}: ${formatBytes(originalFile.size)} → ${formatBytes(file.size)} (-${reduction}%)`);
+        }
       }
 
-      // Upload via server-side route (bypass R2 CORS)
-      // Usa raw body binary para evitar limite de 4.5MB do Next.js
-      const fileBuffer = await file.arrayBuffer();
-
-      const uploadRes = await fetch('/api/admin/media/upload-proxy', {
+      // 1. Pede URL pré-assinada ao servidor
+      const presignRes = await fetch('/api/admin/media/upload-proxy', {
         method: 'POST',
         headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-          'Content-Length': String(fileBuffer.byteLength),
+          'Content-Type': 'application/json',
           'X-Filename': file.name,
           'X-Organization-Id': organizationId,
         },
-        body: fileBuffer,
       });
 
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) {
-        alert('Erro ao enviar arquivo: ' + (uploadData.error || 'Erro'));
+      const presignData = await presignRes.json();
+      if (!presignRes.ok) {
+        alert('Erro ao preparar upload: ' + (presignData.error || 'Erro'));
         setUploading(false);
         return;
       }
 
-      const publicUrl = uploadData.public_url;
-      const key = uploadData.key;
+      // 2. Upload direto do browser para R2 usando a URL pré-assinada
+      // (bypassa o limite de 4.5MB do Vercel)
+      const uploadRes = await fetch(presignData.upload_url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
+      });
 
-      // Salvar metadata no PocketBase
+      if (!uploadRes.ok) {
+        alert(`Erro ao enviar arquivo para R2 (status ${uploadRes.status})`);
+        setUploading(false);
+        return;
+      }
+
+      const publicUrl = presignData.public_url;
+      const key = presignData.key;
+
+      // 3. Salvar metadata no PocketBase
       const saveRes = await fetch('/api/admin/media/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

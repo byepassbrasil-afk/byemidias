@@ -23,6 +23,7 @@ function getS3Client(): S3Client {
   return s3Client;
 }
 
+// POST: Gera URL pré-assinada para o browser fazer upload direto
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuthApi();
@@ -46,13 +47,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Extensão .${ext} não permitida` }, { status: 400 });
     }
 
-    // Limite de tamanho (50MB)
-    const MAX_SIZE = 50 * 1024 * 1024;
-    const contentLength = parseInt(request.headers.get('content-length') || '0');
-    if (contentLength > MAX_SIZE) {
-      return NextResponse.json({ error: `Arquivo muito grande. Limite: ${MAX_SIZE / 1024 / 1024}MB` }, { status: 413 });
-    }
-
     // Gerar key
     const sanitizedName = filename
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -61,27 +55,22 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now();
     const key = `media/${timestamp}_${sanitizedName.replace(/\.[^.]+$/, '')}.${ext}`;
 
-    // Upload direto via SDK (sem CORS, sem limite de 4.5MB)
-    const arrayBuffer = await request.arrayBuffer();
-    const fileBuffer = Buffer.from(arrayBuffer);
-
+    // Gerar URL pré-assinada (válida por 1 hora)
     const client = getS3Client();
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET,
       Key: key,
-      Body: fileBuffer,
       ContentType: contentType,
     });
-
-    await client.send(command);
+    const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
 
     const publicUrl = `${R2_PUBLIC_URL}/${key}`;
 
     return NextResponse.json({
       success: true,
+      upload_url: presignedUrl,
       key,
       public_url: publicUrl,
-      file_size: fileBuffer.length,
       content_type: contentType,
       file_name: filename,
     });

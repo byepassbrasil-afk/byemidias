@@ -23,23 +23,33 @@ export async function POST(request: NextRequest) {
     const pb = await getAdminClient();
 
     // 1. Verifica se email já existe na collection users (auth)
+    let existingUser = null;
     try {
-      const existingUser = await pb.collection('users').getFirstListItem(`email = "${email}"`);
+      existingUser = await pb.collection('users').getFirstListItem(`email = "${emailNorm}"`);
       if (existingUser) {
         return NextResponse.json({ error: 'Email já cadastrado' }, { status: 409 });
       }
     } catch (e: any) {
-      if (e.status !== 404) throw e;
+      if (e.status !== 404 && e.status !== 400) {
+        console.error('[signup] check email error:', e.message);
+        throw e;
+      }
+      // 404 = not found (good), 400 = pode ser erro de filter, continuar
     }
 
     // 2. Verifica slug único em organizations
+    let existingSlug = null;
     try {
-      const existingSlug = await pb.collection('organizations').getFirstListItem(`slug = "${slug}"`);
+      existingSlug = await pb.collection('organizations').getFirstListItem(`slug = "${slug}"`);
       if (existingSlug) {
         return NextResponse.json({ error: 'Esse slug já está em uso. Tente outro.' }, { status: 409 });
       }
     } catch (e: any) {
-      if (e.status !== 404) throw e;
+      if (e.status !== 404 && e.status !== 400) {
+        console.error('[signup] check slug error:', e.message);
+        throw e;
+      }
+      // 404 = not found (good), 400 = pode ser erro de filter, continuar
     }
 
     // 3. Cria a organização

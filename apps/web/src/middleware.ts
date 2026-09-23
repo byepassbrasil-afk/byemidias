@@ -7,7 +7,7 @@ const PARTNER_SECRET = new TextEncoder().encode(
 
 const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password', '/api/auth/login', '/api/auth/signup', '/api/auth/logout', '/api/auth/forgot-password', '/api/auth/reset-password', '/api/test-pb', '/manifest.json', '/sw.js', '/offline.html'];
 
-const PUBLIC_API_PREFIXES = ['/api/device/', '/api/keepalive', '/api/auth/', '/api/contract-view/', '/api/geocode/', '/api/map/', '/api/lp/'];
+const PUBLIC_API_PREFIXES = ['/api/device/', '/api/keepalive', '/api/auth/', '/api/contract-view/', '/api/geocode/', '/api/map/', '/api/lp/', '/api/test', '/api/test-pb'];
 
 // Public page route prefixes (no auth required, e.g. landing pages, public maps, contract views)
 const PUBLIC_PAGE_PREFIXES = ['/contract-view/', '/map/', '/lp/'];

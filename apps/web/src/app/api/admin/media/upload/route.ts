@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import { createHmac, createHash } from 'crypto';
-import sql from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
 
 function hmacSign(key: Buffer | string, data: string): Buffer {
   return createHmac('sha256', key).update(data).digest();
@@ -11,14 +12,21 @@ function hexSha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-function generatePresignedUrl(key: string, host: string, R2_ACCESS_KEY: string, R2_SECRET_KEY: string) {
+function generatePresignedUrl(
+  key: string,
+  host: string,
+  R2_ACCESS_KEY: string,
+  R2_SECRET_KEY: string,
+  contentType: string = 'application/octet-stream'
+) {
   const region = 'auto';
   const expires = 3600;
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const dateShort = amzDate.substring(0, 8);
   const credentialScope = `${dateShort}/${region}/s3/aws4_request`;
-  const signedHeaders = 'host';
+  // Incluir content-type nos signed headers para que o PUT funcione
+  const signedHeaders = 'host;x-amz-content-sha256';
 
   const queryParams = new URLSearchParams();
   queryParams.set('X-Amz-Algorithm', 'AWS4-HMAC-SHA256');
@@ -26,9 +34,10 @@ function generatePresignedUrl(key: string, host: string, R2_ACCESS_KEY: string, 
   queryParams.set('X-Amz-Date', amzDate);
   queryParams.set('X-Amz-Expires', String(expires));
   queryParams.set('X-Amz-SignedHeaders', signedHeaders);
+  queryParams.set('x-amz-content-sha256', 'UNSIGNED-PAYLOAD');
 
   const canonicalQueryString = queryParams.toString().replace(/\+/g, '%20');
-  const canonicalHeaders = `host:${host}\n`;
+  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:UNSIGNED-PAYLOAD\n`;
   const payloadHash = 'UNSIGNED-PAYLOAD';
 
   const canonicalRequest = [
@@ -73,12 +82,6 @@ function getMediaTypeFromExt(ext: string): string | null {
   return null;
 }
 
-function validateFileExtension(fileName: string): { valid: boolean; ext: string; mediaType: string } {
-  const ext = (fileName.split('.').pop() || '').toLowerCase();
-  const mediaType = getMediaTypeFromExt(ext);
-  return { valid: mediaType !== null, ext, mediaType: mediaType || 'unknown' };
-}
-
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuthApi();
@@ -104,27 +107,39 @@ export async function POST(request: NextRequest) {
       if (!file) return NextResponse.json({ error: 'file obrigatório' }, { status: 400 });
       if (!organization_id) return NextResponse.json({ error: 'organization_id obrigatório' }, { status: 400 });
 
-      const validation = validateFileExtension(file.name);
-      if (!validation.valid) {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const mediaType = getMediaTypeFromExt(ext);
+      if (!mediaType) {
         return NextResponse.json({
-          error: `Extensão .${validation.ext} não permitida. Use: ${ALLOWED_ALL_EXTS.join(', ')}`
+          error: `Extensão .${ext} não permitida. Use: ${ALLOWED_ALL_EXTS.join(', ')}`
         }, { status: 400 });
       }
 
       const sanitizedName = sanitizeName(file.name);
       const key = makeKey(sanitizedName);
       const host = `${R2_BUCKET}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-      const uploadUrl = generatePresignedUrl(key, host, R2_ACCESS_KEY, R2_SECRET_KEY);
+      const contentType = file.type || 'application/octet-stream';
+
+      // Use o servidor Next.js para fazer upload para R2 - bypassa CORS
+      const fileBuffer = Buffer.from(await file.arrayBuffer());
+      const uploadUrl = await uploadToR2(key, fileBuffer, contentType, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET, R2_ACCOUNT_ID);
       const publicUrl = `${R2_PUBLIC_URL}/${key}`;
 
       return NextResponse.json({
-        upload_url: uploadUrl, key, public_url: publicUrl,
-        content_type: file.type || 'application/octet-stream',
-        file_name: file.name, file_size: file.size, organization_id,
-        resolved_type: validation.mediaType,
+        success: true,
+        upload_url: uploadUrl,
+        key,
+        public_url: publicUrl,
+        content_type: contentType,
+        file_name: file.name,
+        file_size: file.size,
+        organization_id,
+        resolved_type: mediaType,
       });
     }
 
+    // JSON request - retorna presigned URL para o frontend fazer upload direto
+    // (mas agora com CORS configurado via CORS proxy)
     let body: Record<string, unknown>;
     try {
       body = await request.json();
@@ -138,27 +153,86 @@ export async function POST(request: NextRequest) {
 
     if (!organization_id) return NextResponse.json({ error: 'organization_id obrigatório' }, { status: 400 });
 
-    const validation = validateFileExtension(file_name);
-    if (!validation.valid) {
+    const ext = (file_name.split('.').pop() || '').toLowerCase();
+    const mediaType = getMediaTypeFromExt(ext);
+    if (!mediaType) {
       return NextResponse.json({
-        error: `Extensão .${validation.ext} não permitida. Use: ${ALLOWED_ALL_EXTS.join(', ')}`
+        error: `Extensão .${ext} não permitida. Use: ${ALLOWED_ALL_EXTS.join(', ')}`
       }, { status: 400 });
     }
 
     const sanitizedName = sanitizeName(file_name);
     const key = makeKey(sanitizedName);
     const host = `${R2_BUCKET}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-    const uploadUrl = generatePresignedUrl(key, host, R2_ACCESS_KEY, R2_SECRET_KEY);
+    const uploadUrl = generatePresignedUrl(key, host, R2_ACCESS_KEY, R2_SECRET_KEY, mime_type);
     const publicUrl = `${R2_PUBLIC_URL}/${key}`;
 
     return NextResponse.json({
-      upload_url: uploadUrl, key, public_url: publicUrl,
+      upload_url: uploadUrl,
+      key,
+      public_url: publicUrl,
       content_type: mime_type || 'application/octet-stream',
-      resolved_type: validation.mediaType,
+      resolved_type: mediaType,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('POST /api/admin/media/upload error:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
+}
+
+async function uploadToR2(
+  key: string,
+  fileBuffer: Buffer,
+  contentType: string,
+  R2_ACCESS_KEY: string,
+  R2_SECRET_KEY: string,
+  R2_BUCKET: string,
+  R2_ACCOUNT_ID: string
+): Promise<string> {
+  const region = 'auto';
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateShort = amzDate.substring(0, 8);
+  const credentialScope = `${dateShort}/${region}/s3/aws4_request`;
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+
+  const payloadHash = createHash('sha256').update(fileBuffer).digest('hex');
+  const host = `${R2_BUCKET}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+
+  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+  const canonicalRequest = [
+    'PUT', `/${key}`, '', canonicalHeaders, signedHeaders, payloadHash,
+  ].join('\n');
+
+  const stringToSign = [
+    'AWS4-HMAC-SHA256', amzDate, credentialScope, hexSha256(canonicalRequest),
+  ].join('\n');
+
+  const kDate = hmacSign('AWS4' + R2_SECRET_KEY, dateShort);
+  const kRegion = hmacSign(kDate, region);
+  const kService = hmacSign(kRegion, 's3');
+  const kSigning = hmacSign(kService, 'aws4_request');
+  const signature = hmacSign(kSigning, stringToSign).toString('hex');
+
+  const authorizationHeader = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS_KEY}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  const uploadUrl = `https://${host}/${key}`;
+
+  const response = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash,
+      'Authorization': authorizationHeader,
+      'Content-Type': contentType,
+    },
+    body: new Uint8Array(fileBuffer),
+  });
+
+  if (!response.ok) {
+    throw new Error(`R2 upload failed: ${response.status} ${await response.text()}`);
+  }
+
+  return uploadUrl;
 }

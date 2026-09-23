@@ -107,7 +107,7 @@ export default function CampaignsPage() {
     if (!deleteId) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/crud/campaigns?id=${deleteId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/campaigns?id=${deleteId}`, { method: 'DELETE' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErrorMsg(json.error || `Erro ${res.status}`);
@@ -422,41 +422,28 @@ function CampaignFormModal({
 
     const doSave = async () => {
       let res: Response;
+      const savePayload = {
+        ...payload,
+        playlist_ids: form.playlist_ids,
+      };
       if (editing) {
-        payload.id = editing.id;
-        payload.updated_at = new Date().toISOString();
-        res = await fetch('/api/admin/crud/campaigns', {
+        savePayload.id = editing.id;
+        res = await fetch('/api/admin/campaigns', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(savePayload),
         });
       } else {
-        res = await fetch('/api/admin/crud/campaigns', {
+        res = await fetch('/api/admin/campaigns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, days_of_week: [1,2,3,4,5,6,0] }),
+          body: JSON.stringify(savePayload),
         });
       }
       const json = await res.json();
       if (!res.ok) throw new Error((json && (json.error || JSON.stringify(json))) || `HTTP ${res.status}`);
-      const campId = editing?.id ?? (json.data?.[0]?.id ?? json.data?.id);
+      const campId = editing?.id ?? json.campaign?.id ?? json.data?.id;
       if (!campId) throw new Error('Não foi possível identificar a campanha criada');
-
-      // Replace playlist links — first fetch existing links, then delete each by id
-      const existingLinks = await fetch(`/api/admin/crud/campaign_playlists?campaign_id=${campId}`)
-        .then(r => r.json())
-        .then(j => j.data ?? [])
-        .catch(() => []);
-      for (const link of existingLinks) {
-        await fetch(`/api/admin/crud/campaign_playlists?id=${link.id}`, { method: 'DELETE' });
-      }
-      for (let i = 0; i < form.playlist_ids.length; i++) {
-        await fetch('/api/admin/crud/campaign_playlists', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ campaign_id: campId, playlist_id: form.playlist_ids[i], position: i + 1 }),
-        });
-      }
       onSaved({ ...form, id: campId } as unknown as Campaign);
     };
 

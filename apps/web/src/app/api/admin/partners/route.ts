@@ -1,91 +1,163 @@
 /**
  * /api/admin/partners
- * Lista parceiros da org do usuário (com devices inclusos).
- * Substitui a rota original que usava Postgres com JOIN+json_agg.
+ * Lista e cria parceiros.
  */
 
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
+import { requireAuthApi } from '@/lib/auth';
 import { getAdminClient } from '@/lib/pb-server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const cookieStore = await (await import('next/headers')).cookies();
-    const sessionCookie = cookieStore.get('session')?.value;
-    if (!sessionCookie) {
-      return NextResponse.json({ partners: [] });
-    }
-    let session: any;
-    try { session = JSON.parse(sessionCookie); } catch { return NextResponse.json({ partners: [] }); }
-    if (!session?.email) return NextResponse.json({ partners: [] });
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ partners: [] });
 
     const pb = await getAdminClient();
+    const isSuperAdmin = user.role === 'super_admin';
+    const userOrgId = user.organization_id;
 
-    // Pega user
-    const user = await pb.collection('users').getFirstListItem(`email = "${session.email}"`);
-    let profile = null;
-    try { profile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`); } catch {}
-    if (!profile) return NextResponse.json({ partners: [] });
-
-    const isSuperAdmin = profile.role === 'super_admin';
-    const userOrgId = profile.organization_id;
-
-    // Pega partners
     const filter = isSuperAdmin ? '' : `organization_id = "${userOrgId}"`;
     const partners = await pb.collection('partner_access').getFullList({
       filter: filter || undefined,
       sort: '-created',
     });
 
-    // Enriquece com devices
     const allDeviceLinks = await pb.collection('partner_devices').getFullList();
-    const deviceIds = [...new Set(allDeviceLinks.map((d: any) => d.device_id))];
-    let deviceMap = new Map<string, any>();
-    if (deviceIds.length > 0) {
-      // Pega devices em batches
-      const allDevices = await pb.collection('devices').getFullList();
-      deviceMap = new Map(allDevices.map((d: any) => [d.id, d]));
-    }
     const deviceLinkMap = new Map<string, any[]>();
     for (const link of allDeviceLinks) {
-      const arr = deviceLinkMap.get(link.partner_access_id) || [];
-      arr.push({ id: link.id, device_id: link.device_id, playlist_id: link.playlist_id });
-      deviceLinkMap.set(link.partner_access_id, arr);
+      const arr = deviceLinkMap.get(link.partner_id) || [];
+      arr.push({ id: link.id, device_id: link.device_id });
+      deviceLinkMap.set(link.partner_id, arr);
     }
 
-    // Enriquece com categoria
-    const catIds = [...new Set(partners.map((p: any) => p.category_id).filter(Boolean))];
-    let catMap = new Map();
-    if (catIds.length > 0) {
-      for (const cid of catIds) {
-        try {
-          const c = await pb.collection('categories').getOne(cid);
-          catMap.set(cid, c);
-        } catch {}
-      }
-    }
-
-    const result = partners.map((p: any) => {
-      const c = p.category_id ? catMap.get(p.category_id) : null;
-      return {
-        id: p.id,
-        username: p.username,
-        display_name: p.display_name,
-        name: p.display_name,
-        status: p.status,
-        created_at: p.created,
-        updated_at: p.updated,
-        category_id: p.category_id,
-        category_name: c?.name,
-        category_icon: c?.icon,
-        category_color: c?.color,
-        category_slug: c?.slug,
-        partner_devices: deviceLinkMap.get(p.id) || [],
-      };
-    });
+    const result = partners.map((p: any) => ({
+      id: p.id,
+      username: p.username,
+      display_name: p.display_name,
+      name: p.display_name,
+      status: p.status,
+      created_at: p.created,
+      updated_at: p.updated,
+      organization_id: p.organization_id,
+      role: p.role,
+      partner_devices: deviceLinkMap.get(p.id) || [],
+    }));
 
     return NextResponse.json({ partners: result });
   } catch (e: any) {
     console.error('[partners GET] erro:', e?.message);
     return NextResponse.json({ partners: [], error: e?.message });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
+    const body = await request.json();
+    const { username, display_name, email, status = 'active', role = 'viewer', device_ids = [] } = body;
+
+    if (!username || !display_name) {
+      return NextResponse.json({ error: 'username e display_name são obrigatórios' }, { status: 400 });
+    }
+
+    const orgId = user.organization_id;
+    if (!orgId) {
+      return NextResponse.json({ error: 'Usuário sem organização' }, { status: 400 });
+    }
+
+    const pb = await getAdminClient();
+
+    // Cria partner_access
+    const partnerData: any = {
+      username,
+      display_name,
+      email: email || '',
+      status,
+      role,
+      organization_id: orgId,
+    };
+
+    const partner = await pb.collection('partner_access').create(partnerData);
+
+    // Vincula devices se fornecidos
+    if (device_ids && Array.isArray(device_ids) && device_ids.length > 0) {
+      for (const deviceId of device_ids) {
+        await pb.collection('partner_devices').create({
+          partner_id: partner.id,
+          device_id: deviceId,
+        });
+      }
+    }
+
+    return NextResponse.json({ success: true, partner });
+  } catch (e: any) {
+    console.error('[partners POST] erro:', e?.message, e.data);
+    return NextResponse.json({ error: e?.message, data: e?.data }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
+    const body = await request.json();
+    const { id, ...updates } = body;
+
+    if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+
+    const pb = await getAdminClient();
+
+    if (user.role !== 'super_admin' && updates.organization_id !== user.organization_id) {
+      const existing = await pb.collection('partner_access').getOne(id);
+      if (existing.organization_id !== user.organization_id) {
+        return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+      }
+    }
+
+    const updated = await pb.collection('partner_access').update(id, updates);
+    return NextResponse.json({ success: true, partner: updated });
+  } catch (e: any) {
+    console.error('[partners PUT] erro:', e?.message);
+    return NextResponse.json({ error: e?.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await requireAuthApi();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+
+    const pb = await getAdminClient();
+
+    if (user.role !== 'super_admin') {
+      const existing = await pb.collection('partner_access').getOne(id);
+      if (existing.organization_id !== user.organization_id) {
+        return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+      }
+    }
+
+    // Remove partner_devices vinculados
+    const deviceLinks = await pb.collection('partner_devices').getList(1, 500, {
+      filter: `partner_id = "${id}"`,
+    });
+    for (const link of deviceLinks.items) {
+      await pb.collection('partner_devices').delete(link.id);
+    }
+
+    await pb.collection('partner_access').delete(id);
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    console.error('[partners DELETE] erro:', e?.message);
+    return NextResponse.json({ error: e?.message }, { status: 500 });
   }
 }

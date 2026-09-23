@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import { getAdminClient } from '@/lib/pb-server';
+
+export const dynamic = 'force-dynamic';
 
 function generateCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -18,85 +21,74 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const [profile] = await sql`SELECT role, organization_id FROM profiles WHERE id = ${user.id}`;
-
-    if (!profile || !['super_admin', 'admin', 'manager'].includes(profile.role)) {
+    if (!['super_admin', 'admin', 'manager'].includes(user.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
-    let codes;
-    if (profile.role !== 'super_admin' && profile.organization_id) {
-      codes = await sql`
-        SELECT ac.*, row_to_json(d.*) as device
-        FROM activation_codes ac
-        LEFT JOIN devices d ON d.id = ac.linked_device_id
-        WHERE ac.organization_id = ${profile.organization_id}
-        ORDER BY ac.created_at DESC
-      `;
-    } else {
-      codes = await sql`
-        SELECT ac.*, row_to_json(d.*) as device
-        FROM activation_codes ac
-        LEFT JOIN devices d ON d.id = ac.linked_device_id
-        ORDER BY ac.created_at DESC
-      `;
-    }
+    const pb = await getAdminClient();
+    const filter = user.role === 'super_admin' ? '' : `organization_id = "${user.organization_id}"`;
+    const codes = await pb.collection('activation_codes').getList(1, 500, {
+      filter,
+      sort: '-created',
+    });
 
-    return NextResponse.json({ codes: codes ?? [] });
+    return NextResponse.json({ codes: codes.items ?? [] });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    console.error('[activation-codes GET] erro:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const user = await requireAuthApi();
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const [profile] = await sql`SELECT role, organization_id FROM profiles WHERE id = ${user.id}`;
-
-    if (!profile || !['super_admin', 'admin', 'manager'].includes(profile.role)) {
+    if (!['super_admin', 'admin', 'manager'].includes(user.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
     const body = await request.json();
-    const { count = 1, organization_id, expires_at, max_uses = 50 } = body;
+    const { count = 1, organization_id, expires_at } = body;
 
-    const orgId = organization_id || profile.organization_id;
+    const orgId = organization_id || user.organization_id;
     if (!orgId) {
       return NextResponse.json({ error: 'organization_id obrigatório' }, { status: 400 });
     }
 
+    const pb = await getAdminClient();
     const insertedCodes = [];
     for (let i = 0; i < Math.min(count, 50); i++) {
-      const [row] = await sql`
-        INSERT INTO activation_codes (code, organization_id, status, max_uses, use_count, expires_at, created_by)
-        VALUES (${generateCode()}, ${orgId}, 'active', ${max_uses}, 0, ${expires_at || null}, ${user.id})
-        RETURNING *
-      `;
-      insertedCodes.push(row);
+      const data: any = {
+        code: generateCode(),
+        organization_id: orgId,
+      };
+
+      if (expires_at) data.expires_at = expires_at;
+
+      const record = await pb.collection('activation_codes').create(data);
+      insertedCodes.push(record);
     }
 
     return NextResponse.json({ codes: insertedCodes });
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[activation-codes POST] erro:', msg, e.data);
+    return NextResponse.json({ error: msg, data: e.data }, { status: 500 });
   }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
     const user = await requireAuthApi();
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const [profile] = await sql`SELECT role FROM profiles WHERE id = ${user.id}`;
-
-    if (!profile || !['super_admin', 'admin', 'manager'].includes(profile.role)) {
+    if (!['super_admin', 'admin', 'manager'].includes(user.role)) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
@@ -107,11 +99,21 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
     }
 
-    await sql`DELETE FROM activation_codes WHERE id = ${codeId}`;
+    const pb = await getAdminClient();
 
+    // Verificar se o código pertence à org do user (se não for super_admin)
+    if (user.role !== 'super_admin') {
+      const code = await pb.collection('activation_codes').getOne(codeId);
+      if (code.organization_id !== user.organization_id) {
+        return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+      }
+    }
+
+    await pb.collection('activation_codes').delete(codeId);
     return NextResponse.json({ success: true });
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+    console.error('[activation-codes DELETE] erro:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

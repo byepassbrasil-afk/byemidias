@@ -97,8 +97,18 @@ export async function GET(request: NextRequest) {
         if (!filterParts.some(f => f.startsWith('id'))) {
           filterParts.push(`id = "${userOrgId}"`);
         }
-      } else if (TABLES_WITH_ORG.has(table) && !filterParts.some(f => f.startsWith('organization_id'))) {
-        filterParts.push(`organization_id = "${userOrgId}"`);
+      } else if (!filterParts.some(f => f.startsWith('organization_id'))) {
+        // Verifica se a collection tem o campo organization_id antes de filtrar
+        try {
+          const collection = await pb.collections.getOne(table);
+          const hasOrgField = collection.fields?.some((f: any) => f.name === 'organization_id');
+          if (hasOrgField) {
+            filterParts.push(`organization_id = "${userOrgId}"`);
+          }
+        } catch (e) {
+          // Se não conseguir verificar, tenta filtrar mesmo assim
+          filterParts.push(`organization_id = "${userOrgId}"`);
+        }
       }
     }
     const filter = filterParts.length > 0 ? filterParts.join(' && ') : '';

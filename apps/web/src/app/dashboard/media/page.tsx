@@ -174,42 +174,34 @@ export default function MediaPage() {
         console.log(`Convertido ${originalFile.name}: ${formatBytes(originalFile.size)} → ${formatBytes(file.size)} (-${reduction}%)`);
       }
 
-      const presignRes = await fetch('/api/admin/media/upload', {
+      // Upload via server-side route (bypass R2 CORS)
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('organization_id', organizationId);
+
+      const uploadRes = await fetch('/api/admin/media/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file_name: file.name,
-          mime_type: file.type,
-          file_size: file.size,
-          organization_id: organizationId,
-        }),
+        body: formData,
       });
 
-      const presignData = await presignRes.json();
-      if (!presignRes.ok) {
-        alert('Erro ao preparar upload: ' + (presignData.error || 'Erro'));
-        setUploading(false);
-        return;
-      }
-
-      const uploadRes = await fetch(presignData.upload_url, {
-        method: 'PUT',
-        body: file,
-      });
-
+      const uploadData = await uploadRes.json();
       if (!uploadRes.ok) {
-        alert('Erro ao enviar arquivo para o storage');
+        alert('Erro ao enviar arquivo: ' + (uploadData.error || 'Erro'));
         setUploading(false);
         return;
       }
 
+      const publicUrl = uploadData.public_url;
+      const key = uploadData.key;
+
+      // Salvar metadata no PocketBase
       const saveRes = await fetch('/api/admin/media/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           file_name: file.name,
           mime_type: file.type,
-          file_url: presignData.public_url,
+          file_url: publicUrl,
           file_size: file.size,
           organization_id: organizationId,
           ttl_days: preTtlDays,

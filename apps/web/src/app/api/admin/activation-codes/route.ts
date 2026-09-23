@@ -29,7 +29,7 @@ export async function GET() {
     const filter = user.role === 'super_admin' ? '' : `organization_id = "${user.organization_id}"`;
     const codes = await pb.collection('activation_codes').getList(1, 500, {
       filter,
-      sort: '-created',
+      sort: '-id',
     });
 
     return NextResponse.json({ codes: codes.items ?? [] });

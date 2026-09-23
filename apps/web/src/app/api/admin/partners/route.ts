@@ -18,11 +18,17 @@ export async function GET() {
     const isSuperAdmin = user.role === 'super_admin';
     const userOrgId = user.organization_id;
 
-    const filter = isSuperAdmin ? '' : `organization_id = "${userOrgId}"`;
-    const partners = await pb.collection('partner_access').getFullList({
-      filter: filter || undefined,
-      sort: '-created',
-    });
+    let partners: any[];
+    if (isSuperAdmin) {
+      partners = await pb.collection('partner_access').getFullList({
+        sort: '-id',
+      });
+    } else {
+      partners = await pb.collection('partner_access').getFullList({
+        filter: `organization_id = "${userOrgId}"`,
+        sort: '-id',
+      });
+    }
 
     const allDeviceLinks = await pb.collection('partner_devices').getFullList();
     const deviceLinkMap = new Map<string, any[]>();

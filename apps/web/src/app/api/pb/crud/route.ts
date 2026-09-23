@@ -88,11 +88,15 @@ export async function GET(request: NextRequest) {
       if (key.startsWith('_') || ['table', 'limit', 'offset', 'order', 'asc'].includes(key)) continue;
       filterParts.push(`${key} = "${String(value).replace(/"/g, '\\"')}"`);
     }
-    if (!isSuperAdmin && userOrgId && TABLES_WITH_ORG.has(table) && !filterParts.some(f => f.startsWith('organization_id'))) {
-      filterParts.push(`organization_id = "${userOrgId}"`);
-    }
-    if (!isSuperAdmin && table === 'organizations' && !filterParts.some(f => f.startsWith('id'))) {
-      filterParts.push(`id = "${userOrgId}"`);
+    if (!isSuperAdmin && userOrgId) {
+      if (table === 'organizations') {
+        // Para organizations, usar id (que é único)
+        if (!filterParts.some(f => f.startsWith('id'))) {
+          filterParts.push(`id = "${userOrgId}"`);
+        }
+      } else if (TABLES_WITH_ORG.has(table) && !filterParts.some(f => f.startsWith('organization_id'))) {
+        filterParts.push(`organization_id = "${userOrgId}"`);
+      }
     }
     const filter = filterParts.length > 0 ? filterParts.join(' && ') : '';
     const safeOrder = ALLOWED_ORDER.has(order) ? order : 'id';

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/debug/devices - direct debug endpoint for devices
 export async function GET() {
   try {

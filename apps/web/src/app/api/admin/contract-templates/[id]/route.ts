@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // PUT /api/admin/contract-templates/[id] — Edit template
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireAuthApi();

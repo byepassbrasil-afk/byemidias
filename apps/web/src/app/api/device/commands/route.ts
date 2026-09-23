@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/device/commands?device_id=X
 // Returns pending commands for the device and marks them as executed.
 // Called by the device during heartbeat.

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql, { bumpContentVersion } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }

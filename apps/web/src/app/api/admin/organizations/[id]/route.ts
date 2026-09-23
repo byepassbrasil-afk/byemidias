@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // DELETE /api/admin/organizations/[id] — CASCADE delete org + all related data
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireAuthApi();

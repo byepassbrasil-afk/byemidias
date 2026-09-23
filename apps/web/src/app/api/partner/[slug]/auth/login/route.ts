@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createPartnerSession, setPartnerSessionCookie, validatePartnerCredentials } from '@/lib/partner-auth';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;

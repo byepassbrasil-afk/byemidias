@@ -3,6 +3,9 @@ import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 import { randomUUID } from 'crypto';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function POST(request: NextRequest) {
   const user = await requireAuthApi();
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });

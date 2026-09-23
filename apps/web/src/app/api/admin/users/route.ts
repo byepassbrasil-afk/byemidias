@@ -3,6 +3,9 @@ import sql from '@/lib/db';
 import { requireAuthApi } from '@/lib/auth';
 import { randomUUID, randomBytes } from 'crypto';
 
+export const dynamic = 'force-dynamic';
+
+
 // Hierarquia estrita (do mais alto pro mais baixo)
 const ROLE_HIERARCHY = ['super_admin', 'admin', 'manager', 'operator', 'viewer'] as const;
 type Role = (typeof ROLE_HIERARCHY)[number];

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getPartnerSession } from '@/lib/partner-auth';
 import sql, { bumpContentVersion } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function POST(request: Request) {
   try {
     const session = await getPartnerSession();

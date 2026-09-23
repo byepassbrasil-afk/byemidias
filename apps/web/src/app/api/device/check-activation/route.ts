@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * Check if a device has been activated externally (via admin scan).
  * The TV polls this endpoint while on the activation screen.

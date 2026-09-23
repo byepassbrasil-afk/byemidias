@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql, { bumpContentVersion } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 const ALLOWED_TABLES = ['organizations', 'units', 'campaigns', 'playlists', 'devices', 'media', 'playlist_items', 'campaign_playlists', 'campaign_targets', 'partner_access', 'partner_devices', 'profiles', 'activation_codes', 'device_logs', 'playlist_slots', 'campaign_time_slots', 'campaign_calendar', 'content_schedules', 'device_groups', 'device_group_members', 'device_uptime_sessions', 'partner_payments', 'partner_invoices', 'partner_media_uploads', 'playback_logs', 'keepalive_log', 'layout_templates'];
 
 const PROTECTED_FIELDS: Record<string, string[]> = {

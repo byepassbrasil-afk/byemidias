@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql, { bumpContentVersion } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/admin/partner-media — List pending partner media uploads
 export async function GET(request: NextRequest) {
   try {

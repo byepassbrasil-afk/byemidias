@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/dashboard/devices/[id]/screenshot — Request device screenshot (org manager)
 export async function POST(
   _request: NextRequest,

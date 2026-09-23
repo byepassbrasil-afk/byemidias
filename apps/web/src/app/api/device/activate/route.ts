@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/device/activate
 export async function POST(request: Request) {
   try {

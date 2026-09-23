@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function GET() {
   const user = await requireAuthApi();
   if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {

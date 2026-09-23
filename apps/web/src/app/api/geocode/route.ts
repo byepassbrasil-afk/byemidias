@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/geocode?q=endereço — Proxy for Nominatim (OSM) geocoding
 export async function GET(request: NextRequest) {
   try {

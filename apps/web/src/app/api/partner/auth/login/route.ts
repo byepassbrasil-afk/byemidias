@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createPartnerSession, setPartnerSessionCookie, validatePartnerCredentials } from '@/lib/partner-auth';
 
+export const dynamic = 'force-dynamic';
+
+
 // Legacy route — redirects to slug-based login
 export async function POST(request: Request) {
   try {

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/lp/[slug]/stats — Aggregated stats for an org's landing page
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {

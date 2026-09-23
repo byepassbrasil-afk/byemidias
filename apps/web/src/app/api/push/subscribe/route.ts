@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/push/subscribe — Register push subscription
 export async function POST(request: Request) {
   try {

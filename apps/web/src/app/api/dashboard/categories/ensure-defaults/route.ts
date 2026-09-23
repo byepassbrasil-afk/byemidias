@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/dashboard/categories/ensure-defaults — Run helper to ensure all orgs have Padrão
 // Admin/maintenance endpoint - one-off fix
 export async function POST(_request: NextRequest) {

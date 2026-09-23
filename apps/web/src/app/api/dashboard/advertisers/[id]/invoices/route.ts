@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/dashboard/advertisers/[id]/invoices
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await requireAuthApi();

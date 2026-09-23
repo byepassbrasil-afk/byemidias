@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/debug/sync?device_id=X
 // Returns the EXACT JSON the device would receive, plus diagnostic info.
 export async function GET(request: NextRequest) {

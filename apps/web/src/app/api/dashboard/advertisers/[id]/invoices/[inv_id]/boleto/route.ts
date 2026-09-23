@@ -3,6 +3,9 @@ import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 import { generateBoletoPdf } from '@/lib/pdf-boleto';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/dashboard/advertisers/[id]/invoices/[inv_id]/boleto
 export async function GET(request: NextRequest, { params }: { params: { id: string; inv_id: string } }) {
   const user = await requireAuthApi();

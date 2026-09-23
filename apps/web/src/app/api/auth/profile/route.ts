@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/pb-server';
 import { getPartnerSession } from '@/lib/partner-auth';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function GET() {
   // Check admin session (cookie 'session')
   const cookieStore = await (await import('next/headers')).cookies();

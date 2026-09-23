@@ -7,6 +7,9 @@
 import { NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/pb-server';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function GET() {
   try {
     const cookieStore = await (await import('next/headers')).cookies();

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { getVapidPublicKey } from '@/lib/vapid';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/push/vapid-key — Return VAPID public key
 export async function GET() {
   try {

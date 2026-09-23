@@ -3,6 +3,9 @@ import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 import { randomUUID } from 'crypto';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/admin/partner-contracts/[id]/generate-link — Regenerate public link token
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireAuthApi();

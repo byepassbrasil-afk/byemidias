@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/contract-view/[token] — Public endpoint to view a contract by its token
 export async function GET(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   try {

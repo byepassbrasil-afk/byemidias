@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql, { bumpContentVersion } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 const ALLOWED_IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'avif', 'webp', 'gif'];
 const ALLOWED_VIDEO_EXTS = ['mp4', 'avi', 'wmv', 'mkv'];
 

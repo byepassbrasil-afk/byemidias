@@ -3,6 +3,9 @@ import { getPartnerSession } from '@/lib/partner-auth';
 import { createHmac, createHash } from 'crypto';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 function hmacSign(key: Buffer | string, data: string): Buffer {
   return createHmac('sha256', key).update(data).digest();
 }

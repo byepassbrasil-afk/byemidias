@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/map/[slug]/devices — Public devices of an org (only is_activated=true with coords)
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {

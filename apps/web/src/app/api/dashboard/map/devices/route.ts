@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/dashboard/map/devices — Devices with coords for org manager map
 export async function GET(_request: NextRequest) {
   const user = await requireAuthApi();

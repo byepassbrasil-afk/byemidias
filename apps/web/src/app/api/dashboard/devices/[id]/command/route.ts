@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/dashboard/devices/[id]/command
 // Body: { command: 'open_config' | 'rotate' | 'restart' | 'reload' | 'clear_cache' | 'rotate_portrait' | 'rotate_landscape' | 'toggle_kiosk' }
 //

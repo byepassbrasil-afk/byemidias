@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // DELETE /api/dashboard/devices/[id]/overrides/[media_id]
 export async function DELETE(
   _request: NextRequest,

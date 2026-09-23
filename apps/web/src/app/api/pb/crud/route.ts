@@ -12,6 +12,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/pb-server';
 
+export const dynamic = 'force-dynamic';
+
+
 const ALLOWED_TABLES = [
   'organizations', 'units', 'campaigns', 'playlists', 'devices', 'media',
   'playlist_items', 'campaign_playlists', 'campaign_targets',

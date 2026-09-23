@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/dashboard/reports/category-history — Histórico de filtragem por categoria
 export async function GET(request: NextRequest) {
   const user = await requireAuthApi();

@@ -4,6 +4,9 @@ import sql from '@/lib/db';
 import { randomUUID } from 'crypto';
 import { generateContractPdf } from '@/lib/pdf-contract';
 
+export const dynamic = 'force-dynamic';
+
+
 function addMonths(date: Date, months: number): Date {
   const d = new Date(date);
   d.setMonth(d.getMonth() + months);

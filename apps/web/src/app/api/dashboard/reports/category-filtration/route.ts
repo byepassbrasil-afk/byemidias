@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/dashboard/reports/category-filtration — Filtragem por categoria
 // Mostra mídias bloqueadas por categoria e overrides ativos
 export async function GET(request: NextRequest) {

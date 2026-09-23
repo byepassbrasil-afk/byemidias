@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { validateOrgSlug } from '@/lib/partner-auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;

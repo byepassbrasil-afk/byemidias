@@ -3,6 +3,9 @@ import { randomBytes } from 'crypto';
 import sql from '@/lib/db';
 import { sendEmail, forgotPasswordEmail } from '@/lib/email';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function POST(request: NextRequest) {
   try {
     const { email } = await request.json();

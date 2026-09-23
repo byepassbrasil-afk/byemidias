@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/lp/lead — Save contact form submission from landing page
 export async function POST(request: NextRequest) {
   try {

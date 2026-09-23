@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateSlug } from '@/lib/pb-server';
 import { getAdminClient, newId, findOne, create, update, hashPassword } from '@/lib/pb-server';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { sendPushToOrg } from '@/lib/push';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/device/heartbeat
 export async function POST(request: Request) {
   try {

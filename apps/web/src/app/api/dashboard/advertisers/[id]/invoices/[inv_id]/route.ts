@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // PUT /api/dashboard/advertisers/[id]/invoices/[inv_id]
 export async function PUT(request: NextRequest, { params }: { params: { id: string; inv_id: string } }) {
   const user = await requireAuthApi();

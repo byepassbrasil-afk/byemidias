@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // GET /api/dashboard/categories — list categories available to this org (local + global)
 export async function GET(_request: NextRequest) {
   const user = await requireAuthApi();

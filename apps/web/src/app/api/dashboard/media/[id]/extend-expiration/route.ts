@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/dashboard/media/[id]/extend-expiration
 // Body: { days: number } - days from NOW. If days=0 or null, removes expiration (permanent).
 export async function POST(

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql, { bumpContentVersion } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // Generic CRUD for org managers (mirrors /api/admin/crud)
 const VALID_TABLES = new Set([
   'organizations', 'devices', 'campaigns', 'playlists', 'media',

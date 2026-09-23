@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 // POST /api/dashboard/media/[id]/reactivate
 // Body: { days: number }
 // Reativa uma mídia expirada: define nova data de expiração = NOW + days, status='active'.

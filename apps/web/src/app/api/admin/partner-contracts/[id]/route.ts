@@ -3,6 +3,9 @@ import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 import { randomUUID } from 'crypto';
 
+export const dynamic = 'force-dynamic';
+
+
 // PUT /api/admin/partner-contracts/[id] — Edit contract
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireAuthApi();

@@ -3,6 +3,9 @@ import { requireAuthApi } from '@/lib/auth';
 import sql from '@/lib/db';
 import { randomUUID } from 'crypto';
 
+export const dynamic = 'force-dynamic';
+
+
 function generateActivationCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPartnerSession } from '@/lib/partner-auth';
 import sql from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getPartnerSession();

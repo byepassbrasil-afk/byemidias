@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSuperAdmin } from '@/lib/auth';
 import { deleteObject, deleteObjects, publicUrlFor, renameObject } from '@/lib/r2';
 
+export const dynamic = 'force-dynamic';
+
+
 export async function DELETE(request: NextRequest) {
   const isAdmin = await isSuperAdmin();
   if (!isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });

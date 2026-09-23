@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server';
-import sql from '@/lib/db';
+import { NextResponse, NextRequest } from 'next/server';
+import { getAdminClient } from '@/lib/pb-server';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 
 // POST /api/device/activate
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { device_uuid, activation_code, model, manufacturer, os_version, player_version, resolution } = body;
@@ -15,9 +16,19 @@ export async function POST(request: Request) {
     }
 
     const code = activation_code.toUpperCase().trim();
+    const pb = await getAdminClient();
 
     // Find activation code
-    const [codeRecord] = await sql`SELECT * FROM activation_codes WHERE code = ${code}`;
+    let codeRecord: any = null;
+    try {
+      const list = await pb.collection('activation_codes').getList(1, 1, {
+        filter: `code = "${code}"`,
+      });
+      if (list.items.length > 0) codeRecord = list.items[0];
+    } catch (e: any) {
+      console.error('[activate] erro ao buscar code:', e.message);
+    }
+
     if (!codeRecord) {
       return NextResponse.json({ error: 'Código de ativação inválido' }, { status: 401 });
     }
@@ -28,40 +39,82 @@ export async function POST(request: Request) {
     }
 
     // Check if device already exists (by UUID)
-    const [existingDevice] = await sql`SELECT id, is_activated, activation_code FROM devices WHERE device_uuid = ${device_uuid}`;
+    let existingDevice: any = null;
+    try {
+      const list = await pb.collection('devices').getList(1, 1, {
+        filter: `device_uuid = "${device_uuid}"`,
+      });
+      if (list.items.length > 0) existingDevice = list.items[0];
+    } catch (e: any) {}
 
     if (existingDevice) {
-      await sql`UPDATE devices SET model = ${model || null}, manufacturer = ${manufacturer || null}, os_version = ${os_version || null}, player_version = ${player_version || null}, resolution = ${resolution || null}, is_activated = true, activation_code = ${code}, status = 'online', last_heartbeat = NOW() WHERE id = ${existingDevice.id}`;
-      return NextResponse.json({ device_id: existingDevice.id, recovered: true, content_version: 0 });
+      await pb.collection('devices').update(existingDevice.id, {
+        model: model || null,
+        manufacturer: manufacturer || null,
+        os_version: os_version || null,
+        player_version: player_version || null,
+        resolution: resolution || null,
+        activation_code: code,
+        status: 'online',
+        last_heartbeat: new Date().toISOString(),
+      });
+      return NextResponse.json({ device_id: existingDevice.id, recovered: true, content_version: existingDevice.content_version || 0 });
     }
 
     // Recovery: code already used → re-link device
     if (codeRecord.linked_device_id && codeRecord.use_count >= codeRecord.max_uses) {
-      const [linkedDevice] = await sql`SELECT id FROM devices WHERE id = ${codeRecord.linked_device_id}`;
-      if (linkedDevice) {
-        await sql`UPDATE devices SET device_uuid = ${device_uuid}, model = ${model || null}, manufacturer = ${manufacturer || null}, os_version = ${os_version || null}, player_version = ${player_version || null}, resolution = ${resolution || null}, is_activated = true, activation_code = ${code}, status = 'online', last_heartbeat = NOW() WHERE id = ${linkedDevice.id}`;
-        return NextResponse.json({ device_id: linkedDevice.id, recovered: true, content_version: 0 });
-      }
+      try {
+        const linked = await pb.collection('devices').getOne(codeRecord.linked_device_id);
+        await pb.collection('devices').update(linked.id, {
+          device_uuid: device_uuid,
+          model: model || null,
+          manufacturer: manufacturer || null,
+          os_version: os_version || null,
+          player_version: player_version || null,
+          resolution: resolution || null,
+          activation_code: code,
+          status: 'online',
+          last_heartbeat: new Date().toISOString(),
+        });
+        return NextResponse.json({ device_id: linked.id, recovered: true, content_version: 0 });
+      } catch (e) {}
     }
 
     // Check max_uses
-    if (codeRecord.use_count >= codeRecord.max_uses) {
+    const useCount = codeRecord.use_count || 0;
+    const maxUses = codeRecord.max_uses || 0;
+    if (maxUses > 0 && useCount >= maxUses) {
       return NextResponse.json({ error: 'Código de ativação atingiu o limite de uso' }, { status: 401 });
     }
 
     // Create new device
-    const [newDevice] = await sql`INSERT INTO devices (device_uuid, organization_id, name, model, manufacturer, os_version, player_version, resolution, activation_code, is_activated, status, last_heartbeat, content_version) VALUES (${device_uuid}, ${codeRecord.organization_id}, ${`${manufacturer || 'Unknown'} ${model || 'Device'}`}, ${model || null}, ${manufacturer || null}, ${os_version || null}, ${player_version || null}, ${resolution || null}, ${code}, true, 'online', NOW(), 0) RETURNING id`;
-
-    if (!newDevice) {
-      return NextResponse.json({ error: 'Erro ao criar dispositivo' }, { status: 500 });
-    }
+    const deviceName = `${manufacturer || 'Unknown'} ${model || 'Device'}`;
+    const newDevice = await pb.collection('devices').create({
+      organization_id: codeRecord.organization_id,
+      device_uuid: device_uuid,
+      name: deviceName,
+      model: model || null,
+      manufacturer: manufacturer || null,
+      os_version: os_version || null,
+      player_version: player_version || null,
+      resolution: resolution || null,
+      activation_code: code,
+      status: 'online',
+      last_heartbeat: new Date().toISOString(),
+      content_version: 0,
+    });
 
     // Update activation code usage
-    await sql`UPDATE activation_codes SET use_count = ${codeRecord.use_count + 1}, linked_device_id = ${newDevice.id}, status = ${codeRecord.use_count + 1 >= codeRecord.max_uses ? 'used' : 'active'} WHERE id = ${codeRecord.id}`;
+    await pb.collection('activation_codes').update(codeRecord.id, {
+      use_count: useCount + 1,
+      linked_device_id: newDevice.id,
+      status: (useCount + 1 >= maxUses && maxUses > 0) ? 'used' : 'active',
+    });
 
     return NextResponse.json({ device_id: newDevice.id, recovered: false, content_version: 0 });
-  } catch (e: unknown) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('[activate] erro:', msg, e.data);
+    return NextResponse.json({ error: msg, data: e.data }, { status: 500 });
   }
 }

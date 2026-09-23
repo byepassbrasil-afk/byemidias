@@ -51,8 +51,8 @@ async function getAdminClient() {
     }
   }
   adminToken = adminClient.authStore.token;
-  // Tokens PB duram ~14 dias, mas renovamos a cada 1h por segurança
-  adminTokenExpires = now + 60 * 60 * 1000;
+  // Tokens PB duram ~14 dias, renovamos a cada 6h para reduzir chamadas de auth
+  adminTokenExpires = now + 6 * 60 * 60 * 1000;
 
   return adminClient;
 }

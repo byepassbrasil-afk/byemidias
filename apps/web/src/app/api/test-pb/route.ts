@@ -2,33 +2,65 @@ import PocketBase from 'pocketbase';
 
 const PB_URL = process.env.PB_URL || 'http://servermidias-pocketbase-a0db05-2-25-238-133.sslip.io';
 
-export async function GET() {
-  try {
-    const pb = new PocketBase(PB_URL);
+export const dynamic = 'force-dynamic';
 
-    // Test 1: Health check via fetch
+export async function GET() {
+  const startTime = Date.now();
+
+  try {
+    // Test 1: Direct fetch health check
     let healthOk = false;
+    let healthError: string | null = null;
     try {
-      const hRes = await fetch(`${PB_URL}/api/health`);
+      const hRes = await fetch(`${PB_URL}/api/health`, { cache: 'no-store' });
       healthOk = hRes.ok;
+      if (!healthOk) healthError = `Status ${hRes.status}`;
     } catch (e: any) {
-      return Response.json({ step: 'health', ok: false, error: e.message });
+      healthError = e.message;
     }
 
-    // Test 2: Admin auth
-    let adminOk = false;
+    // Test 2: PocketBase SDK
+    let sdkOk = false;
+    let sdkError: string | null = null;
+    let collections: string[] = [];
     try {
-      await pb.admins.authWithPassword('gwmorata@gmail.com', '@Gaedaam08');
+      const pb = new PocketBase(PB_URL);
+      pb.autoCancellation(false);
+
+      const cols = await pb.collections.getList(1, 100);
+      collections = cols.items.map((c: any) => c.name);
+      sdkOk = true;
+    } catch (e: any) {
+      sdkError = e.message;
+    }
+
+    // Test 3: Admin auth
+    let adminOk = false;
+    let adminError: string | null = null;
+    try {
+      const pb = new PocketBase(PB_URL);
+      pb.autoCancellation(false);
+      await pb.admins.authWithPassword(
+        process.env.PB_ADMIN_EMAIL || '',
+        process.env.PB_ADMIN_PASSWORD || ''
+      );
       adminOk = true;
     } catch (e: any) {
-      return Response.json({ step: 'admin_auth', ok: false, error: e.message });
+      adminError = e.message;
     }
 
     return Response.json({
       success: true,
       pbUrl: PB_URL,
-      health: healthOk,
-      adminAuth: adminOk,
+      hasCredentials: !!process.env.PB_ADMIN_EMAIL && !!process.env.PB_ADMIN_PASSWORD,
+      elapsedMs: Date.now() - startTime,
+      tests: {
+        health: { ok: healthOk, error: healthError },
+        sdk: { ok: sdkOk, error: sdkError },
+        adminAuth: { ok: adminOk, error: adminError },
+      },
+      collections,
+      envKeys: Object.keys(process.env).filter(k => k.startsWith('PB_')),
     });
   } catch (e: any) {
     return Response.json({

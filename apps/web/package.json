@@ -25,6 +25,7 @@
     "lucide-react": "^0.441.0",
     "next": "^14.2.0",
     "pdfkit": "^0.20.2",
+    "pocketbase": "^0.21.5",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
     "react": "^18.3.0",

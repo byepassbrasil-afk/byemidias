@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
       file_name, file_url, file_size, organization_id,
       ttl_days, expires_reason, display_name, default_orientation,
       media_type,
+      thumbnail_url,
       category_ids,
     } = body;
 
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
       type: resolvedType,
       status: 'active',
     };
+    if (thumbnail_url) mediaData.thumbnail_url = thumbnail_url;
 
     const media = await pb.collection('media').create(mediaData);
 

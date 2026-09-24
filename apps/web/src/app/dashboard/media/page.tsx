@@ -5,6 +5,7 @@ import type { Media } from '@/lib/types';
 import { convertImageToWebP, formatBytes } from '@/lib/image-convert';
 import VideoThumbnail from '@/components/video-thumbnail';
 import UrlUploadForm from '@/components/url-upload-form';
+import { extractVideoThumbnail, uploadThumbnail } from '@/lib/video-thumbnail';
 
 export default function MediaPage() {
   const [media, setMedia] = useState<Media[]>([]);
@@ -214,7 +215,28 @@ export default function MediaPage() {
       const publicUrl = presignData.public_url;
       const key = presignData.key;
 
-      // 3. Salvar metadata no PocketBase
+      // 3. Para vídeos, capturar thumbnail no browser antes de salvar
+      let thumbnailUrl: string | null = null;
+      if (file.type.startsWith('video/')) {
+        try {
+          console.log('[Upload] Capturando thumbnail do vídeo no browser...');
+          const thumbBlob = await extractVideoThumbnail(file, 480);
+          if (thumbBlob) {
+            thumbnailUrl = await uploadThumbnail(thumbBlob, organizationId);
+            if (thumbnailUrl) {
+              console.log('[Upload] Thumbnail upado:', thumbnailUrl);
+            } else {
+              console.warn('[Upload] Falha ao upar thumbnail');
+            }
+          } else {
+            console.warn('[Upload] Não foi possível extrair frame do vídeo');
+          }
+        } catch (e) {
+          console.warn('[Upload] Erro ao gerar thumbnail:', e);
+        }
+      }
+
+      // 4. Salvar metadata no PocketBase
       const saveRes = await fetch('/api/admin/media/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -228,6 +250,7 @@ export default function MediaPage() {
           expires_reason: preTtlDays === 0 ? reason : undefined,
           display_name: preDisplayName.trim() || undefined,
           default_orientation: preOrientation,
+          thumbnail_url: thumbnailUrl || undefined,
           category_ids: Array.from(preCategoryIds),
           excluded_category_ids: Array.from(preExcludedCatIds),
           // Cross-org blocking only for super_admin
@@ -446,15 +469,16 @@ export default function MediaPage() {
             </div>
           )}
           <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" />
-          <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+          <div className="inline-flex rounded-lg border-2 border-gray-300 overflow-hidden shadow-sm">
             <button onClick={() => { setUploadMode('file'); fileInputRef.current?.click(); }} disabled={uploading || !organizationId}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${uploadMode === 'file' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              className={`px-5 py-2.5 text-sm font-semibold transition-colors ${uploadMode === 'file' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
               📁 Arquivo
             </button>
             <button onClick={() => { setUploadMode('url'); setPendingFile(new File([], 'url')); setPendingPreviewUrl(null); setPreDisplayName(''); setPreOrientation('auto'); setPreTtlDays(7); setPreReason(''); setPreCategoryIds(new Set()); setPreExcludedCatIds(new Set()); setPreExcludedOrgIds(new Set()); setPreExcludedDeviceIds(new Set()); setPreDeviceSearch(''); }}
               disabled={uploading || !organizationId}
-              className={`px-4 py-2 text-sm font-medium border-l border-gray-300 transition-colors ${uploadMode === 'url' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-              🌐 URL
+              title="Adicionar mídia via URL (página web, YouTube, dashboard, etc.)"
+              className={`px-5 py-2.5 text-sm font-semibold border-l-2 border-gray-300 transition-colors ${uploadMode === 'url' ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}>
+              🌐 URL / Web
             </button>
           </div>
         </div>
@@ -537,7 +561,16 @@ export default function MediaPage() {
                     loading="lazy"
                   />
                 ) : item.type === 'video' ? (
-                  <VideoThumbnail src={item.file_url} alt={item.name} className="w-full h-full object-cover" />
+                  item.thumbnail_url ? (
+                    <img
+                      src={item.thumbnail_url}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <VideoThumbnail src={item.file_url} alt={item.name} className="w-full h-full object-cover" />
+                  )
                 ) : item.type === 'url' ? (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-2 text-center relative">
                     <div className="flex flex-col items-center justify-center">
@@ -843,7 +876,22 @@ export default function MediaPage() {
                   {detailMedia.type === 'image' || detailMedia.type === 'gif' ? (
                     <img src={detailMedia.file_url} alt={detailMedia.name} className="w-full h-full object-cover" />
                   ) : detailMedia.type === 'video' ? (
-                    <video src={detailMedia.file_url} className="w-full h-full object-cover" controls />
+                    detailMedia.thumbnail_url ? (
+                      <div className="relative w-full h-full">
+                        <img src={detailMedia.thumbnail_url} alt={detailMedia.name} className="w-full h-full object-cover" />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); window.open(detailMedia.file_url, '_blank'); }}
+                          className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors"
+                          title="Tocar vídeo"
+                        >
+                          <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center">
+                            <svg className="w-6 h-6 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                          </div>
+                        </button>
+                      </div>
+                    ) : (
+                      <video src={detailMedia.file_url} className="w-full h-full object-cover" controls />
+                    )
                   ) : (
                     <div className="text-5xl">📄</div>
                   )}

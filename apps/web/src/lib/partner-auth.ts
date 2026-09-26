@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
-import sql from '@/lib/db';
+import { getAdminClient } from '@/lib/pb-server';
 
 const SECRET = new TextEncoder().encode(
   process.env.PARTNER_JWT_SECRET || 'byemidias-partner-secret-change-in-production'
@@ -63,24 +63,19 @@ export async function clearPartnerSessionCookie() {
 export async function validateOrgSlug(slug: string): Promise<{ id: string; name: string } | null> {
   if (!slug) return null;
   const cleanSlug = slug.toLowerCase().trim();
-  // 1) Match exato (rápido, caminho comum)
-  const [exact] = await sql`
-    SELECT id, name FROM organizations
-    WHERE LOWER(slug) = ${cleanSlug} AND status != 'inactive'
-    LIMIT 1
-  `;
-  if (exact) return { id: exact.id as string, name: exact.name as string };
+  const pb = await getAdminClient();
+  const exact = await pb.collection('organizations').getFirstListItem(
+    `slug = "${cleanSlug}" && status != "inactive"`,
+  ).catch(() => null);
+  if (exact) return { id: exact.id, name: exact.name };
 
-  // 2) Match aproximado (sem traços / espaços) — tolerante a erros de digitação
+  const all = await pb.collection('organizations').getList(1, 100, {
+    filter: 'status != "inactive"',
+  });
   const normalized = cleanSlug.replace(/[-\s]+/g, '');
-  const all = await sql`
-    SELECT id, name, slug FROM organizations WHERE status != 'inactive' LIMIT 50
-  `;
-  for (const row of all as Array<Record<string, unknown>>) {
+  for (const row of all.items) {
     const rowSlug = String(row.slug || '').toLowerCase().replace(/[-\s]+/g, '');
-    if (rowSlug === normalized) {
-      return { id: row.id as string, name: row.name as string };
-    }
+    if (rowSlug === normalized) return { id: row.id, name: row.name };
   }
 
   return null;
@@ -89,6 +84,17 @@ export async function validateOrgSlug(slug: string): Promise<{ id: string; name:
 /**
  * Validate partner credentials against a specific org slug
  */
+async function ensurePartnerSchema(pb: any) {
+  const collection = await pb.collections.getOne('partner_access');
+  const fields = [
+    { name: 'password_hash', type: 'text' },
+    { name: 'status', type: 'text' },
+  ];
+  const existingFields = collection.fields || collection.schema || [];
+  const missing = fields.filter((f) => !existingFields.some((s: any) => s.name === f.name));
+  if (missing.length > 0) await pb.collections.update('partner_access', { fields: [...existingFields, ...missing] });
+}
+
 export async function validatePartnerCredentials(
   username: string,
   password: string,
@@ -98,17 +104,18 @@ export async function validatePartnerCredentials(
   const org = await validateOrgSlug(slug);
   if (!org) return { valid: false };
 
-  const partners = await sql`
-    SELECT id, organization_id, username, name as display_name, password_hash, status
-    FROM partner_access
-    WHERE username = ${username.toLowerCase().trim()}
-      AND organization_id = ${org.id}
-    LIMIT 1
-  `;
+  const pb = await getAdminClient();
+  await ensurePartnerSchema(pb);
+  const normalizedUsername = username.toLowerCase().trim();
+  let partner: any = null;
+  try {
+    const list = await pb.collection('partner_access').getList(1, 200, {
+      filter: `organization_id = "${org.id}"`,
+    });
+    partner = (list.items || []).find((p: any) => String(p.username || '').toLowerCase().trim() === normalizedUsername) || null;
+  } catch {}
 
-  const partner = partners[0];
-
-  if (!partner || partner.status !== 'active') {
+  if (!partner || (partner.status && partner.status !== 'active')) {
     return { valid: false };
   }
 

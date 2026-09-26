@@ -40,7 +40,9 @@ export default function DashboardCategoriesPage() {
     setLoading(true);
     try {
       const r = await fetch('/api/dashboard/categories');
-      const d = await r.json();
+      const text = await r.text();
+      const d = text ? JSON.parse(text) : {};
+      if (!r.ok) throw new Error(d.error || 'Erro ao listar categorias');
       setCategories(d.categories ?? []);
     } catch (e) {
       console.error(e);

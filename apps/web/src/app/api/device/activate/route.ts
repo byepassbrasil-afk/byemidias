@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         status: 'online',
         last_heartbeat: new Date().toISOString(),
       });
-      return NextResponse.json({ device_id: existingDevice.id, recovered: true, content_version: existingDevice.content_version || 0 });
+      return NextResponse.json({ device_id: existingDevice.id, recovered: true, content_version: existingDevice.content_version || 0, webhook_url: `${request.nextUrl.origin}/api/device/heartbeat?device_id=${existingDevice.id}`, sync_url: `${request.nextUrl.origin}/api/device/sync?device_id=${existingDevice.id}` });
     }
 
     // Recovery: code already used → re-link device
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
           status: 'online',
           last_heartbeat: new Date().toISOString(),
         });
-        return NextResponse.json({ device_id: linked.id, recovered: true, content_version: 0 });
+        return NextResponse.json({ device_id: linked.id, recovered: true, content_version: 0, webhook_url: `${request.nextUrl.origin}/api/device/heartbeat?device_id=${linked.id}`, sync_url: `${request.nextUrl.origin}/api/device/sync?device_id=${linked.id}` });
       } catch (e) {}
     }
 
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
       status: (useCount + 1 >= maxUses && maxUses > 0) ? 'used' : 'active',
     });
 
-    return NextResponse.json({ device_id: newDevice.id, recovered: false, content_version: 0 });
+    return NextResponse.json({ device_id: newDevice.id, recovered: false, content_version: 0, webhook_url: `${request.nextUrl.origin}/api/device/heartbeat?device_id=${newDevice.id}`, sync_url: `${request.nextUrl.origin}/api/device/sync?device_id=${newDevice.id}` });
   } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('[activate] erro:', msg, e.data);

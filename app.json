@@ -15,9 +15,17 @@
       "description": "Port to listen on",
       "value": "3000"
     },
-    "HOSTNAME": {
-      "description": "Host to bind",
-      "value": "0.0.0.0"
+    "NEXT_PUBLIC_APP_URL": {
+      "description": "Public app URL (inlined at build time)"
+    },
+    "NEXT_PUBLIC_APP_NAME": {
+      "description": "Public app name (inlined at build time)"
+    },
+    "NEXT_PUBLIC_SUPABASE_URL": {
+      "description": "Supabase URL (inlined at build time)"
+    },
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": {
+      "description": "Supabase anon key (inlined at build time)"
     },
     "PB_URL": {
       "description": "PocketBase URL"
@@ -27,6 +35,12 @@
     },
     "PB_ADMIN_PASSWORD": {
       "description": "PocketBase admin password"
+    },
+    "AUTH_SECRET": {
+      "description": "Auth secret"
+    },
+    "PARTNER_JWT_SECRET": {
+      "description": "Partner JWT secret"
     }
   }
 }

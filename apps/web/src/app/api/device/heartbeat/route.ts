@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     // 5. Gerenciar uptime sessions
     if (isOffline) {
       try {
-        const openSessions = await pb.collection('device_uptime_sessions').getList(1, 500, {
+        const openSessions = await pb.collection('device_uptime_sessions').getList(1, 200, {
           filter: `device_id = "${device_id}" && ended_at = null`,
         });
         for (const s of openSessions.items) {
@@ -159,25 +159,26 @@ export async function POST(request: NextRequest) {
 
     // 7. Buscar comandos pendentes (sem SQL raw!)
     let pendingCommands: any[] = [];
-    try {
-      const cmds = await pb.collection('device_commands').getList(1, 5, {
-        filter: `device_id = "${device_id}" && executed_at = null`,
-        sort: 'created_at',
-      });
-      pendingCommands = cmds.items;
+    if (!isOffline) {
+      try {
+        const cmds = await pb.collection('device_commands').getList(1, 5, {
+          filter: `device_id = "${device_id}" && executed_at = null`,
+          sort: 'created_at',
+        });
+        pendingCommands = cmds.items;
 
-      // Marcar como executados
-      for (const cmd of pendingCommands) {
-        try {
-          await pb.collection('device_commands').update(cmd.id, {
-            executed_at: new Date().toISOString(),
-          });
-        } catch (e) {
-          console.error('[heartbeat] erro marcar comando:', e);
+        for (const cmd of pendingCommands) {
+          try {
+            await pb.collection('device_commands').update(cmd.id, {
+              executed_at: new Date().toISOString(),
+            });
+          } catch (e) {
+            console.error('[heartbeat] erro marcar comando:', e);
+          }
         }
+      } catch (e) {
+        console.error('[heartbeat] erro buscar comandos:', e);
       }
-    } catch (e) {
-      console.error('[heartbeat] erro buscar comandos:', e);
     }
 
     // 8. Configurações do device
@@ -197,8 +198,18 @@ export async function POST(request: NextRequest) {
       success: true,
       uptime: uptimeStr,
       content_version: prevDevice.content_version || 0,
+      player_version: updateData.player_version || prevDevice.player_version || null,
       restart: prevDevice.restart_requested || false,
       screen_rotation: effectiveRotation,
+      video_volume: prevDevice.video_volume ?? 100,
+      image_fit_mode: prevDevice.image_fit_mode || 'centerCrop',
+      image_rotation_lock: prevDevice.image_rotation_lock ?? 0,
+      video_player: prevDevice.video_player || 'exoplayer',
+      html_render: prevDevice.html_render || 'native',
+      auto_update: prevDevice.auto_update ?? true,
+      low_mem_restart: prevDevice.low_mem_restart ?? true,
+      support_id: prevDevice.support_id || '',
+      support_type: prevDevice.support_type || 'anydesk',
       orientation: prevDevice.orientation || 'landscape',
       mirror_horizontal: prevDevice.mirror_horizontal || false,
       mirror_vertical: prevDevice.mirror_vertical || false,

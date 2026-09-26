@@ -47,11 +47,12 @@ export async function GET(request: NextRequest) {
       campaign = null;
     }
 
-    if (!campaign || campaign.status !== 'active') {
+    if (!campaign) {
       return NextResponse.json({
         content_version: device.content_version || 0,
         needs_update: false,
         campaign_id: device.campaign_id,
+        campaign_status: campaign?.status || null,
         playlists: [],
         media: [],
         sync_interval_seconds: 30,
@@ -61,7 +62,13 @@ export async function GET(request: NextRequest) {
 
     // 4. Verificar datas
     const now = new Date();
-    if (campaign.start_date && new Date(campaign.start_date) > now) {
+    const campaignStart = campaign.start_date
+      ? new Date(String(campaign.start_date).length === 10 ? `${campaign.start_date}T00:00:00` : campaign.start_date)
+      : null;
+    const campaignEnd = campaign.end_date
+      ? new Date(String(campaign.end_date).length === 10 ? `${campaign.end_date}T23:59:59.999` : campaign.end_date)
+      : null;
+    if (campaignStart && campaignStart > now) {
       return NextResponse.json({
         content_version: device.content_version || 0,
         needs_update: false,
@@ -72,7 +79,7 @@ export async function GET(request: NextRequest) {
         restart: device.restart_requested || false,
       });
     }
-    if (campaign.end_date && new Date(campaign.end_date) < now) {
+    if (campaignEnd && campaignEnd < now) {
       return NextResponse.json({
         content_version: device.content_version || 0,
         needs_update: false,
@@ -85,11 +92,15 @@ export async function GET(request: NextRequest) {
     }
 
     // 5. Buscar time slots e filtrar por dia/hora
-    const slots = await pb.collection('campaign_time_slots').getList(1, 500, {
-      filter: `campaign_id = "${campaign.id}" && status = "active"`,
-    });
+    let slots: any = { items: [] };
+    try {
+      slots = await pb.collection('campaign_time_slots').getList(1, 200, {
+        filter: `campaign_id = "${campaign.id}"`,
+      });
+    } catch {}
 
-    const hasWeeklySchedule = slots.items.length > 0;
+    const slotItems = Array.isArray(slots?.items) ? slots.items : [];
+    const hasWeeklySchedule = slotItems.length > 0;
 
     // Calcula dia/hora atual em São Paulo
     const brNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
@@ -102,14 +113,20 @@ export async function GET(request: NextRequest) {
     let nextSlotChangeSeconds = 60;
 
     if (hasWeeklySchedule) {
-      const matchingSlot = slots.items.find((slot: any) => {
-        const slotDay = slot.day_of_week;
-        const slotStart = slot.start_time;
-        const slotEnd = slot.end_time;
-        return slotDay === pgDow && slotStart <= nowTime && slotEnd > nowTime;
+      const matchingSlot = slotItems.find((slot: any) => {
+        const slotDay = Number(slot.day_of_week);
+        const start = String(slot.start_time || '00:00').slice(0, 5);
+        const end = String(slot.end_time || '23:59').slice(0, 5);
+        const startFull = `${start}:00`;
+        const endFull = `${end}:00`;
+        const sameDay = slotDay === pgDow;
+        const overnight = end <= start;
+        return overnight
+          ? sameDay && (nowTime >= startFull || nowTime < endFull)
+          : sameDay && nowTime >= startFull && nowTime < endFull;
       });
 
-      if (matchingSlot) {
+      if (matchingSlot && matchingSlot.playlist_id) {
         targetPlaylistIds = [matchingSlot.playlist_id];
         matchedSlot = true;
 
@@ -118,7 +135,7 @@ export async function GET(request: NextRequest) {
         const nowMinutes = brNow.getHours() * 60 + brNow.getMinutes();
         nextSlotChangeSeconds = Math.max((endMinutes - nowMinutes) * 60, 10);
       } else {
-        const upcomingSlots = slots.items
+        const upcomingSlots = slotItems
           .filter((s: any) => s.day_of_week >= pgDow)
           .sort((a: any, b: any) => {
             if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week;
@@ -132,23 +149,26 @@ export async function GET(request: NextRequest) {
           const nextMinutes = nextDay * 24 * 60 + parseInt(nextStart[0]) * 60 + parseInt(nextStart[1]);
           const nowMinutes = pgDow * 24 * 60 + brNow.getHours() * 60 + brNow.getMinutes();
           nextSlotChangeSeconds = Math.max((nextMinutes - nowMinutes) * 60, 10);
-        } else if (slots.items.length > 0) {
+        } else if (slotItems.length > 0) {
           nextSlotChangeSeconds = 60;
         }
       }
     }
 
     // 6. Buscar campaign_playlists
-    const cpList = await pb.collection('campaign_playlists').getList(1, 500, {
+    const cpList = await pb.collection('campaign_playlists').getList(1, 200, {
       filter: `campaign_id = "${campaign.id}"`,
-      sort: 'order_index',
     });
 
-    if (cpList.items.length === 0) {
+    const campaignPlaylistItems = Array.isArray(cpList?.items) ? cpList.items : [];
+
+    if (campaignPlaylistItems.length === 0) {
       return NextResponse.json({
         content_version: device.content_version || 0,
         needs_update: false,
         campaign_id: campaign.id,
+        campaign_status: campaign.status,
+        campaign_links: campaignPlaylistItems.length,
         playlists: [],
         media: [],
         sync_interval_seconds: 30,
@@ -161,7 +181,7 @@ export async function GET(request: NextRequest) {
 
     const resolvedPlaylistIds = targetPlaylistIds.length > 0
       ? targetPlaylistIds
-      : cpList.items.map((cp: any) => cp.playlist_id);
+      : campaignPlaylistItems.map((cp: any) => cp.playlist_id);
 
     for (const playlistId of resolvedPlaylistIds) {
       let playlist: any = null;
@@ -171,20 +191,25 @@ export async function GET(request: NextRequest) {
 
       if (!playlist) continue;
 
-      const cpEntry = cpList.items.find((cp: any) => cp.playlist_id === playlistId);
+      const cpEntry = campaignPlaylistItems.find((cp: any) => cp.playlist_id === playlistId);
 
-      const itemsList = await pb.collection('playlist_items').getList(1, 500, {
+      const itemsList = await pb.collection('playlist_items').getList(1, 200, {
         filter: `playlist_id = "${playlist.id}"`,
         sort: 'order_index',
       });
 
-      const slotsList = await pb.collection('playlist_slots').getList(1, 500, {
-        filter: `playlist_id = "${playlist.id}"`,
-        sort: 'slot_index',
-      });
+      let slotsList: any = { items: [] };
+      try {
+        slotsList = await pb.collection('playlist_slots').getList(1, 200, {
+          filter: `playlist_id = "${playlist.id}"`,
+          sort: 'slot_index',
+        });
+      } catch {}
 
-      const slotsWithInfo = slotsList.items.map((s: any) => {
-        const itemsInSlot = itemsList.items.filter((i: any) => i.slot_id === s.id);
+      const playlistItemRows = Array.isArray(itemsList?.items) ? itemsList.items : [];
+      const slotRows = Array.isArray(slotsList?.items) ? slotsList.items : [];
+      const slotsWithInfo = slotRows.map((s: any) => {
+        const itemsInSlot = playlistItemRows.filter((i: any) => i.slot_id === s.id);
         return {
           id: s.id,
           slot_order: s.slot_index,
@@ -203,13 +228,14 @@ export async function GET(request: NextRequest) {
         description: playlist.description || '',
         campaign_id: campaign.id,
         campaign_name: campaign.name,
-        position: cpEntry?.order_index ?? 0,
+        position: cpEntry?.order_index ?? cpEntry?.position ?? 0,
         duration: cpEntry?.duration || null,
-        items: itemsList.items.map((i: any) => ({
+        items: playlistItemRows.map((i: any) => ({
           id: i.id,
           playlist_id: i.playlist_id,
           media_id: i.media_id,
-          order_index: i.order_index,
+          position: i.order_index ?? i.position ?? 0,
+          order_index: i.order_index ?? i.position ?? 0,
           duration: i.duration || null,
           transition: i.transition || 'fade',
           slot_id: i.slot_id || null,
@@ -217,7 +243,7 @@ export async function GET(request: NextRequest) {
         slots: slotsWithInfo,
       });
 
-      itemsList.items.forEach((item: any) => {
+      playlistItemRows.forEach((item: any) => {
         if (item.media_id) allMediaIds.add(item.media_id);
       });
     }
@@ -225,12 +251,9 @@ export async function GET(request: NextRequest) {
     // 7. Carregar mídias
     let mediaList: any[] = [];
     if (allMediaIds.size > 0) {
-      const mediaIdsArray = Array.from(allMediaIds);
-      const mediaResp = await pb.collection('media').getList(1, 500, {
-        filter: `id = "${mediaIdsArray.join('" || id = "')}"`,
-      });
-      mediaList = mediaResp.items.map((m: any) => {
-        const fileUrl = m.url || '';
+      const mediaResp = await pb.collection('media').getList(1, 200);
+      mediaList = (Array.isArray(mediaResp?.items) ? mediaResp.items : []).filter((m: any) => allMediaIds.has(m.id)).map((m: any) => {
+        const fileUrl = m.url || m.file_url || '';
         const ext = fileUrl.split('.').pop()?.toLowerCase() || '';
         const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'avif', 'webp', 'gif'];
         const VIDEO_EXTS = ['mp4', 'avi', 'wmv', 'mkv'];
@@ -239,6 +262,7 @@ export async function GET(request: NextRequest) {
         else if (VIDEO_EXTS.includes(ext)) resolvedType = 'video';
         return {
           ...m,
+          file_url: fileUrl,
           resolved_type: resolvedType,
           display_name: m.display_name || m.name,
           default_orientation: m.default_orientation || 'auto',
@@ -263,7 +287,17 @@ export async function GET(request: NextRequest) {
     }
 
     const serverVersion = device.content_version || 0;
-    const needsUpdate = contentVersion < serverVersion && contentVersion > 0;
+    const needsUpdate = contentVersion !== serverVersion;
+
+    try {
+      await pb.collection('device_logs').create({
+        device_id: deviceId,
+        organization_id: device.organization_id,
+        event_type: 'sync_received',
+        severity: 'info',
+        message: `Sync recebido: ${allPlaylists.length} playlist(s), ${mediaList.length} mídia(s)`,
+      });
+    } catch {}
 
     return NextResponse.json({
       content_version: serverVersion,
@@ -285,6 +319,15 @@ export async function GET(request: NextRequest) {
   } catch (e: any) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('[sync]', msg);
+    try {
+      const pb = await getAdminClient();
+      await pb.collection('device_logs').create({
+        device_id: new URL(request.url).searchParams.get('device_id'),
+        event_type: 'sync_error',
+        message: `Falha no sync: ${msg}`,
+        severity: 'error',
+      });
+    } catch {}
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

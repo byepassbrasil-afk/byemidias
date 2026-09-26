@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql, { bumpContentVersion } from '@/lib/db';
+import { getAdminClient } from '@/lib/pb-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,34 +15,36 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';
 
-    let uploads;
-    if (user.role === 'super_admin') {
-      uploads = await sql`
-        SELECT pmu.*, pa.username as partner_username, pa.display_name as partner_name,
-               m.name as media_name, m.type as media_type, m.file_url, m.file_size,
-               rev.full_name as reviewer_name
-        FROM partner_media_uploads pmu
-        LEFT JOIN partner_access pa ON pa.id = pmu.partner_access_id
-        LEFT JOIN media m ON m.id = pmu.media_id
-        LEFT JOIN profiles rev ON rev.id = pmu.reviewed_by
-        WHERE pmu.status = ${status}
-        ORDER BY pmu.created_at DESC
-      `;
-    } else {
-      uploads = await sql`
-        SELECT pmu.*, pa.username as partner_username, pa.display_name as partner_name,
-               m.name as media_name, m.type as media_type, m.file_url, m.file_size,
-               rev.full_name as reviewer_name
-        FROM partner_media_uploads pmu
-        LEFT JOIN partner_access pa ON pa.id = pmu.partner_access_id
-        LEFT JOIN media m ON m.id = pmu.media_id
-        LEFT JOIN profiles rev ON rev.id = pmu.reviewed_by
-        WHERE pmu.organization_id = ${user.organization_id} AND pmu.status = ${status}
-        ORDER BY pmu.created_at DESC
-      `;
-    }
+    const pb = await getAdminClient();
+    const filters = [`status = "${status}"`];
+    if (user.role !== 'super_admin') filters.push(`organization_id = "${user.organization_id}"`);
+    const rows = (await pb.collection('partner_media_uploads').getList(1, 200, {
+      filter: filters.join(' && '),
+    })).items || [];
 
-    return NextResponse.json({ uploads });
+    const mediaIds = [...new Set(rows.map((r: any) => r.media_id).filter(Boolean))];
+    const partnerIds = [...new Set(rows.map((r: any) => r.partner_access_id).filter(Boolean))];
+    const mediaList = mediaIds.length > 0
+      ? (await pb.collection('media').getList(1, 200, { filter: mediaIds.map((id: string) => `id = "${id}"`).join(' || ') })).items || []
+      : [];
+    const partnerList = partnerIds.length > 0
+      ? (await pb.collection('partner_access').getList(1, 200, { filter: partnerIds.map((id: string) => `id = "${id}"`).join(' || ') })).items || []
+      : [];
+    const mediaMap = new Map(mediaList.map((m: any) => [m.id, m]));
+    const partnerMap = new Map(partnerList.map((p: any) => [p.id, p]));
+    const uploads = rows.map((row: any) => {
+      const media: any = mediaMap.get(row.media_id) || {};
+      const partner: any = partnerMap.get(row.partner_access_id) || {};
+      return {
+        ...row,
+        partner_username: partner.username || '',
+        partner_name: partner.display_name || '',
+        media_name: media.name || row.file_name || '',
+        media_type: media.type || row.file_type || '',
+        file_url: media.file_url || media.url || row.file_url || '',
+        file_size: media.file_size ?? row.file_size ?? 0,
+      };
+    });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });

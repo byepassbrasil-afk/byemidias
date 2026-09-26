@@ -3,9 +3,19 @@
 import { useEffect, useState, useRef } from 'react';
 import type { Media } from '@/lib/types';
 import { convertImageToWebP, formatBytes } from '@/lib/image-convert';
-import VideoThumbnail from '@/components/video-thumbnail';
 import UrlUploadForm from '@/components/url-upload-form';
 import { extractVideoThumbnail, uploadThumbnail } from '@/lib/video-thumbnail';
+
+interface Folder {
+  id: string;
+  organization_id: string;
+  name: string;
+  parent_id: string | null;
+  color: string;
+  icon: string;
+  order: number;
+  media_count: number;
+}
 
 export default function MediaPage() {
   const [media, setMedia] = useState<Media[]>([]);
@@ -51,7 +61,20 @@ export default function MediaPage() {
   const [availableDevices, setAvailableDevices] = useState<{ id: string; name: string; org_name?: string; status: string }[]>([]);
   const [preDeviceSearch, setPreDeviceSearch] = useState<string>('');
 
+  // === FOLDERS ===
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [currentFolderId, setCurrentFolderId] = useState<string>(''); // '' = raiz (todas)
+  const [showNewFolderInput, setShowNewFolderInput] = useState<boolean>(false);
+  const [newFolderName, setNewFolderName] = useState<string>('');
+  const [newFolderColor, setNewFolderColor] = useState<string>('#3b82f6');
+  const [creatingFolder, setCreatingFolder] = useState<boolean>(false);
+  const [preFolderId, setPreFolderId] = useState<string>(''); // folder selecionado no modal de upload
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [renameFolderName, setRenameFolderName] = useState<string>('');
+  const [folderMenuOpenId, setFolderMenuOpenId] = useState<string | null>(null);
+
   useEffect(() => { loadMedia(); loadOrgs(); loadAvailableCategories(); loadAvailableDevices(); }, []);
+  useEffect(() => { if (organizationId) loadFolders(); }, [organizationId]);
 
   async function loadAvailableCategories() {
     try {
@@ -92,6 +115,86 @@ export default function MediaPage() {
     setMedia(list);
     setLoading(false);
   }
+
+  async function loadFolders() {
+    if (!organizationId) return;
+    try {
+      const r = await fetch(`/api/admin/folders?organization_id=${organizationId}`);
+      const j = await r.json();
+      setFolders(j.folders ?? []);
+    } catch (e) {
+      console.error('loadFolders', e);
+    }
+  }
+
+  async function createFolder() {
+    if (!newFolderName.trim() || !organizationId) return;
+    setCreatingFolder(true);
+    try {
+      const r = await fetch('/api/admin/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: organizationId,
+          name: newFolderName.trim(),
+          color: newFolderColor,
+          parent_id: currentFolderId || null,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert('Erro: ' + (j.error || 'desconhecido')); return; }
+      setNewFolderName('');
+      setShowNewFolderInput(false);
+      loadFolders();
+    } finally {
+      setCreatingFolder(false);
+    }
+  }
+
+  async function renameFolder(folderId: string) {
+    if (!renameFolderName.trim()) return;
+    try {
+      const r = await fetch('/api/admin/folders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: folderId, name: renameFolderName.trim() }),
+      });
+      if (!r.ok) { const j = await r.json(); alert('Erro: ' + (j.error || 'desconhecido')); return; }
+      setRenamingFolderId(null);
+      loadFolders();
+    } catch (e) { console.error(e); }
+  }
+
+  async function deleteFolder(folderId: string) {
+    if (!confirm('Excluir pasta? Mídias dentro dela voltam pra raiz.')) return;
+    try {
+      const r = await fetch(`/api/admin/folders?id=${folderId}`, { method: 'DELETE' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { alert('Erro: ' + (j.error || 'desconhecido')); return; }
+      if (currentFolderId === folderId) setCurrentFolderId('');
+      loadFolders();
+      loadMedia();
+    } catch (e) { console.error(e); }
+  }
+
+  async function moveMediaToFolder(mediaId: string, folderId: string) {
+    try {
+      const r = await fetch('/api/admin/crud/media', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: mediaId, folder_id: folderId || null }),
+      });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); console.error('Move err:', j); }
+      loadMedia();
+    } catch (e) { console.error(e); }
+  }
+
+  // Filtra mídias pela pasta selecionada (folder_id pode vir em .folder_id)
+  const filteredMedia = currentFolderId
+    ? media.filter(m => (m as any).folder_id === currentFolderId)
+    : media;
+
+  const currentFolder = folders.find(f => f.id === currentFolderId);
 
   async function loadOrgs() {
     try {
@@ -140,6 +243,7 @@ export default function MediaPage() {
     setPreExcludedOrgIds(new Set());
     setPreExcludedDeviceIds(new Set());
     setPreDeviceSearch('');
+    setPreFolderId(currentFolderId || '');
   }
 
   function closeUploadConfig() {
@@ -252,6 +356,7 @@ export default function MediaPage() {
           default_orientation: preOrientation,
           thumbnail_url: thumbnailUrl || undefined,
           category_ids: Array.from(preCategoryIds),
+          folder_id: preFolderId || undefined,
           excluded_category_ids: Array.from(preExcludedCatIds),
           // Cross-org blocking only for super_admin
           excluded_organization_ids: isSuperAdmin ? Array.from(preExcludedOrgIds) : [],
@@ -474,7 +579,7 @@ export default function MediaPage() {
               className={`px-5 py-2.5 text-sm font-semibold transition-colors ${uploadMode === 'file' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
               📁 Arquivo
             </button>
-            <button onClick={() => { setUploadMode('url'); setPendingFile(new File([], 'url')); setPendingPreviewUrl(null); setPreDisplayName(''); setPreOrientation('auto'); setPreTtlDays(7); setPreReason(''); setPreCategoryIds(new Set()); setPreExcludedCatIds(new Set()); setPreExcludedOrgIds(new Set()); setPreExcludedDeviceIds(new Set()); setPreDeviceSearch(''); }}
+            <button onClick={() => { setUploadMode('url'); setPendingFile(new File([], 'url')); setPendingPreviewUrl(null); setPreDisplayName(''); setPreOrientation('auto'); setPreTtlDays(7); setPreReason(''); setPreCategoryIds(new Set()); setPreExcludedCatIds(new Set()); setPreExcludedOrgIds(new Set()); setPreExcludedDeviceIds(new Set()); setPreDeviceSearch(''); setPreFolderId(currentFolderId || ''); }}
               disabled={uploading || !organizationId}
               title="Adicionar mídia via URL (página web, YouTube, dashboard, etc.)"
               className={`px-5 py-2.5 text-sm font-semibold border-l-2 border-gray-300 transition-colors ${uploadMode === 'url' ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}>
@@ -519,6 +624,9 @@ export default function MediaPage() {
                 availableDevices={availableDevices}
                 preDeviceSearch={preDeviceSearch}
                 setPreDeviceSearch={setPreDeviceSearch}
+                folders={folders}
+                preFolderId={preFolderId}
+                setPreFolderId={setPreFolderId}
               />
             </div>
           </div>
@@ -535,13 +643,142 @@ export default function MediaPage() {
         </div>
       )}
 
+      {/* === SIDEBAR DE PASTAS + BREADCRUMB === */}
+      <div className="flex gap-6">
+        {/* Sidebar */}
+        <aside className="w-60 flex-shrink-0">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden sticky top-4">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">📁 Pastas</h3>
+              <button
+                onClick={() => { setShowNewFolderInput(v => !v); setNewFolderName(''); }}
+                className="rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                title="Nova pasta"
+              >
+                + Nova
+              </button>
+            </div>
+
+            {showNewFolderInput && (
+              <div className="px-3 py-3 border-b border-gray-100 bg-blue-50/40 space-y-2">
+                <input
+                  autoFocus
+                  value={newFolderName}
+                  onChange={e => setNewFolderName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') setShowNewFolderInput(false); }}
+                  placeholder="Nome da pasta"
+                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 outline-none"
+                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={newFolderColor}
+                    onChange={e => setNewFolderColor(e.target.value)}
+                    className="w-8 h-8 rounded cursor-pointer border border-gray-300"
+                    title="Cor da pasta"
+                  />
+                  <button
+                    onClick={createFolder}
+                    disabled={creatingFolder || !newFolderName.trim()}
+                    className="flex-1 rounded-md bg-blue-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {creatingFolder ? 'Criando...' : 'Criar'}
+                  </button>
+                </div>
+                {currentFolderId && (
+                  <p className="text-[10px] text-blue-700">Será criada dentro de <b>{folders.find(f => f.id === currentFolderId)?.name}</b></p>
+                )}
+              </div>
+            )}
+
+            <nav className="py-1">
+              <button
+                onClick={() => setCurrentFolderId('')}
+                className={`w-full px-4 py-2 flex items-center justify-between text-sm transition-colors ${currentFolderId === '' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}
+              >
+                <span>📂 Todas as mídias</span>
+                <span className="text-xs text-gray-400">{media.length}</span>
+              </button>
+              {folders.map(f => (
+                <div
+                  key={f.id}
+                  className={`group relative flex items-center justify-between text-sm transition-colors ${currentFolderId === f.id ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}
+                >
+                  {renamingFolderId === f.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={f.name}
+                      onChange={e => setRenameFolderName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') renameFolder(f.id); if (e.key === 'Escape') setRenamingFolderId(null); }}
+                      onBlur={() => setRenamingFolderId(null)}
+                      className="mx-2 my-1 flex-1 rounded-md border border-blue-400 px-2 py-0.5 text-sm outline-none"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setCurrentFolderId(f.id)}
+                      onDoubleClick={() => { setRenamingFolderId(f.id); setRenameFolderName(f.name); }}
+                      className="flex-1 px-4 py-2 text-left truncate flex items-center gap-2"
+                      title="Clique para abrir, duplo clique para renomear"
+                    >
+                      <span>{f.icon || '📁'}</span>
+                      <span className="truncate" style={{ color: f.color }}>{f.name}</span>
+                    </button>
+                  )}
+                  <span className="text-xs text-gray-400 pr-2">{f.media_count}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setFolderMenuOpenId(folderMenuOpenId === f.id ? null : f.id); }}
+                    className="opacity-0 group-hover:opacity-100 px-2 text-gray-400 hover:text-gray-700"
+                    title="Mais opções"
+                  >
+                    ⋯
+                  </button>
+                  {folderMenuOpenId === f.id && (
+                    <div className="absolute right-2 top-8 z-10 w-40 rounded-md bg-white border border-gray-200 shadow-lg py-1 text-xs">
+                      <button onClick={() => { setRenamingFolderId(f.id); setRenameFolderName(f.name); setFolderMenuOpenId(null); }}
+                        className="w-full px-3 py-1.5 text-left hover:bg-gray-100">✏️ Renomear</button>
+                      <button onClick={() => { deleteFolder(f.id); setFolderMenuOpenId(null); }}
+                        className="w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-50">🗑️ Excluir</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {folders.length === 0 && !loading && (
+                <div className="px-4 py-3 text-xs text-gray-400 italic">
+                  Nenhuma pasta criada.
+                </div>
+              )}
+            </nav>
+          </div>
+        </aside>
+
+        {/* Conteúdo principal */}
+        <div className="flex-1 min-w-0">
+          {/* Breadcrumb */}
+          <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
+            <button onClick={() => setCurrentFolderId('')} className="hover:text-blue-600 hover:underline">
+              📂 Biblioteca
+            </button>
+            {currentFolder && (
+              <>
+                <span className="text-gray-400">/</span>
+                <span className="font-semibold text-gray-900 flex items-center gap-1">
+                  <span style={{ color: currentFolder.color }}>{currentFolder.icon}</span>
+                  {currentFolder.name}
+                </span>
+              </>
+            )}
+            <span className="ml-2 text-xs text-gray-400">({filteredMedia.length} {filteredMedia.length === 1 ? 'item' : 'itens'})</span>
+          </div>
+
       {loading ? (
         <div className="text-gray-500">Carregando...</div>
-      ) : media.length === 0 ? (
-        <div className="rounded-xl bg-white p-12 shadow-sm border border-gray-200 text-center"><p className="text-gray-500">Nenhuma mídia encontrada.</p></div>
+      ) : filteredMedia.length === 0 ? (
+        <div className="rounded-xl bg-white p-12 shadow-sm border border-gray-200 text-center">
+          <p className="text-gray-500">Nenhuma mídia {currentFolder ? `em "${currentFolder.name}"` : 'na biblioteca'}.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-          {media.map((item) => (
+          {filteredMedia.map((item) => (
             <div key={item.id} onClick={() => { setDetailMedia(item); setEditName(item.display_name || item.name); setEditOrientation(item.default_orientation || 'auto'); loadMediaCategories(item.id); }}
               className="group relative rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all">
               <button onClick={(e) => { e.stopPropagation(); setDeleteId(item.id); }} className="absolute top-2 right-2 z-10 rounded-full bg-red-600 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700" title="Excluir">
@@ -550,7 +787,7 @@ export default function MediaPage() {
               <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden relative">
                 {item.type === 'image' || item.type === 'gif' ? (
                   <img
-                    src={item.file_url}
+                    src={item.url || (item as any).file_url}
                     alt={item.name}
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -567,15 +804,35 @@ export default function MediaPage() {
                       alt={item.name}
                       className="w-full h-full object-cover"
                       loading="lazy"
+                      onError={(e) => {
+                        // Fallback: usa video element com preload metadata
+                        const tgt = e.target as HTMLImageElement;
+                        tgt.style.display = 'none';
+                        const parent = tgt.parentElement;
+                        if (parent) {
+                          const v = document.createElement('video');
+                          v.src = item.url || (item as any).file_url || '';
+                          v.muted = true;
+                          v.preload = 'metadata';
+                          v.className = 'w-full h-full object-cover';
+                          parent.appendChild(v);
+                        }
+                      }}
                     />
                   ) : (
-                    <VideoThumbnail src={item.file_url} alt={item.name} className="w-full h-full object-cover" />
+                    // Sem thumbnail salvo: usa <video> direto (mostra primeiro frame)
+                    <video
+                      src={item.url || (item as any).file_url}
+                      muted
+                      preload="metadata"
+                      className="w-full h-full object-cover"
+                    />
                   )
                 ) : item.type === 'url' ? (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-2 text-center relative">
                     <div className="flex flex-col items-center justify-center">
                       <span className="text-5xl">🌐</span>
-                      <span className="text-[10px] text-blue-700 font-medium mt-1 truncate w-full px-1">{item.file_url?.replace(/^https?:\/\//, '').substring(0, 30) || 'URL'}</span>
+                      <span className="text-[10px] text-blue-700 font-medium mt-1 truncate w-full px-1">{(item.url || (item as any).file_url || '').replace(/^https?:\/\//, '').substring(0, 30) || 'URL'}</span>
                     </div>
                   </div>
                 ) : (
@@ -686,6 +943,28 @@ export default function MediaPage() {
                     )}
                   </div>
                 </section>
+
+                {/* === SEÇÃO 1.5: Pasta === */}
+                {folders.length > 0 && (
+                  <section className="rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-1">📁 Pasta</h3>
+                    <p className="text-xs text-gray-500 mb-2">Onde quer guardar esta mídia? (opcional — pode ficar na raiz)</p>
+                    <select
+                      value={preFolderId}
+                      onChange={e => setPreFolderId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none"
+                    >
+                      <option value="">📂 Raiz (sem pasta)</option>
+                      {folders.map(f => (
+                        <option key={f.id} value={f.id}>{f.icon} {f.name}</option>
+                      ))}
+                    </select>
+                    <div className="mt-2 flex items-center gap-2 text-xs">
+                      <button onClick={() => setShowNewFolderInput(true)} className="text-blue-700 hover:underline">+ Criar nova pasta</button>
+                      {currentFolder && <span className="text-gray-500">· Atual: {currentFolder.icon} <b style={{ color: currentFolder.color }}>{currentFolder.name}</b></span>}
+                    </div>
+                  </section>
+                )}
 
                 {/* === SEÇÃO 2: Categoria principal === */}
                 <section className="rounded-lg border border-blue-200 bg-blue-50/40 p-4">
@@ -874,13 +1153,13 @@ export default function MediaPage() {
               <div className="flex gap-6">
                 <div className="w-48 h-48 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center">
                   {detailMedia.type === 'image' || detailMedia.type === 'gif' ? (
-                    <img src={detailMedia.file_url} alt={detailMedia.name} className="w-full h-full object-cover" />
+                    <img src={detailMedia.url || (detailMedia as any).file_url} alt={detailMedia.name} className="w-full h-full object-cover" />
                   ) : detailMedia.type === 'video' ? (
                     detailMedia.thumbnail_url ? (
                       <div className="relative w-full h-full">
                         <img src={detailMedia.thumbnail_url} alt={detailMedia.name} className="w-full h-full object-cover" />
                         <button
-                          onClick={(e) => { e.stopPropagation(); window.open(detailMedia.file_url, '_blank'); }}
+                          onClick={(e) => { e.stopPropagation(); window.open(detailMedia.url || (detailMedia as any).file_url, '_blank'); }}
                           className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors"
                           title="Tocar vídeo"
                         >
@@ -890,8 +1169,13 @@ export default function MediaPage() {
                         </button>
                       </div>
                     ) : (
-                      <video src={detailMedia.file_url} className="w-full h-full object-cover" controls />
+                      <video src={detailMedia.url || (detailMedia as any).file_url} className="w-full h-full object-cover" controls muted preload="metadata" />
                     )
+                  ) : detailMedia.type === 'url' ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-2 text-center">
+                      <span className="text-5xl">🌐</span>
+                      <span className="text-[10px] text-blue-700 font-medium mt-1 truncate w-full px-1">{(detailMedia.url || (detailMedia as any).file_url || '').replace(/^https?:\/\//, '').substring(0, 30)}</span>
+                    </div>
                   ) : (
                     <div className="text-5xl">📄</div>
                   )}
@@ -920,6 +1204,20 @@ export default function MediaPage() {
                       <button onClick={handleOrientationChange}
                         className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">Salvar</button>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">📁 Pasta</label>
+                    <select
+                      value={(detailMedia as any).folder_id || ''}
+                      onChange={e => moveMediaToFolder(detailMedia.id, e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none"
+                    >
+                      <option value="">📂 Raiz (sem pasta)</option>
+                      {folders.map(f => (
+                        <option key={f.id} value={f.id}>{f.icon} {f.name}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -1006,12 +1304,12 @@ export default function MediaPage() {
 
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">URL</label>
-                    <input value={detailMedia.file_url || ''} readOnly
+                    <input value={detailMedia.url || (detailMedia as any).file_url || ''} readOnly
                       className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 font-mono" />
                   </div>
 
                   <div className="flex gap-2 pt-2">
-                    <a href={detailMedia.file_url} target="_blank" rel="noopener"
+                    <a href={detailMedia.url || (detailMedia as any).file_url || '#'} target="_blank" rel="noopener"
                       className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-300">Abrir URL</a>
                     <button onClick={() => { setDeleteId(detailMedia.id); setDetailMedia(null); }}
                       className="rounded-lg bg-red-100 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-200">Excluir</button>
@@ -1022,6 +1320,8 @@ export default function MediaPage() {
           </div>
         </div>
       )}
+        </div>{/* fecha flex-1 min-w-0 */}
+      </div>{/* fecha flex gap-6 */}
     </div>
   );
 }

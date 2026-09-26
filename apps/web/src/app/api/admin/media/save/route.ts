@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       media_type,
       thumbnail_url,
       category_ids,
+      folder_id,
     } = body;
 
     if (!file_url) return NextResponse.json({ error: 'file_url obrigatório' }, { status: 400 });
@@ -70,7 +71,24 @@ export async function POST(request: NextRequest) {
     const orientation = ['auto', 'portrait', 'landscape'].includes(default_orientation)
       ? default_orientation
       : 'auto';
-    const resolvedType = isUrl ? 'url' : getMediaTypeFromExt(file_name || file_url);
+
+    // Decide o type. Prioridade:
+    //   1. Se media_type explícito (ex: 'url' do form de URL) usa ele
+    //   2. Senão, tenta pela extensão do file_name
+    //   3. Senão, se URL HTTPS sem extensão, é página web
+    //   4. Default: image
+    let resolvedType: string;
+    if (media_type === 'url') {
+      resolvedType = 'url';
+    } else {
+      const fromName = getMediaTypeFromExt(sanitizedName);
+      if (fromName !== 'image' || sanitizedName.match(/\.(png|jpg|jpeg|avif|webp|gif|mp4|avi|wmv|mkv|webm|mov)$/i)) {
+        resolvedType = fromName;
+      } else {
+        // Sem extensão reconhecível no nome — testa pela URL
+        resolvedType = getMediaTypeFromExt(file_url || '');
+      }
+    }
 
     let expiresAt: string | null = null;
     if (ttl > 0) {
@@ -90,6 +108,18 @@ export async function POST(request: NextRequest) {
       status: 'active',
     };
     if (thumbnail_url) mediaData.thumbnail_url = thumbnail_url;
+    if (folder_id) {
+      // Validate folder belongs to same org
+      try {
+        const f = await pb.collection('media_folders').getOne(folder_id);
+        if (f.organization_id !== organization_id) {
+          return NextResponse.json({ error: 'Pasta pertence a outra organização' }, { status: 403 });
+        }
+        mediaData.folder_id = folder_id;
+      } catch {
+        return NextResponse.json({ error: 'Pasta não encontrada' }, { status: 400 });
+      }
+    }
 
     const media = await pb.collection('media').create(mediaData);
 

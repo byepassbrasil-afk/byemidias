@@ -42,6 +42,8 @@ const sections: NavSection[] = [
       { name: 'Mídia', href: '/dashboard/media', icon: '📁' },
       { name: 'Playlists', href: '/dashboard/playlists', icon: '📋' },
       { name: 'Campanhas', href: '/dashboard/campaigns', icon: '📢' },
+      { name: 'Categorias', href: '/dashboard/categories', icon: '🏷️' },
+      { name: 'Anunciantes', href: '/dashboard/anunciantes', icon: '🏢' },
     ],
   },
   {

@@ -121,7 +121,7 @@ export async function PUT(request: NextRequest) {
     // 2. Atualiza os vínculos de playlists
     if (Array.isArray(playlist_ids)) {
       // Remove os vínculos existentes
-      const existingLinks = await pb.collection('campaign_playlists').getList(1, 500, {
+      const existingLinks = await pb.collection('campaign_playlists').getList(1, 200, {
         filter: `campaign_id = "${id}"`,
       });
       for (const link of existingLinks.items) {
@@ -168,7 +168,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Remove todos os vínculos de playlists
-    const links = await pb.collection('campaign_playlists').getList(1, 500, {
+    const links = await pb.collection('campaign_playlists').getList(1, 200, {
       filter: `campaign_id = "${id}"`,
     });
     for (const link of links.items) {
@@ -176,7 +176,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Remove programações
-    const timeSlots = await pb.collection('campaign_time_slots').getList(1, 500, {
+    const timeSlots = await pb.collection('campaign_time_slots').getList(1, 200, {
       filter: `campaign_id = "${id}"`,
     });
     for (const slot of timeSlots.items) {
@@ -184,7 +184,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Remove targets
-    const targets = await pb.collection('campaign_targets').getList(1, 500, {
+    const targets = await pb.collection('campaign_targets').getList(1, 200, {
       filter: `campaign_id = "${id}"`,
     });
     for (const target of targets.items) {

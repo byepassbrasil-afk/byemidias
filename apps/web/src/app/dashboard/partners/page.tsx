@@ -172,11 +172,16 @@ export default function PartnersPage() {
       playlist_id: playlist_id || null,
     }));
 
-    await fetch('/api/admin/partners/devices', {
+    const res = await fetch('/api/admin/partners/devices', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ partner_id: showAssign, devices }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(`Erro ao salvar dispositivos: ${data.error || res.statusText}`);
+      return;
+    }
 
     setShowAssign(null);
     loadData();

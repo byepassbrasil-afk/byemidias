@@ -114,8 +114,10 @@ export interface Media {
   name: string;
   display_name?: string | null;
   type: MediaType;
-  file_url: string;
-  thumbnail_url: string | null;
+  file_url?: string | null;
+  url?: string | null;
+  folder_id?: string | null;
+  thumbnail_url?: string | null;
   duration: number | null;
   file_size: number | null;
   width: number | null;

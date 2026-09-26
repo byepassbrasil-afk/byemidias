@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import { getAdminClient } from '@/lib/pb-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,16 +40,54 @@ export async function POST(
       return NextResponse.json({ error: 'Comando inválido' }, { status: 400 });
     }
 
-    const [device] = await sql`SELECT organization_id FROM devices WHERE id = ${id}`;
-    if (!device) return NextResponse.json({ error: 'Device não encontrado' }, { status: 404 });
+    const pb = await getAdminClient();
+    const device = await pb.collection('devices').getOne(id);
     if (user.role !== 'super_admin' && device.organization_id !== user.organization_id) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    await sql`
-      INSERT INTO device_commands (device_id, command, payload, created_by)
-      VALUES (${id}, ${command}, ${JSON.stringify(body.payload ?? {})}, ${user.id})
-    `;
+    try {
+      const commandCollection = await pb.collections.getOne('device_commands');
+      const commandFields = commandCollection.fields || commandCollection.schema || [];
+      if (!commandFields.some((field: any) => field.name === 'executed_at')) {
+        await pb.collections.update('device_commands', {
+          fields: [
+            ...commandFields,
+            { name: 'executed_at', type: 'date' },
+          ],
+        });
+      }
+    } catch {
+      await pb.collections.create({
+        name: 'device_commands',
+        type: 'base',
+        fields: [
+          { name: 'device_id', type: 'text', required: true },
+          { name: 'command', type: 'text', required: true },
+          { name: 'payload', type: 'json' },
+          { name: 'created_by', type: 'text' },
+          { name: 'executed_at', type: 'date' },
+        ],
+      });
+    }
+
+    await pb.collection('devices').update(id, { content_version: Date.now() });
+    await pb.collection('device_commands').create({
+      device_id: id,
+      command,
+      payload: body.payload || {},
+      created_by: user.id,
+    });
+
+    try {
+      await pb.collection('device_logs').create({
+        device_id: id,
+        organization_id: device.organization_id,
+        event_type: 'webhook',
+        message: `Webhook enviado: ${command}`,
+        severity: 'info',
+      });
+    } catch {}
 
     return NextResponse.json({ success: true, command });
   } catch (e: unknown) {

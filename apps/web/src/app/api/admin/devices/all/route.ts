@@ -15,7 +15,7 @@ export async function GET() {
     const isSuperAdmin = user.role === 'super_admin';
 
     const filter = isSuperAdmin ? undefined : `organization_id = "${user.organization_id}"`;
-    const devices = await pb.collection('devices').getList(1, 500, {
+    const devices = await pb.collection('devices').getList(1, 200, {
       filter,
       sort: '-id',
     });

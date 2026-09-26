@@ -28,6 +28,9 @@ interface UrlUploadFormProps {
   availableDevices: Array<{ id: string; name: string; org_name?: string; status: string }>;
   preDeviceSearch: string;
   setPreDeviceSearch: (v: string) => void;
+  folders?: Array<{ id: string; name: string; color: string }>;
+  preFolderId?: string;
+  setPreFolderId?: (v: string) => void;
 }
 
 export default function UrlUploadForm(props: UrlUploadFormProps) {
@@ -64,24 +67,25 @@ export default function UrlUploadForm(props: UrlUploadFormProps) {
     }
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/crud/media', {
+      const res = await fetch('/api/admin/media/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           organization_id: props.organizationId,
+          // Schema do PocketBase usa 'url' e 'name' (não 'file_url'/'file_name')
+          url: url,
+          name: props.preDisplayName || url,
+          // tipo é forçado pra 'url' pois é uma página web
+          media_type: 'url',
           file_url: url,
           file_name: props.preDisplayName || url,
-          display_name: props.preDisplayName || url,
-          type: 'url',
           mime_type: 'text/html',
           default_orientation: props.preOrientation,
           ttl_days: props.preTtlDays,
           expires_reason: props.preTtlDays === 0 ? props.preReason : undefined,
-          category_ids: Array.from(props.preCategoryIds),
-          excluded_category_ids: Array.from(props.preExcludedCatIds),
-          excluded_organization_ids: Array.from(props.preExcludedOrgIds),
-          excluded_device_ids: Array.from(props.preExcludedDeviceIds),
+          display_name: props.preDisplayName || url,
+          folder_id: props.preFolderId || undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -171,6 +175,22 @@ export default function UrlUploadForm(props: UrlUploadFormProps) {
         <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
           ⚙️ Configurações avançadas (orientação, categorias, restrições)
         </summary>
+
+        {props.folders && props.folders.length > 0 && (
+          <div className="px-4 pt-3 pb-1">
+            <label className="block text-xs font-medium text-gray-700 mb-1">📁 Pasta</label>
+            <select
+              value={props.preFolderId || ''}
+              onChange={e => props.setPreFolderId?.(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 outline-none"
+            >
+              <option value="">📂 Raiz (sem pasta)</option>
+              {props.folders.map(f => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="p-4 space-y-4 border-t border-gray-200">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Orientação</label>

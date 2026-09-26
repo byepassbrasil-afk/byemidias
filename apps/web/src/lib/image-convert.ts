@@ -8,8 +8,6 @@
 export async function convertImageToWebP(file: File, quality: number = 0.85): Promise<File> {
   // Only convert image types
   if (!file.type.startsWith('image/')) return file;
-  // Skip if already webp
-  if (file.type === 'image/webp') return file;
   // Skip GIFs (animation would be lost)
   if (file.type === 'image/gif') return file;
   // Skip SVGs (vector format)
@@ -25,20 +23,19 @@ export async function convertImageToWebP(file: File, quality: number = 0.85): Pr
     if (!ctx) return file;
     ctx.drawImage(img, 0, 0);
 
-    const webpBlob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/webp', quality)
+    const jpegBlob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', quality)
     );
 
-    if (!webpBlob) return file;
+    if (!jpegBlob) return file;
 
-    // Build new file name: replace extension with .webp
     const originalName = file.name;
     const dotIdx = originalName.lastIndexOf('.');
     const baseName = dotIdx > 0 ? originalName.substring(0, dotIdx) : originalName;
-    const newName = `${baseName}.webp`;
+    const newName = `${baseName}.jpg`;
 
-    return new File([webpBlob], newName, {
-      type: 'image/webp',
+    return new File([jpegBlob], newName, {
+      type: 'image/jpeg',
       lastModified: Date.now(),
     });
   } catch (e) {

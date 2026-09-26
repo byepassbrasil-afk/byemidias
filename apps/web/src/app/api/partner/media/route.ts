@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
         RETURNING id
       `;
 
-      await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'pending')`;
+      await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status, file_name, file_type, file_size) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'pending', ${file_name}, ${mediaType}, ${file_size || 0})`;
 
       return NextResponse.json({ success: true, mediaId: mediaRecord.id });
     }
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
         VALUES (${session.organizationId}, ${displayName}, ${displayName}, 'url', ${url}, 0, 'active', ${expiresAt}, ${ttlDays === 0 ? expiresReason : null}, ${orientation})
         RETURNING id
       `;
-      await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'pending')`;
+      await sql`INSERT INTO partner_media_uploads (partner_access_id, media_id, organization_id, status, file_name, file_type, file_size) VALUES (${session.partnerAccessId}, ${mediaRecord.id}, ${session.organizationId}, 'pending', ${displayName}, 'url', 0)`;
       return NextResponse.json({ success: true, mediaId: mediaRecord.id });
     }
 

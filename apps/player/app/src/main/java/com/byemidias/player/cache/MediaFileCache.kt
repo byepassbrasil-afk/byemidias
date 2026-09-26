@@ -117,9 +117,12 @@ class MediaFileCache(private val context: Context) {
      * Pré-baixar uma lista de URLs. Retorna lista de URLs que falharam.
      * Não bloqueia — roda em background.
      */
-    suspend fun prefetchAll(urls: List<String>): List<String> = withContext(Dispatchers.IO) {
+    suspend fun prefetchAll(urls: List<String>, forceRefresh: Boolean = false): List<String> = withContext(Dispatchers.IO) {
         val failed = mutableListOf<String>()
         for (url in urls.distinct()) {
+            if (forceRefresh) {
+                getCachedFile(url)?.let { File(it).delete() }
+            }
             if (getCachedFile(url) == null) {
                 val result = download(url)
                 if (result == null) failed.add(url)

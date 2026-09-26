@@ -10,6 +10,7 @@ export default function PartnerSlugMediaPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [ttlDays, setTtlDays] = useState<number>(7);
   const [expiresReason, setExpiresReason] = useState<string>('');
@@ -31,6 +32,7 @@ export default function PartnerSlugMediaPage() {
     if (!files || files.length === 0) return;
     setUploading(true);
     setError(null);
+    setSuccess(null);
 
     // If "Manter para sempre" → require reason (use LOCAL var, not state)
     let reason = '';
@@ -83,6 +85,7 @@ export default function PartnerSlugMediaPage() {
           body: JSON.stringify({ action: 'save', file_name, mime_type: content_type, file_url: public_url, file_size, ttl_days: ttlDays, expires_reason: ttlDays === 0 ? reason : undefined }),
         });
         if (!saveRes.ok) { const errData = await saveRes.json().catch(() => ({})); setError(errData.error || 'Erro ao salvar registro'); continue; }
+        setSuccess('Mídia enviada com sucesso. Aguardando aprovação.');
       } catch (e: any) {
         setError(`Erro de conexão: ${e?.message || 'desconhecido'}`);
       }
@@ -134,6 +137,10 @@ export default function PartnerSlugMediaPage() {
         </button>
         </div>
       </div>
+
+      {success && (
+        <div className="mb-4 rounded-xl bg-green-900/20 border border-green-800/50 p-3 text-sm text-green-300">{success}</div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-xl bg-red-900/20 border border-red-800/50 p-3 text-sm text-red-400 flex items-center justify-between">

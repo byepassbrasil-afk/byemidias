@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
-import sql from '@/lib/db';
+import { getAdminClient } from '@/lib/pb-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,10 +24,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'target_device_id obrigatório' }, { status: 400 });
     }
 
-    // Bump content_version directly
-    const result = await sql`UPDATE devices SET content_version = (EXTRACT(EPOCH FROM NOW())::bigint % 100000), updated_at = NOW() WHERE id = ${target_device_id} RETURNING content_version`;
-
-    return NextResponse.json({ data: result[0] || null });
+    const pb = await getAdminClient();
+    const device = await pb.collection('devices').getOne(target_device_id);
+    if (user.role !== 'super_admin' && device.organization_id !== user.organization_id) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+    const contentVersion = Date.now();
+    const updated = await pb.collection('devices').update(target_device_id, {
+      content_version: contentVersion,
+    });
+    return NextResponse.json({ data: { id: updated.id, content_version: updated.content_version } });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     return NextResponse.json({ error: msg }, { status: 500 });

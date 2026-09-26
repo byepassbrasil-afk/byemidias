@@ -9,111 +9,229 @@
  ✓ Compiled successfully
    Linting and checking validity of types ...
    Collecting page data ...
-   Generating static pages (0/74) ...
-GET /api/admin/playlists/pending error: Dynamic server usage: Route /api/admin/playlists/pending couldn't be rendered statically because it used `cookies`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
-   Generating static pages (18/74) 
-GET /api/campaigns/active error: Dynamic server usage: Route /api/campaigns/active couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
-   Generating static pages (36/74) 
-   Generating static pages (55/74) 
+   Generating static pages (0/59) ...
+   Generating static pages (14/59) 
+   Generating static pages (29/59) 
+   Generating static pages (44/59) 
  ⚠ Unsupported metadata viewport is configured in metadata export in /player. Please move it to viewport export instead.
 Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
  ⚠ Unsupported metadata viewport is configured in metadata export in /player. Please move it to viewport export instead.
 Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
- ✓ Generating static pages (74/74)
+ ✓ Generating static pages (59/59)
    Finalizing page optimization ...
    Collecting build traces ...
 
-Route (app)                                 Size     First Load JS
-┌ ○ /                                       175 B          96.1 kB
-├ ○ /_not-found                             873 B          88.1 kB
-├ ○ /activation-codes                       1.89 kB        89.1 kB
-├ ƒ /api/admin/activation-codes             0 B                0 B
-├ ƒ /api/admin/crud/[table]                 0 B                0 B
-├ ƒ /api/admin/device-groups                0 B                0 B
-├ ƒ /api/admin/device-groups/assign         0 B                0 B
-├ ƒ /api/admin/device-logs                  0 B                0 B
-├ ƒ /api/admin/devices/all                  0 B                0 B
-├ ƒ /api/admin/invite                       0 B                0 B
-├ ƒ /api/admin/layouts                      0 B                0 B
-├ ƒ /api/admin/media/save                   0 B                0 B
-├ ƒ /api/admin/media/upload                 0 B                0 B
-├ ƒ /api/admin/partners                     0 B                0 B
-├ ƒ /api/admin/partners/[id]                0 B                0 B
-├ ƒ /api/admin/partners/devices             0 B                0 B
-├ ƒ /api/admin/pending-approvals            0 B                0 B
-├ ƒ /api/admin/playlists/[id]/approve       0 B                0 B
-├ ƒ /api/admin/playlists/[id]/reject        0 B                0 B
-├ ƒ /api/admin/playlists/[id]/slots         0 B                0 B
-├ ƒ /api/admin/playlists/pending            0 B                0 B
-├ ƒ /api/admin/reports                      0 B                0 B
-├ ƒ /api/admin/rpc/[fn]                     0 B                0 B
-├ ƒ /api/admin/saas/stats                   0 B                0 B
-├ ƒ /api/admin/schedules                    0 B                0 B
-├ ƒ /api/admin/stats                        0 B                0 B
-├ ƒ /api/admin/time-slots                   0 B                0 B
-├ ƒ /api/admin/uptime                       0 B                0 B
-├ ƒ /api/admin/users                        0 B                0 B
-├ ƒ /api/auth/invite                        0 B                0 B
-├ ƒ /api/auth/login                         0 B                0 B
-├ ƒ /api/auth/logout                        0 B                0 B
-├ ƒ /api/auth/profile                       0 B                0 B
-├ ƒ /api/auth/signup                        0 B                0 B
-├ ƒ /api/campaigns                          0 B                0 B
-├ ƒ /api/campaigns/active                   0 B                0 B
-├ ƒ /api/device/activate                    0 B                0 B
-├ ƒ /api/device/heartbeat                   0 B                0 B
-├ ƒ /api/device/live                        0 B                0 B
-├ ƒ /api/device/screenshot                  0 B                0 B
-├ ƒ /api/device/sync                        0 B                0 B
-├ ○ /api/keepalive                          0 B                0 B
-├ ƒ /api/partner/auth/login                 0 B                0 B
-├ ƒ /api/partner/auth/logout                0 B                0 B
-├ ƒ /api/partner/devices                    0 B                0 B
-├ ƒ /api/partner/media                      0 B                0 B
-├ ƒ /api/partner/media/[id]                 0 B                0 B
-├ ƒ /api/partner/media/reorder              0 B                0 B
-├ ƒ /api/partner/playlists/modify           0 B                0 B
-├ ƒ /api/partner/slots                      0 B                0 B
-├ ƒ /api/partner/slots/[id]/items           0 B                0 B
-├ ƒ /api/partner/slots/[id]/items/[itemId]  0 B                0 B
-├ ƒ /api/partner/slots/[id]/reorder         0 B                0 B
-├ ○ /approvals                              2.11 kB        89.4 kB
-├ ○ /campaign-schedule                      2.86 kB        90.1 kB
-├ ○ /campaigns                              3.04 kB        90.3 kB
-├ ○ /dashboard                              857 B          88.1 kB
-├ ○ /device-groups                          2.05 kB        89.3 kB
-├ ○ /devices                                4.01 kB        91.3 kB
-├ ƒ /devices/[id]                           2.93 kB        90.2 kB
-├ ○ /diagramacao                            4.37 kB        91.6 kB
-├ ○ /invite                                 1.49 kB        88.7 kB
-├ ○ /login                                  1.23 kB        97.2 kB
-├ ○ /media                                  2.69 kB        89.9 kB
-├ ○ /monitoring                             2.3 kB         89.5 kB
-├ ○ /organizations                          1.71 kB          89 kB
-├ ○ /partner                                1.15 kB        88.4 kB
-├ ○ /partner/login                          1.16 kB        88.4 kB
-├ ○ /partner/media                          1.82 kB        89.1 kB
-├ ○ /partner/playlists                      2.31 kB        89.6 kB
-├ ○ /partners                               2.64 kB        89.9 kB
-├ ○ /pending-approvals                      1.5 kB         88.7 kB
-├ ○ /player                                 2.31 kB        89.6 kB
-├ ○ /playlists                              4.99 kB        92.2 kB
-├ ○ /reports                                2.92 kB        90.2 kB
-├ ○ /saas                                   3.87 kB        91.1 kB
-├ ○ /schedules                              2.15 kB        89.4 kB
-├ ○ /settings                               1.63 kB        88.9 kB
-├ ○ /signup                                 1.65 kB        97.6 kB
-├ ○ /subscription-expired                   142 B          87.4 kB
-├ ○ /units                                  1.89 kB        89.1 kB
-├ ○ /uptime                                 1.88 kB        89.1 kB
-└ ○ /users                                  2.39 kB        89.6 kB
-+ First Load JS shared by all               87.2 kB
-  ├ chunks/1dd3208c-c3e217787348fe2a.js     53.6 kB
-  ├ chunks/528-d19bf8d5d130166b.js          31.7 kB
-  └ other shared chunks (total)             1.89 kB
+Route (app)                                                   Size     First Load JS
+┌ ○ /                                                         179 B          96.3 kB
+├ ○ /_not-found                                               876 B          88.3 kB
+├ ○ /admin                                                    1.1 kB         97.2 kB
+├ ○ /admin/devices                                            1.3 kB         88.7 kB
+├ ○ /admin/invoices                                           1.79 kB        89.2 kB
+├ ○ /admin/map                                                2.79 kB        90.2 kB
+├ ○ /admin/organizations                                      1.96 kB        89.4 kB
+├ ○ /admin/partners                                           1.2 kB         88.6 kB
+├ ○ /admin/pending-approvals                                  1.5 kB         88.9 kB
+├ ○ /admin/reports                                            1.19 kB        88.6 kB
+├ ○ /admin/saas                                               3.97 kB        91.4 kB
+├ ○ /admin/settings                                           469 B          87.9 kB
+├ ○ /admin/storage                                            3.85 kB        91.3 kB
+├ ○ /admin/users                                              3.37 kB        90.8 kB
+├ ƒ /api/admin/activation-codes                               0 B                0 B
+├ ƒ /api/admin/campaigns                                      0 B                0 B
+├ ƒ /api/admin/categories/global/[id]                         0 B                0 B
+├ ƒ /api/admin/contract-templates                             0 B                0 B
+├ ƒ /api/admin/contract-templates/[id]                        0 B                0 B
+├ ƒ /api/admin/crud/[table]                                   0 B                0 B
+├ ƒ /api/admin/device-groups                                  0 B                0 B
+├ ƒ /api/admin/device-groups/assign                           0 B                0 B
+├ ƒ /api/admin/device-logs                                    0 B                0 B
+├ ƒ /api/admin/devices/[id]/location                          0 B                0 B
+├ ƒ /api/admin/devices/[id]/restart                           0 B                0 B
+├ ƒ /api/admin/devices/[id]/screenshot                        0 B                0 B
+├ ƒ /api/admin/devices/all                                    0 B                0 B
+├ ƒ /api/admin/devices/scan-or-create                         0 B                0 B
+├ ƒ /api/admin/folders                                        0 B                0 B
+├ ƒ /api/admin/invite                                         0 B                0 B
+├ ƒ /api/admin/invoices                                       0 B                0 B
+├ ƒ /api/admin/layouts                                        0 B                0 B
+├ ƒ /api/admin/map/devices                                    0 B                0 B
+├ ƒ /api/admin/media/save                                     0 B                0 B
+├ ƒ /api/admin/media/upload                                   0 B                0 B
+├ ƒ /api/admin/media/upload-proxy                             0 B                0 B
+├ ƒ /api/admin/organizations/[id]                             0 B                0 B
+├ ƒ /api/admin/organizations/category                         0 B                0 B
+├ ƒ /api/admin/partner-contracts                              0 B                0 B
+├ ƒ /api/admin/partner-contracts/[id]                         0 B                0 B
+├ ƒ /api/admin/partner-contracts/[id]/generate-link           0 B                0 B
+├ ƒ /api/admin/partner-media                                  0 B                0 B
+├ ƒ /api/admin/partner-payments                               0 B                0 B
+├ ƒ /api/admin/partners                                       0 B                0 B
+├ ƒ /api/admin/pending-approvals                              0 B                0 B
+├ ƒ /api/admin/playlists/[id]/approve                         0 B                0 B
+├ ƒ /api/admin/playlists/[id]/reject                          0 B                0 B
+├ ƒ /api/admin/playlists/[id]/slots                           0 B                0 B
+├ ƒ /api/admin/playlists/pending                              0 B                0 B
+├ ƒ /api/admin/reports                                        0 B                0 B
+├ ƒ /api/admin/rpc/[fn]                                       0 B                0 B
+├ ƒ /api/admin/saas/stats                                     0 B                0 B
+├ ƒ /api/admin/schedules                                      0 B                0 B
+├ ƒ /api/admin/stats                                          0 B                0 B
+├ ƒ /api/admin/storage                                        0 B                0 B
+├ ƒ /api/admin/storage/[key]                                  0 B                0 B
+├ ƒ /api/admin/time-slots                                     0 B                0 B
+├ ƒ /api/admin/uptime                                         0 B                0 B
+├ ƒ /api/admin/users                                          0 B                0 B
+├ ƒ /api/auth/change-password                                 0 B                0 B
+├ ƒ /api/auth/forgot-password                                 0 B                0 B
+├ ƒ /api/auth/invite                                          0 B                0 B
+├ ƒ /api/auth/login                                           0 B                0 B
+├ ƒ /api/auth/logout                                          0 B                0 B
+├ ƒ /api/auth/profile                                         0 B                0 B
+├ ƒ /api/auth/reset-password                                  0 B                0 B
+├ ƒ /api/auth/signup                                          0 B                0 B
+├ ƒ /api/campaigns                                            0 B                0 B
+├ ƒ /api/campaigns/active                                     0 B                0 B
+├ ƒ /api/contract-view/[token]                                0 B                0 B
+├ ƒ /api/cron/cleanup-files                                   0 B                0 B
+├ ƒ /api/cron/cleanup-logs                                    0 B                0 B
+├ ƒ /api/cron/cleanup-uptime                                  0 B                0 B
+├ ƒ /api/cron/contract-expiry                                 0 B                0 B
+├ ƒ /api/dashboard/advertisers                                0 B                0 B
+├ ƒ /api/dashboard/advertisers/[id]                           0 B                0 B
+├ ƒ /api/dashboard/advertisers/[id]/devices                   0 B                0 B
+├ ƒ /api/dashboard/advertisers/[id]/invoices                  0 B                0 B
+├ ƒ /api/dashboard/advertisers/[id]/invoices/[inv_id]         0 B                0 B
+├ ƒ /api/dashboard/advertisers/[id]/invoices/[inv_id]/boleto  0 B                0 B
+├ ƒ /api/dashboard/advertisers/[id]/media                     0 B                0 B
+├ ƒ /api/dashboard/categories                                 0 B                0 B
+├ ƒ /api/dashboard/categories/[id]                            0 B                0 B
+├ ƒ /api/dashboard/categories/ensure-defaults                 0 B                0 B
+├ ƒ /api/dashboard/crud/[table]                               0 B                0 B
+├ ƒ /api/dashboard/devices/[id]/categories                    0 B                0 B
+├ ƒ /api/dashboard/devices/[id]/command                       0 B                0 B
+├ ƒ /api/dashboard/devices/[id]/location                      0 B                0 B
+├ ƒ /api/dashboard/devices/[id]/overrides                     0 B                0 B
+├ ƒ /api/dashboard/devices/[id]/overrides/[media_id]          0 B                0 B
+├ ƒ /api/dashboard/devices/[id]/restart                       0 B                0 B
+├ ƒ /api/dashboard/devices/[id]/screenshot                    0 B                0 B
+├ ƒ /api/dashboard/devices/all                                0 B                0 B
+├ ƒ /api/dashboard/devices/all-categories                     0 B                0 B
+├ ƒ /api/dashboard/financeiro/expenses                        0 B                0 B
+├ ƒ /api/dashboard/financeiro/revenues                        0 B                0 B
+├ ƒ /api/dashboard/map/devices                                0 B                0 B
+├ ƒ /api/dashboard/media/[id]/categories                      0 B                0 B
+├ ƒ /api/dashboard/media/[id]/extend-expiration               0 B                0 B
+├ ƒ /api/dashboard/media/[id]/reactivate                      0 B                0 B
+├ ƒ /api/dashboard/reports/category-filtration                0 B                0 B
+├ ƒ /api/dashboard/reports/category-history                   0 B                0 B
+├ ƒ /api/debug-signup                                         0 B                0 B
+├ ƒ /api/debug/devices                                        0 B                0 B
+├ ƒ /api/debug/sync                                           0 B                0 B
+├ ƒ /api/device/[id]/qr                                       0 B                0 B
+├ ƒ /api/device/activate                                      0 B                0 B
+├ ƒ /api/device/check-activation                              0 B                0 B
+├ ƒ /api/device/commands                                      0 B                0 B
+├ ƒ /api/device/config                                        0 B                0 B
+├ ƒ /api/device/heartbeat                                     0 B                0 B
+├ ƒ /api/device/live                                          0 B                0 B
+├ ƒ /api/device/log-error                                     0 B                0 B
+├ ƒ /api/device/screenshot                                    0 B                0 B
+├ ƒ /api/device/sync                                          0 B                0 B
+├ ƒ /api/geocode                                              0 B                0 B
+├ ƒ /api/health                                               0 B                0 B
+├ ƒ /api/keepalive                                            0 B                0 B
+├ ƒ /api/lp/[slug]/stats                                      0 B                0 B
+├ ƒ /api/lp/lead                                              0 B                0 B
+├ ƒ /api/map/[slug]/devices                                   0 B                0 B
+├ ƒ /api/notifications                                        0 B                0 B
+├ ƒ /api/partner/[slug]/auth/login                            0 B                0 B
+├ ƒ /api/partner/[slug]/auth/logout                           0 B                0 B
+├ ƒ /api/partner/[slug]/auth/signup                           0 B                0 B
+├ ƒ /api/partner/auth/login                                   0 B                0 B
+├ ƒ /api/partner/auth/logout                                  0 B                0 B
+├ ƒ /api/partner/auth/signup                                  0 B                0 B
+├ ƒ /api/partner/devices                                      0 B                0 B
+├ ƒ /api/partner/me                                           0 B                0 B
+├ ƒ /api/partner/media                                        0 B                0 B
+├ ƒ /api/partner/media/[id]                                   0 B                0 B
+├ ƒ /api/partner/media/reorder                                0 B                0 B
+├ ƒ /api/partner/notifications                                0 B                0 B
+├ ƒ /api/partner/playlists/modify                             0 B                0 B
+├ ƒ /api/partner/slots                                        0 B                0 B
+├ ƒ /api/partner/slots/[id]/items                             0 B                0 B
+├ ƒ /api/partner/slots/[id]/items/[itemId]                    0 B                0 B
+├ ƒ /api/partner/slots/[id]/reorder                           0 B                0 B
+├ ƒ /api/pb/categories                                        0 B                0 B
+├ ƒ /api/pb/crud                                              0 B                0 B
+├ ƒ /api/push/subscribe                                       0 B                0 B
+├ ƒ /api/push/vapid-key                                       0 B                0 B
+├ ƒ /api/test                                                 0 B                0 B
+├ ƒ /api/test-crud                                            0 B                0 B
+├ ƒ /api/test-direct                                          0 B                0 B
+├ ƒ /api/test-pb                                              0 B                0 B
+├ ƒ /api/thumbnail                                            0 B                0 B
+├ ƒ /contract-view/[token]                                    2.26 kB        89.7 kB
+├ ○ /dashboard                                                861 B          88.3 kB
+├ ○ /dashboard/anunciantes                                    2.64 kB        90.1 kB
+├ ƒ /dashboard/anunciantes/[id]                               4.7 kB          101 kB
+├ ○ /dashboard/approvals                                      2.11 kB        89.5 kB
+├ ○ /dashboard/approvals/media                                4.25 kB        91.7 kB
+├ ○ /dashboard/campaigns                                      4.73 kB        92.2 kB
+├ ƒ /dashboard/campaigns/[id]                                 3.65 kB        91.1 kB
+├ ○ /dashboard/categories                                     3.28 kB        90.7 kB
+├ ○ /dashboard/contracts                                      884 B            97 kB
+├ ○ /dashboard/contracts/contracts                            3.67 kB        99.8 kB
+├ ƒ /dashboard/contracts/contracts/[id]                       2.6 kB         98.7 kB
+├ ○ /dashboard/contracts/templates                            3.06 kB        99.2 kB
+├ ○ /dashboard/device-groups                                  2.05 kB        89.5 kB
+├ ○ /dashboard/devices                                        9.52 kB         106 kB
+├ ƒ /dashboard/devices/[id]                                   9.45 kB         106 kB
+├ ○ /dashboard/devices/activation-codes                       3.18 kB        90.6 kB
+├ ○ /dashboard/devices/uptime                                 2.12 kB        89.6 kB
+├ ○ /dashboard/diagramacao                                    4.75 kB        92.2 kB
+├ ○ /dashboard/financeiro/expenses                            2.39 kB        89.8 kB
+├ ○ /dashboard/financeiro/revenues                            2.24 kB        89.7 kB
+├ ○ /dashboard/invoices                                       1.54 kB          89 kB
+├ ○ /dashboard/map                                            2.99 kB        90.4 kB
+├ ○ /dashboard/media                                          12.5 kB        99.9 kB
+├ ○ /dashboard/monitoring                                     2.31 kB        89.7 kB
+├ ○ /dashboard/my-organization                                2.89 kB        90.3 kB
+├ ○ /dashboard/partner-payments                               2.15 kB        89.6 kB
+├ ○ /dashboard/partners                                       3.39 kB        90.8 kB
+├ ○ /dashboard/playlists                                      7.63 kB        95.1 kB
+├ ○ /dashboard/reports                                        4.43 kB        91.9 kB
+├ ○ /dashboard/schedules                                      2.16 kB        89.6 kB
+├ ○ /dashboard/settings                                       2.41 kB        89.9 kB
+├ ○ /dashboard/units                                          1.9 kB         89.3 kB
+├ ○ /forgot-password                                          1.48 kB        97.6 kB
+├ ○ /icon.svg                                                 0 B                0 B
+├ ○ /invite                                                   1.49 kB        88.9 kB
+├ ○ /login                                                    1.38 kB        97.5 kB
+├ ○ /lp                                                       658 B            91 kB
+├ ƒ /lp/[slug]                                                1.14 kB        91.5 kB
+├ ƒ /map/[slug]                                               2.2 kB         89.6 kB
+├ ○ /partner                                                  1.15 kB        88.6 kB
+├ ƒ /partner/[slug]                                           2.14 kB        89.6 kB
+├ ƒ /partner/[slug]/login                                     1.87 kB        89.3 kB
+├ ƒ /partner/[slug]/media                                     3.46 kB        90.9 kB
+├ ƒ /partner/[slug]/playlists                                 3.05 kB        90.5 kB
+├ ƒ /partner/[slug]/signup                                    1.77 kB        89.2 kB
+├ ○ /partner/login                                            1.16 kB        88.6 kB
+├ ○ /partner/media                                            1.98 kB        89.4 kB
+├ ○ /partner/playlists                                        3.06 kB        90.5 kB
+├ ○ /partner/signup                                           1.54 kB        97.7 kB
+├ ○ /player                                                   2.32 kB        89.8 kB
+├ ○ /reset-password                                           1.63 kB        97.8 kB
+├ ○ /signup                                                   1.77 kB        97.9 kB
+├ ○ /subscription-expired                                     155 B          87.6 kB
+└ ○ /test                                                     154 B          87.6 kB
++ First Load JS shared by all                                 87.4 kB
+  ├ chunks/1528-ae6c2c319ea12cd8.js                           31.7 kB
+  ├ chunks/1dd3208c-e76b47b84b8f57b1.js                       53.6 kB
+  └ other shared chunks (total)                               2.08 kB
 
 
-ƒ Middleware                                32.5 kB
+ƒ Middleware                                                  32.8 kB
 
 ○  (Static)   prerendered as static content
 ƒ  (Dynamic)  server-rendered on demand

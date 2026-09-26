@@ -274,10 +274,15 @@ export default function DevicesPage() {
   }
 
   async function quickAssignCampaign(deviceId: string, campId: string | null) {
-    await fetch('/api/admin/crud/devices', {
+    const res = await fetch('/api/admin/crud/devices', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: deviceId, campaign_id: campId, content_version: Date.now() % 100000, updated_at: new Date().toISOString() }),
+      body: JSON.stringify({ id: deviceId, campaign_id: campId, content_version: Date.now(), updated_at: new Date().toISOString() }),
     });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.error) {
+      alert(`Erro ao vincular campanha: ${json.error || res.statusText}`);
+      return;
+    }
     setQuickAssignDevice(null);
     loadAll();
   }
@@ -285,7 +290,7 @@ export default function DevicesPage() {
   async function forceSyncDevice(id: string) {
     setActionMenuId(null);
     try {
-      const res = await fetch('/api/admin/rpc/bump_device_content_version', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_device_id: id }) });
+      const res = await fetch(`/api/dashboard/devices/${id}/command`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: 'reload' }) });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(`Erro ao sincronizar: ${err.error || res.statusText}`);
@@ -308,18 +313,17 @@ export default function DevicesPage() {
   async function restartDevice(id: string) {
     setActionMenuId(null);
     try {
-      const res = await fetch('/api/admin/crud/devices', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, restart_requested: true }) });
+      const res = await fetch(`/api/dashboard/devices/${id}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'restart' }),
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(`Erro ao reiniciar: ${err.error || res.statusText}`);
         return;
       }
-      await fetch('/api/admin/device-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: id, event_type: 'info', message: 'Reinício solicitado pelo dashboard' }),
-      }).catch(() => {});
-      alert(`Reinício solicitado!`);
+      alert('Comando de reinício enviado. O APK executará no próximo heartbeat.');
     } catch (e: any) {
       alert(`Erro ao reiniciar: ${e?.message || 'desconhecido'}`);
     }
@@ -849,13 +853,7 @@ export default function DevicesPage() {
             onScanned={async (deviceUuid) => {
               setShowQrScanner(false);
               try {
-                // Try to find existing device first
                 const found = devices.find(d => d.device_uuid === deviceUuid || d.id === deviceUuid);
-                if (found) {
-                  router.push(`/dashboard/devices/${found.id}`);
-                  return;
-                }
-                // Not found — try to create via scan-or-create endpoint
                 const res = await fetch('/api/admin/devices/scan-or-create', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },

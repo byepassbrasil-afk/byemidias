@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthApi } from '@/lib/auth';
 import sql, { bumpContentVersion } from '@/lib/db';
+import { getAdminClient } from '@/lib/pb-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,40 @@ const PROTECTED_FIELDS: Record<string, string[]> = {
 function sanitizeTableName(table: string): string | null {
   if (!ALLOWED_TABLES.includes(table)) return null;
   return table.replace(/[^a-zA-Z0-9_]/g, '');
+}
+
+async function ensureDeviceSchema(pb: any) {
+  const collection = await pb.collections.getOne('devices');
+  const fields = [
+    { name: 'content_version', type: 'number' },
+    { name: 'screen_rotation', type: 'number' },
+    { name: 'mirror_horizontal', type: 'bool' },
+    { name: 'mirror_vertical', type: 'bool' },
+    { name: 'video_volume', type: 'number' },
+    { name: 'support_id', type: 'text' },
+    { name: 'support_type', type: 'text' },
+    { name: 'api_base_url', type: 'text' },
+    { name: 'video_player', type: 'text' },
+    { name: 'html_render', type: 'text' },
+    { name: 'image_fit_mode', type: 'text' },
+    { name: 'image_rotation_lock', type: 'number' },
+    { name: 'auto_update', type: 'bool' },
+    { name: 'low_mem_restart', type: 'bool' },
+  ];
+  const existingFields = collection.fields || collection.schema || [];
+  const missing = fields.filter((f) => !existingFields.some((s: any) => s.name === f.name));
+  if (missing.length > 0) await pb.collections.update('devices', { fields: [...existingFields, ...missing] });
+}
+
+async function ensurePartnerSchema(pb: any) {
+  const collection = await pb.collections.getOne('partner_access');
+  const fields = [
+    { name: 'password_hash', type: 'text' },
+    { name: 'status', type: 'text' },
+  ];
+  const existingFields = collection.fields || collection.schema || [];
+  const missing = fields.filter((f) => !existingFields.some((s: any) => s.name === f.name));
+  if (missing.length > 0) await pb.collections.update('partner_access', { fields: [...existingFields, ...missing] });
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ table: string }> }) {
@@ -30,9 +65,50 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const offset = parseInt(searchParams.get('offset') || '0');
     const orderByRaw = searchParams.get('order') || 'created_at';
     const ascending = searchParams.get('asc') !== 'false';
-    // Whitelist orderBy to prevent SQL injection via ORDER BY
     const ALLOWED_ORDER_COLUMNS = new Set(['created_at', 'updated_at', 'name', 'status', 'last_heartbeat', 'model', 'id']);
     const orderBy = ALLOWED_ORDER_COLUMNS.has(orderByRaw) ? orderByRaw : 'created_at';
+
+    if (table === 'devices' || table === 'campaigns') {
+      const pb = await getAdminClient();
+      const filters: string[] = [];
+      if (user.role !== 'super_admin' && user.organization_id) {
+        filters.push(`organization_id = "${user.organization_id.replace(/"/g, '\\"')}"`);
+      }
+      for (const [key, value] of searchParams.entries()) {
+        if (key.startsWith('_') || ['limit', 'offset', 'order', 'asc', 'organization_id'].includes(key)) continue;
+        filters.push(`${key} = "${value.replace(/"/g, '\\"')}"`);
+      }
+      const filter = filters.length > 0 ? filters.join(' && ') : undefined;
+      const result = await pb.collection(table).getList(
+        Math.floor(offset / limit) + 1,
+        limit,
+        { filter, sort: `${ascending ? '' : '-'}${orderBy}` },
+      );
+      return NextResponse.json({ data: result.items ?? [] });
+    }
+
+    const pocketbaseContentTables = ['playlists', 'media', 'playlist_items', 'playlist_slots', 'campaign_playlists'];
+    if (pocketbaseContentTables.includes(table)) {
+      const pb = await getAdminClient();
+      const filters: string[] = [];
+      if (user.role !== 'super_admin' && user.organization_id && (table === 'playlists' || table === 'media')) {
+        filters.push(`organization_id = "${user.organization_id.replace(/"/g, '\\"')}"`);
+      }
+      for (const [key, value] of searchParams.entries()) {
+        if (key.startsWith('_') || ['limit', 'offset', 'order', 'asc', 'organization_id'].includes(key)) continue;
+        filters.push(`${key} = "${value.replace(/"/g, '\\"')}"`);
+      }
+      const filter = filters.length > 0 ? filters.join(' && ') : undefined;
+      const result = await pb.collection(table).getList(
+        Math.floor(offset / limit) + 1,
+        limit,
+        { filter, sort: `${ascending ? '' : '-'}${orderBy}` },
+      );
+      const data = (result.items ?? []).map((item: any) => table === 'media'
+        ? { ...item, file_url: item.file_url || item.url || '' }
+        : item);
+      return NextResponse.json({ data });
+    }
 
     const filters: string[] = [];
     for (const [key, value] of searchParams.entries()) {
@@ -74,6 +150,49 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const body = await request.json();
     if (!body || Object.keys(body).length === 0) {
       return NextResponse.json({ error: 'Dados obrigatórios' }, { status: 400 });
+    }
+
+    if (table === 'devices') {
+      const pb = await getAdminClient();
+      await ensureDeviceSchema(pb);
+      const existing = await pb.collection('devices').getOne(body.id);
+      if (user.role !== 'super_admin' && existing.organization_id !== user.organization_id) {
+        return NextResponse.json({ error: 'Dispositivo não encontrado' }, { status: 404 });
+      }
+
+      const { id, organization_id, ...updates } = body;
+      const row = await pb.collection('devices').update(id, {
+        ...updates,
+        content_version: updates.content_version || Date.now(),
+      });
+      return NextResponse.json({ data: row });
+    }
+
+    const pocketbaseContentTables = ['playlists', 'media', 'playlist_items', 'playlist_slots', 'campaign_playlists'];
+    if (pocketbaseContentTables.includes(table)) {
+      const pb = await getAdminClient();
+      const data: any = { ...body };
+      delete data.id;
+      delete data.file_url;
+      if (table === 'media' && body.file_url) data.url = body.file_url;
+      if (table === 'playlist_slots' && data.duration_seconds !== undefined) {
+        data.duration = data.duration_seconds;
+        delete data.duration_seconds;
+      }
+      if (user.organization_id && !data.organization_id && (table === 'playlists' || table === 'media')) {
+        data.organization_id = user.organization_id;
+      }
+      const row = await pb.collection(table).create(data);
+      const contentOrgId = data.organization_id || (data.playlist_id
+        ? (await pb.collection('playlists').getOne(data.playlist_id).catch(() => null))?.organization_id
+        : null);
+      if (contentOrgId) {
+        const devices = await pb.collection('devices').getList(1, 200, { filter: `organization_id = "${contentOrgId}"` });
+        for (const device of devices.items) {
+          await pb.collection('devices').update(device.id, { content_version: Date.now() });
+        }
+      }
+      return NextResponse.json({ data: row });
     }
 
     // Auto-inject organization_id if table has it and body doesn't include it
@@ -132,6 +251,43 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Nenhum campo para atualizar' }, { status: 400 });
     }
 
+    if (table === 'devices') {
+      const pb = await getAdminClient();
+      await ensureDeviceSchema(pb);
+      const existing = await pb.collection('devices').getOne(id);
+      if (user.role !== 'super_admin' && existing.organization_id !== user.organization_id) {
+        return NextResponse.json({ error: 'Dispositivo não encontrado' }, { status: 404 });
+      }
+      const data: any = { ...updates };
+      if (data.content_version === undefined) data.content_version = Date.now();
+      const row = await pb.collection('devices').update(id, data);
+      return NextResponse.json({ data: row });
+    }
+
+    const pocketbaseContentTables = ['playlists', 'media', 'playlist_items', 'playlist_slots', 'campaign_playlists'];
+    if (pocketbaseContentTables.includes(table)) {
+      const pb = await getAdminClient();
+      const data: any = { ...updates };
+      delete data.file_url;
+      if (table === 'media' && updates.file_url) data.url = updates.file_url;
+      if (table === 'playlist_slots' && data.duration_seconds !== undefined) {
+        data.duration = data.duration_seconds;
+        delete data.duration_seconds;
+      }
+      const existing = await pb.collection(table).getOne(id);
+      const row = await pb.collection(table).update(id, data);
+      const contentOrgId = data.organization_id || existing.organization_id || (data.playlist_id || existing.playlist_id
+        ? (await pb.collection('playlists').getOne(data.playlist_id || existing.playlist_id).catch(() => null))?.organization_id
+        : null);
+      if (contentOrgId) {
+        const devices = await pb.collection('devices').getList(1, 200, { filter: `organization_id = "${contentOrgId}"` });
+        for (const device of devices.items) {
+          await pb.collection('devices').update(device.id, { content_version: Date.now() });
+        }
+      }
+      return NextResponse.json({ data: row });
+    }
+
     if (table === 'organizations' && user.role !== 'super_admin') {
       const [org] = await sql`SELECT owner_id FROM organizations WHERE id = ${id}`;
       if (!org) return NextResponse.json({ error: 'Organização não encontrada' }, { status: 404 });
@@ -183,6 +339,26 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+
+    const pocketbaseContentTables = ['playlists', 'media', 'playlist_items', 'playlist_slots', 'campaign_playlists'];
+    if (pocketbaseContentTables.includes(table)) {
+      const pb = await getAdminClient();
+      const existing = await pb.collection(table).getOne(id);
+      if (user.role !== 'super_admin' && existing.organization_id && existing.organization_id !== user.organization_id) {
+        return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+      }
+      await pb.collection(table).delete(id);
+      const contentOrgId = existing.organization_id || (existing.playlist_id
+        ? (await pb.collection('playlists').getOne(existing.playlist_id).catch(() => null))?.organization_id
+        : null);
+      if (contentOrgId) {
+        const devices = await pb.collection('devices').getList(1, 200, { filter: `organization_id = "${contentOrgId}"` });
+        for (const device of devices.items) {
+          await pb.collection('devices').update(device.id, { content_version: Date.now() });
+        }
+      }
+      return NextResponse.json({ success: true });
+    }
 
     if (table === 'organizations' && user.role !== 'super_admin') {
       const [org] = await sql`SELECT owner_id FROM organizations WHERE id = ${id}`;

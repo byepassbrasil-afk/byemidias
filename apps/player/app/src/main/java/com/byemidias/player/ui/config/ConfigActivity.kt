@@ -157,6 +157,22 @@ class ConfigActivity : ComponentActivity() {
                 commit()
             }
 
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    httpPost("$url/api/device/config", JSONObject().apply {
+                        put("device_id", deviceId ?: "")
+                        put("video_volume", videoVolumeSeek.progress)
+                        put("api_base_url", url)
+                        put("video_player", videoPlayerSpinner.selectedItemPosition)
+                        put("html_render", htmlRenderSpinner.selectedItemPosition)
+                        put("image_fit_mode", fitModes[imageFitSpinner.selectedItemPosition])
+                        put("image_rotation_lock", rotations[imageRotationSpinner.selectedItemPosition])
+                        put("auto_update", autoUpdateSwitch.isChecked)
+                        put("low_mem_restart", lowMemRestartSwitch.isChecked)
+                    }.toString())
+                } catch (_: Exception) {}
+            }
+
             statusText.text = "Configuracoes salvas!"
             statusText.visibility = View.VISIBLE
 
@@ -203,15 +219,20 @@ class ConfigActivity : ComponentActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val apiUrl = urlInput.text.toString().trim()
-                    // Bump content_version
-                    val body = JSONObject().apply {
-                        put("device_id", deviceId ?: "")
-                        put("content_version", System.currentTimeMillis() % 100000)
-                    }
-                    val result = httpPost("$apiUrl/api/device/heartbeat", body.toString())
+                    val syncUrl = "$apiUrl/api/device/sync?device_id=${deviceId ?: ""}&content_version=-1"
+                    val conn = URL(syncUrl).openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.connectTimeout = 15000
+                    conn.readTimeout = 30000
+                    if (conn.responseCode !in 200..299) throw IllegalStateException("HTTP ${conn.responseCode}")
+                    conn.inputStream.use { it.readBytes() }
+                    conn.disconnect()
                     withContext(Dispatchers.Main) {
-                        statusText.text = "Sync forçado!"
+                        statusText.text = "Sync forçado! Reiniciando player..."
                         statusText.visibility = View.VISIBLE
+                        val intent = Intent(this@ConfigActivity, PlayerActivity::class.java)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {

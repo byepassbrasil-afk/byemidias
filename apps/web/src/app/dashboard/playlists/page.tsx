@@ -277,13 +277,13 @@ export default function PlaylistsPage() {
         await fetch('/api/admin/crud/playlist_items', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: item.id, position: i }),
+          body: JSON.stringify({ id: item.id, playlist_id: selectedPlaylist.id, position: i }),
         });
       } else {
         await fetch('/api/admin/crud/playlist_slots', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: item.id, slot_index: i }),
+          body: JSON.stringify({ id: item.id, playlist_id: selectedPlaylist.id, slot_index: i }),
         });
       }
     }
@@ -305,13 +305,13 @@ export default function PlaylistsPage() {
         await fetch('/api/admin/crud/playlist_items', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: newItems[i].id, position: i }),
+          body: JSON.stringify({ id: newItems[i].id, playlist_id: selectedPlaylist.id, position: i }),
         });
       } else {
         await fetch('/api/admin/crud/playlist_slots', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: newItems[i].id, slot_index: i }),
+          body: JSON.stringify({ id: newItems[i].id, playlist_id: selectedPlaylist.id, slot_index: i }),
         });
       }
     }
@@ -391,9 +391,9 @@ export default function PlaylistsPage() {
       setUnifiedItems(remaining);
       for (let i = 0; i < remaining.length; i++) {
         if (remaining[i].type === 'media') {
-          await fetch('/api/admin/crud/playlist_items', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, position: i }) });
+          await fetch('/api/admin/crud/playlist_items', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, playlist_id: selectedPlaylist.id, position: i }) });
         } else {
-          await fetch('/api/admin/crud/playlist_slots', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, slot_index: i }) });
+          await fetch('/api/admin/crud/playlist_slots', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: remaining[i].id, playlist_id: selectedPlaylist.id, slot_index: i }) });
         }
       }
     } catch (e: any) {
@@ -409,7 +409,7 @@ export default function PlaylistsPage() {
       const res = await fetch('/api/admin/crud/playlist_items', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, duration: dur })
+        body: JSON.stringify({ id: item.id, playlist_id: selectedPlaylist.id, duration: dur })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -428,7 +428,7 @@ export default function PlaylistsPage() {
       const res = await fetch('/api/admin/crud/playlist_items', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, transition: newTransition })
+        body: JSON.stringify({ id: item.id, playlist_id: selectedPlaylist.id, transition: newTransition })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -448,7 +448,7 @@ export default function PlaylistsPage() {
       const res = await fetch('/api/admin/crud/playlist_slots', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, duration_seconds: dur })
+        body: JSON.stringify({ id: item.id, playlist_id: selectedPlaylist.id, duration_seconds: dur })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -467,14 +467,22 @@ export default function PlaylistsPage() {
     const cpJson = await cpRes.json();
     const campaigns = cpJson.data ?? [];
     if (campaigns.length === 0) { alert('Playlist não vinculada a nenhuma campanha.'); return; }
+    let sent = 0;
+    let failed = 0;
     for (const cp of campaigns) {
       const devRes = await fetch(`/api/admin/crud/devices?campaign_id=${cp.campaign_id}`);
       const devJson = await devRes.json();
       for (const d of (devJson.data ?? [])) {
-        await fetch('/api/admin/rpc/bump_device_content_version', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_device_id: d.id }) });
+        const commandRes = await fetch(`/api/dashboard/devices/${d.id}/command`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'reload' }),
+        });
+        if (commandRes.ok) sent++;
+        else failed++;
       }
     }
-    alert('Sync forçado nos dispositivos vinculados.');
+    alert(failed === 0 ? `Atualização enviada para ${sent} dispositivo(s).` : `Atualização enviada para ${sent} dispositivo(s); ${failed} falharam.`);
   }
 
   // --- Add Slot ---
@@ -555,8 +563,10 @@ export default function PlaylistsPage() {
                     <button onClick={() => setSelectedMediaId(m.id)}
                       className="w-full text-left">
                       <div className="aspect-square bg-gray-100 relative">
-                        {m.type === 'image' || m.type === 'gif' ? <img src={m.file_url} alt={m.name} className="w-full h-full object-cover" />
-                          : <div className="w-full h-full flex items-center justify-center bg-purple-50"><span className="text-3xl">🎬</span></div>}
+                        {m.type === 'image' || m.type === 'gif' ? <img src={m.url || m.file_url || ''} alt={m.name} className="w-full h-full object-cover" />
+                          : m.type === 'url' ? <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 p-2 text-center"><span className="text-3xl">🌐</span><span className="text-[10px] text-blue-600 truncate w-full mt-1">{(m.url || m.file_url || '').replace(/^https?:\/\//, '')}</span></div>
+                          : m.thumbnail_url ? <img src={m.thumbnail_url} alt={m.name} className="w-full h-full object-cover" />
+                          : <video src={m.url || m.file_url || ''} muted preload="metadata" className="w-full h-full object-cover" />}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none">
                           <span className="text-white text-2xl opacity-0 group-hover:opacity-100">▶</span>
                         </div>

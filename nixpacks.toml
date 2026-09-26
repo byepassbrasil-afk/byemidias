@@ -1,17 +1,24 @@
-[phases.setup]
-nixPkgs = ["nodejs-20", "npm-10"]
+# Nixpacks - ByeMidias
+#
+# Build type: Nixpacks (funciona em VPS ARM64 e AMD64).
+# Nao use Heroku Buildpacks: a imagem base heroku/heroku:24 existe apenas
+# para linux/amd64 e o export falha em maquinas arm64.
 
 [phases.install]
-cmds = ["npm ci --legacy-peer-deps"]
+# --include=dev e obrigatorio: sem isso o NODE_ENV=production faz o npm ci
+# remover typescript/tailwind/postcss e o `next build` quebra.
+cmds = ["npm ci --legacy-peer-deps --include=dev"]
+cacheDirectories = ["/root/.npm"]
 
 [phases.build]
 cmds = ["npm run build"]
+cacheDirectories = ["apps/web/.next/cache"]
 
-[start]
-cmd = "cd apps/web && npm run start"
+[phases.start]
+# next start sobe o servidor completo e respeita PORT/0.0.0.0 via flag.
+cmds = ["cd apps/web && npx next start -H 0.0.0.0 -p ${PORT:-3000}"]
 
 [variables]
 NODE_ENV = "production"
-NPM_CONFIG_PRODUCTION = "false"
 PORT = "3000"
-HOSTNAME = "0.0.0.0"
+NEXT_TELEMETRY_DISABLED = "1"

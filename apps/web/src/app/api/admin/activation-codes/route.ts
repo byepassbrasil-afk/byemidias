@@ -32,7 +32,20 @@ export async function GET() {
       sort: '-id',
     });
 
-    return NextResponse.json({ codes: codes.items ?? [] });
+    const result = [];
+    for (const code of codes.items) {
+      const device = code.linked_device_id
+        ? await pb.collection('devices').getOne(code.linked_device_id).catch(() => null)
+        : null;
+      result.push({
+        ...code,
+        created_at: code.created_at || code.created,
+        use_count: code.use_count || 0,
+        max_uses: code.max_uses || 1,
+        device: device ? { id: device.id, name: device.name, status: device.status } : null,
+      });
+    }
+    return NextResponse.json({ codes: result });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';
     console.error('[activation-codes GET] erro:', msg);
@@ -65,6 +78,9 @@ export async function POST(request: NextRequest) {
       const data: any = {
         code: generateCode(),
         organization_id: orgId,
+        max_uses: 1,
+        use_count: 0,
+        status: 'active',
       };
 
       if (expires_at) data.expires_at = expires_at;

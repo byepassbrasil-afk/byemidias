@@ -40,6 +40,9 @@ import androidx.media3.ui.PlayerView
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
+import android.webkit.RenderProcessGoneDetail
 import com.byemidias.player.ByeMidiasApp
 import com.byemidias.player.BuildConfig
 import com.byemidias.player.R
@@ -74,6 +77,8 @@ class PlayerActivity : ComponentActivity() {
     private var currentContentVersion: Long = 0
     private var layoutZones: List<ZoneData> = emptyList()
     @Volatile private var needsResync = false
+    @Volatile private var lastSyncValid = false
+    @Volatile private var lastMediaSignature = ""
     private var syncIntervalSeconds = 30
     private var syncHandler: Handler? = null
 
@@ -127,27 +132,22 @@ class PlayerActivity : ComponentActivity() {
             }
 
             fun getResolvedType(fileUrl: String, fallbackType: String): String {
-                // URL HTTP/HTTPS sem extensão de imagem/vídeo → é página web
-                if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
-                    val clean = fileUrl.substringBefore("?").substringBefore("#")
-                    val ext = clean.substringAfterLast(".", "").lowercase()
-                    // Se tem extensão de imagem/vídeo, é mídia; senão é URL/página
-                    if (ext.isEmpty() || (!IMAGE_EXTS.contains(ext) && !VIDEO_EXTS.contains(ext))) {
-                        // Mas se fallbackType for "url", respeita
-                        if (fallbackType == "url") return "url"
-                        // Se for http/https sem extensão, é url
-                        if (ext.isEmpty()) return "url"
-                    }
+                val clean = fileUrl.substringBefore("?").substringBefore("#")
+                val ext = clean.substringAfterLast(".", "").lowercase()
+                if (ext in IMAGE_EXTS) return "image"
+                if (ext in VIDEO_EXTS) return "video"
+                return when (fallbackType.lowercase()) {
+                    "image", "webp", "jpeg", "jpg", "png" -> "image"
+                    "video", "mp4" -> "video"
+                    "url", "webview", "html", "webpage" -> "url"
+                    else -> if (ext.isEmpty()) "url" else "url"
                 }
-                if (isImageFile(fileUrl)) return "image"
-                if (isVideoFile(fileUrl)) return "video"
-                return fallbackType
             }
         }
 
         fun resolvedType(): String = getResolvedType(fileUrl, type)
-        fun isImage(): Boolean = isImageFile(fileUrl)
-        fun isVideo(): Boolean = isVideoFile(fileUrl)
+        fun isImage(): Boolean = resolvedType() == "image"
+        fun isVideo(): Boolean = resolvedType() == "video"
     }
 
     data class ZoneData(
@@ -164,7 +164,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.i(tag, "onCreate START — ByeMidias Player v1.0.88")
+            Log.i(tag, "onCreate START — ByeMidias Player v1.0.95")
 
             // CRITICAL: Apply orientation BEFORE setContentView so layout inflates with correct dimensions
             prefs = getSharedPreferences("byemidias", MODE_PRIVATE)
@@ -807,6 +807,7 @@ class PlayerActivity : ComponentActivity() {
             // Delay syncAndPlay until view is fully laid out — avoids black screen on cold start
             window.decorView.post {
                 lifecycleScope.launch(Dispatchers.Main) {
+                    startPeriodicSync()
                     sendHeartbeatOn()
                     syncAndPlay()
                 }
@@ -1004,6 +1005,13 @@ class PlayerActivity : ComponentActivity() {
             rl.addView(ivB, lpB)
             imageViewB = ivB
 
+            val wv = WebView(this)
+            wv.visibility = View.GONE
+            val lpW = FrameLayout.LayoutParams(zoneW, zoneH)
+            lpW.leftMargin = zoneX; lpW.topMargin = zoneY
+            rl.addView(wv, lpW)
+            webView = wv
+
             activeImageView = ivA
             imageView = ivA
             flog("I", "UI", "createMediaViewsForZone: exoPlayerView+imageViewA+imageViewB created for zone ${zone.name}")
@@ -1029,8 +1037,11 @@ class PlayerActivity : ComponentActivity() {
                         val result = httpPost("${getApiUrl()}/api/device/heartbeat", body.toString())
                         if (result.isNotEmpty()) {
                             val json = JSONObject(result)
+                            withContext(Dispatchers.Main) {
+                                applyDeviceSettings(json)
+                            }
                             val serverVersion = json.optLong("content_version", 0)
-                            if (serverVersion > currentContentVersion) {
+                            if (serverVersion != currentContentVersion) {
                                 Log.i(tag, "Periodic check: content changed $currentContentVersion -> $serverVersion, resyncing")
                                 needsResync = true
                             }
@@ -1076,7 +1087,12 @@ class PlayerActivity : ComponentActivity() {
                 val zones = result.second
                 flog("I", tag, "syncAndPlay: fetched items=${items.size}, zones=${zones.size}")
                 if (items.isEmpty()) {
-                    if (!usingCache && mediaList.isEmpty()) {
+                    if (lastSyncValid) {
+                        if (lastMediaSignature.isNotEmpty()) mediaFileCache?.clear()
+                        lastMediaSignature = ""
+                        prefs?.edit()?.remove("cache_media")?.remove("cache_zones")?.apply()
+                    }
+                    if (!usingCache && mediaList.isEmpty() && !lastSyncValid) {
                         val cachedItems = loadCache()
                         if (cachedItems.isNotEmpty()) {
                             usingCache = true
@@ -1107,24 +1123,27 @@ class PlayerActivity : ComponentActivity() {
                     continue
                 }
                 usingCache = false
+                val mediaSignature = items.joinToString("|") { "${it.id}:${it.fileUrl}:${it.duration}" }
+                if (lastMediaSignature.isNotEmpty() && lastMediaSignature != mediaSignature) {
+                    flog("I", "Sync", "Playlist mudou; limpando cache de mídia anterior")
+                    mediaFileCache?.clear()
+                }
+                lastMediaSignature = mediaSignature
                 saveCache(items, zones)
                 mediaList.clear()
                 mediaList.addAll(items)
                 currentIndex = 0
 
-                // Pré-baixar arquivos em background para offline.
-                // No primeiro sync, espera o download terminar pra evitar tela preta offline depois.
-                val urlsToPrefetch = items.map { it.fileUrl }.filter { it.isNotEmpty() && it.startsWith("http") }
-                if (isFirstSync) {
-                    flog("I", tag, "First sync: prefetching ${urlsToPrefetch.size} media files before playback...")
-                    showStatus("Baixando mídias (1ª vez)...")
-                    withContext(Dispatchers.IO) { mediaFileCache?.prefetchAll(urlsToPrefetch) }
-                    hideStatus()
-                } else {
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        mediaFileCache?.prefetchAll(urlsToPrefetch)
-                    }
+                val urlsToPrefetch = items
+                    .filter { it.resolvedType() == "image" || it.resolvedType() == "video" }
+                    .map { it.fileUrl }
+                    .filter { it.isNotEmpty() && it.startsWith("http") }
+                flog("I", tag, "Sync: refreshing ${urlsToPrefetch.size} media files before playback...")
+                showStatus("Atualizando mídias...")
+                withContext(Dispatchers.IO) {
+                    mediaFileCache?.prefetchAll(urlsToPrefetch, forceRefresh = true)
                 }
+                hideStatus()
 
                 layoutZones = zones
                 if (layoutZones.isNotEmpty()) {
@@ -1143,7 +1162,7 @@ class PlayerActivity : ComponentActivity() {
                 playLoop()
             } catch (e: Exception) {
                 flog("E", "Sync", "Sync EXCEPTION: ${e.message}")
-                if (mediaList.isEmpty()) {
+                if (mediaList.isEmpty() && !lastSyncValid) {
                     val cachedItems = loadCache()
                     if (cachedItems.isNotEmpty()) {
                         usingCache = true
@@ -1178,6 +1197,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private suspend fun fetchMedia(): Pair<List<MediaItem>, List<ZoneData>> = withContext(Dispatchers.IO) {
+        lastSyncValid = false
         val deviceId = prefs?.getString("device_id", "") ?: ""
         val apiUrl = getApiUrl()
 
@@ -1186,6 +1206,14 @@ class PlayerActivity : ComponentActivity() {
         val response = httpGet(url)
         flog("I", "Fetch", "fetchMedia: response length=${response.length}, first 300: ${response.take(300)}")
         val json = JSONObject(response)
+        lastSyncValid = json.has("playlists") && json.has("media")
+        val responseContentVersion = json.optLong("content_version", 0)
+        if (responseContentVersion > 0 && responseContentVersion != currentContentVersion) {
+            flog("I", "Sync", "Versão mudou; descartando cache local anterior")
+            mediaFileCache?.clear()
+            prefs?.edit()?.remove("cache_media")?.remove("cache_zones")?.apply()
+            lastMediaSignature = ""
+        }
 
         if (json.has("error")) {
             val errorMsg = json.getString("error")
@@ -1314,7 +1342,7 @@ class PlayerActivity : ComponentActivity() {
         flog("I", "Fetch", "fetchMedia: FINAL items=${items.size}, zones=${json.optJSONArray("layout_zones")?.length() ?: 0} layout_zones")
 
         val respVersion = json.optLong("content_version", 0)
-        if (respVersion > 0) currentContentVersion = respVersion
+        if (respVersion > 0 && lastSyncValid) currentContentVersion = respVersion
 
         val zonesArray = json.optJSONArray("layout_zones")
         val zones = mutableListOf<ZoneData>()
@@ -1454,8 +1482,7 @@ class PlayerActivity : ComponentActivity() {
                     conn.disconnect()
                     return null
                 }
-                // Reject non-image content-types if specified
-                if (contentType.startsWith("text/") || contentType == "application/octet-stream" || contentType == "unknown") {
+                if (contentType.startsWith("text/")) {
                     flog("E", "Fetch", "loadBitmap: suspicious content-type '$contentType' for ${fileUrl.take(80)} — rejecting")
                     conn.disconnect()
                     return null
@@ -1753,24 +1780,27 @@ class PlayerActivity : ComponentActivity() {
                 val wv = webView ?: findViewById(R.id.webView)
                 wv?.let {
                     it.settings.apply {
-                        javaScriptEnabled = false
-                        domStorageEnabled = false
-                        loadWithOverviewMode = false
-                        // sem cache — sempre fresh
-                        cacheMode = WebSettings.LOAD_NO_CACHE
-                        useWideViewPort = false
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        loadWithOverviewMode = true
+                        useWideViewPort = true
+                        builtInZoomControls = false
+                        displayZoomControls = false
+                        cacheMode = WebSettings.LOAD_DEFAULT
                         allowFileAccess = false
                         allowContentAccess = false
                         mediaPlaybackRequiresUserGesture = false
                     }
                     it.setBackgroundColor(0xFF000000.toInt())
-                    // Bloqueia qualquer interação do usuário (scroll, zoom, clique)
                     it.setOnTouchListener { _, _ -> true }
-                    // Cliente WebView que intercepta navegações externas — mantém tudo dentro do app
                     it.webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                            // Bloqueia navegação para outros URLs — apenas o carregamento inicial passa
-                            return url != item.fileUrl
+                        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean = false
+                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = false
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            flog("I", "WebView", "onPageFinished: ${item.name} ${url?.take(100)}")
+                        }
+                        override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                            flog("E", "WebView", "onReceivedError: ${item.name} code=${error?.errorCode} url=${request?.url}")
                         }
                     }
                     it.visibility = View.VISIBLE
@@ -1864,6 +1894,27 @@ class PlayerActivity : ComponentActivity() {
             // NOTE: We do NOT re-apply rotation here anymore to avoid flicker
             // between media items. Rotation is set ONCE at startup and on
             // explicit user action (config screen button).
+            val remoteVolume = json.optInt("video_volume", -1)
+            if (remoteVolume in 0..100) {
+                prefs?.edit()?.putInt("video_volume", remoteVolume)?.apply()
+                exoPlayer?.volume = remoteVolume / 100f
+            }
+            if (json.has("image_fit_mode")) {
+                prefs?.edit()?.putString("image_fit_mode", json.optString("image_fit_mode"))?.apply()
+            }
+            if (json.has("image_rotation_lock")) {
+                prefs?.edit()?.putInt("image_rotation_lock", json.optInt("image_rotation_lock"))?.apply()
+            }
+            if (json.has("video_player")) prefs?.edit()?.putInt("video_player", json.optInt("video_player"))?.apply()
+            if (json.has("html_render")) prefs?.edit()?.putInt("html_render", json.optInt("html_render"))?.apply()
+            if (json.has("auto_update")) prefs?.edit()?.putBoolean("auto_update", json.optBoolean("auto_update"))?.apply()
+            if (json.has("low_mem_restart")) prefs?.edit()?.putBoolean("low_mem_restart", json.optBoolean("low_mem_restart"))?.apply()
+            val remoteRotation = json.optInt("screen_rotation", -999)
+            if (remoteRotation != -999 && remoteRotation != lastAppliedRotation) {
+                prefs?.edit()?.putInt("screen_rotation", remoteRotation)?.apply()
+                runOnUiThread { applyRotationFromPrefs() }
+            }
+
             val mirrorH = json.optBoolean("mirror_horizontal", false)
             val mirrorV = json.optBoolean("mirror_vertical", false)
 
@@ -1925,8 +1976,11 @@ class PlayerActivity : ComponentActivity() {
                                 ?.remove("cache_zones")
                                 ?.remove("cache_time")
                                 ?.apply()
+                            mediaFileCache?.clear()
                         } catch (_: Exception) {}
-                        flog("I", "Cmd", "Cache cleared by remote command")
+                        needsResync = true
+                        currentContentVersion = -1
+                        flog("I", "Cmd", "Media and metadata cache cleared by remote command")
                     }
                     "toggle_kiosk" -> {
                         try {

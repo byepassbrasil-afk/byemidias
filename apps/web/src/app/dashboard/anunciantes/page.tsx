@@ -39,7 +39,9 @@ export default function AnunciantesPage() {
       if (search) params.set('search', search);
       if (statusFilter) params.set('status', statusFilter);
       const res = await fetch(`/api/dashboard/advertisers?${params}`);
-      const json = await res.json();
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(json.error || 'Erro ao listar anunciantes');
       setAdvertisers(json.advertisers || []);
     } catch (e) {
       console.error(e);
@@ -59,7 +61,8 @@ export default function AnunciantesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, ticket_value: parseFloat(form.ticket_value) || 0 }),
       });
-      const json = await res.json();
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
       if (!res.ok) { setError(json.error || 'Erro ao criar'); return; }
       setShowForm(false);
       setForm({ name: '', establishment_name: '', email: '', phone: '', document: '', address: '', ticket_value: '' });

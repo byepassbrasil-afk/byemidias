@@ -114,6 +114,7 @@ export default function EditDevicePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deviceLogs, setDeviceLogs] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -154,6 +155,10 @@ export default function EditDevicePage() {
       setCity(d.city ?? '');
       setState(d.state ?? '');
       setEstablishmentName(d.establishment_name ?? '');
+
+      const logsRes = await fetch(`/api/admin/device-logs?device_id=${id}&limit=20`);
+      const logsJson = await logsRes.json().catch(() => ({}));
+      setDeviceLogs(logsJson.data || []);
 
       // Load orgs
       const orgsRes = await fetch('/api/admin/crud/organizations?order=name&asc=true');
@@ -244,10 +249,16 @@ export default function EditDevicePage() {
   async function handleCommand(action: 'restart' | 'screenshot') {
     if (action === 'restart' && !confirm('Reiniciar o dispositivo agora?')) return;
     setMessage(`Solicitando ${action === 'restart' ? 'reinício' : 'screenshot'}...`);
-    await fetch(`/api/dashboard/devices/${id}/${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const url = action === 'restart'
+      ? `/api/dashboard/devices/${id}/command`
+      : `/api/dashboard/devices/${id}/screenshot`;
+    const options: RequestInit = action === 'restart'
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: 'restart' }) }
+      : { method: 'POST', headers: { 'Content-Type': 'application/json' } };
+    const res = await fetch(url, options);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) setMessage(`Erro: ${json.error || res.statusText}`);
+    else setMessage(action === 'restart' ? 'Comando de reinício enviado.' : 'Screenshot solicitado.');
     setTimeout(() => setMessage(null), 3000);
   }
 
@@ -319,6 +330,43 @@ export default function EditDevicePage() {
         )}
         {error && (
           <div className="mb-4 rounded-lg bg-red-900/30 border border-red-700/50 p-3 text-sm text-red-300">{error}</div>
+        )}
+
+        {device && (
+          <section className="mb-6 rounded-2xl bg-gray-900 border border-gray-800 p-6">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Webhook do dispositivo</h2>
+            <p className="text-xs text-gray-500 mb-4">O APK consulta este canal no heartbeat para receber comandos e atualizações.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Webhook / heartbeat</label>
+                <code className="block break-all rounded-lg bg-gray-950 border border-gray-800 p-3 text-xs text-orange-300">{`${typeof window !== 'undefined' ? window.location.origin : ''}/api/device/heartbeat?device_id=${id}`}</code>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Sincronização de conteúdo</label>
+                <code className="block break-all rounded-lg bg-gray-950 border border-gray-800 p-3 text-xs text-orange-300">{`${typeof window !== 'undefined' ? window.location.origin : ''}/api/device/sync?device_id=${id}`}</code>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {device && (
+          <section className="mb-6 rounded-2xl bg-gray-900 border border-gray-800 p-6">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Logs do dispositivo</h2>
+            <p className="text-xs text-gray-500 mb-4">Histórico de webhooks, sincronizações e erros.</p>
+            {deviceLogs.length === 0 ? <p className="text-sm text-gray-500">Nenhum log registrado.</p> : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {deviceLogs.map((log) => (
+                  <div key={log.id} className="flex items-start gap-3 rounded-lg bg-gray-950 border border-gray-800 p-3 text-xs">
+                    <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${log.severity === 'error' ? 'bg-red-400' : 'bg-green-400'}`} />
+                    <div className="min-w-0">
+                      <p className="text-gray-200 break-words">{log.message || log.event_type}</p>
+                      <p className="text-gray-500 mt-1">{log.event_type} · {new Date(log.created_at || log.created).toLocaleString('pt-BR')}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
         <form onSubmit={handleSave} className="space-y-6">
@@ -614,7 +662,7 @@ export default function EditDevicePage() {
                 className="rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-3 text-sm font-medium text-white transition-colors">
                 📸 Solicitar Screenshot
               </button>
-              <button type="button" onClick={() => fetch(`/api/admin/rpc/bump_device_content_version`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_device_id: id }) }).then(() => setMessage('✓ Sync forçado!'))}
+              <button type="button" onClick={() => sendRemoteCommand('reload', 'Forçar sincronização')}
                 className="rounded-xl bg-yellow-600 hover:bg-yellow-500 px-4 py-3 text-sm font-medium text-white transition-colors">
                 ⚡ Forçar Sync
               </button>

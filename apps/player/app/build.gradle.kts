@@ -13,8 +13,8 @@ android {
         applicationId = "com.byemidias.player"
         minSdk = 21
         targetSdk = 34
-        versionCode = 89
-        versionName = "1.0.89"
+        versionCode = 103
+        versionName = "1.0.103"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

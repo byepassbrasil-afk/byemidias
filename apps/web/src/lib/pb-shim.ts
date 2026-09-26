@@ -154,6 +154,14 @@ db.then = sql;
 
 export default db;
 export { sql, unsafeFn as unsafe, strFn as str };
-export const bumpContentVersion = async (_orgId: string) => {
-  // no-op
+export const bumpContentVersion = async (orgId: string) => {
+  if (!orgId) return;
+  const pb = await getAdminClient();
+  const version = Date.now();
+  const devices = await pb.collection('devices').getFullList({
+    filter: `organization_id = "${escapeValue(orgId)}"`,
+  });
+  for (const device of devices) {
+    await pb.collection('devices').update(device.id, { content_version: version });
+  }
 };
